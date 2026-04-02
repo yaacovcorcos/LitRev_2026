@@ -116,7 +116,22 @@ type BrowserProbeMetrics = {
   inp: number | null;
 };
 
+type BrowserProbeWindow = Window & typeof globalThis & {
+  __perfProbe?: BrowserProbeMetrics;
+};
+
 type CollectedBrowserMetrics = Record<ProbeMetricName, number | null>;
+
+function getBrowserProbeTarget(target: BrowserProbeWindow): BrowserProbeMetrics {
+  if (!target.__perfProbe) {
+    target.__perfProbe = {
+      lcp: null,
+      cls: 0,
+      inp: null,
+    };
+  }
+  return target.__perfProbe;
+}
 
 const PROFILE_CONFIGS: Record<ProbeProfile, BrowserContextOptions> = {
   "desktop-normal": {
@@ -426,36 +441,31 @@ async function seedProbeFixture(baseUrl: string): Promise<{ cookie: PerfCookie; 
 
 async function installBrowserProbe(context: BrowserContext) {
   await context.addInitScript(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const target = window as any;
-    target.__perfProbe = {
-      lcp: null,
-      cls: 0,
-      inp: null,
-    };
+    const target = window as BrowserProbeWindow;
+    const probe = getBrowserProbeTarget(target);
 
     try {
       new PerformanceObserver((entryList) => {
         const entries = entryList.getEntries();
         const lastEntry = entries[entries.length - 1];
         if (lastEntry) {
-          target.__perfProbe.lcp = lastEntry.startTime;
+          probe.lcp = lastEntry.startTime;
         }
       }).observe({ type: "largest-contentful-paint", buffered: true });
     } catch {
-      target.__perfProbe.lcp = null;
+      probe.lcp = null;
     }
 
     try {
       new PerformanceObserver((entryList) => {
         for (const entry of entryList.getEntries() as Array<{ hadRecentInput?: boolean; value?: number }>) {
           if (!entry.hadRecentInput) {
-            target.__perfProbe.cls += entry.value ?? 0;
+            probe.cls += entry.value ?? 0;
           }
         }
       }).observe({ type: "layout-shift", buffered: true });
     } catch {
-      target.__perfProbe.cls = 0;
+      probe.cls = 0;
     }
 
     try {
@@ -463,7 +473,7 @@ async function installBrowserProbe(context: BrowserContext) {
         for (const entry of entryList.getEntries() as Array<{ duration?: number }>) {
           const duration = entry.duration ?? null;
           if (duration == null) continue;
-          target.__perfProbe.inp = Math.max(target.__perfProbe.inp ?? 0, duration);
+          probe.inp = Math.max(probe.inp ?? 0, duration);
         }
       }).observe({
         type: "event",
@@ -471,7 +481,7 @@ async function installBrowserProbe(context: BrowserContext) {
         durationThreshold: 16,
       } as PerformanceObserverInit & { durationThreshold: number });
     } catch {
-      target.__perfProbe.inp = null;
+      probe.inp = null;
     }
 
     const recordPaintLatency = () => {
@@ -479,7 +489,7 @@ async function installBrowserProbe(context: BrowserContext) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           const latency = performance.now() - start;
-          target.__perfProbe.inp = Math.max(target.__perfProbe.inp ?? 0, latency);
+          probe.inp = Math.max(probe.inp ?? 0, latency);
         });
       });
     };
@@ -497,8 +507,7 @@ async function installBrowserProbe(context: BrowserContext) {
 async function readBrowserProbeMetrics(page: Page): Promise<CollectedBrowserMetrics> {
   return page.evaluate(() => {
     const navigationEntry = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const probe = ((window as any).__perfProbe ?? {}) as BrowserProbeMetrics;
+    const probe = ((window as BrowserProbeWindow).__perfProbe ?? {}) as BrowserProbeMetrics;
     return {
       LCP: typeof probe.lcp === "number" ? probe.lcp : null,
       INP: typeof probe.inp === "number" ? probe.inp : null,
@@ -572,8 +581,7 @@ async function captureSample(args: {
     await page.waitForTimeout(500);
     try {
       await page.waitForFunction(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const probe = (window as any).__perfProbe;
+        const probe = (window as BrowserProbeWindow).__perfProbe;
         return performance.getEntriesByType("navigation").length > 0 && typeof probe?.lcp === "number";
       }, { timeout: 10_000 });
     } catch {
@@ -584,8 +592,7 @@ async function captureSample(args: {
     await triggerInteraction(page);
 
     await page.waitForFunction(() => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const probe = (window as any).__perfProbe;
+      const probe = (window as BrowserProbeWindow).__perfProbe;
       return typeof probe?.inp === "number";
     }, { timeout: 2_000 }).catch(() => undefined);
 

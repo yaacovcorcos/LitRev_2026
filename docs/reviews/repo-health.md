@@ -1,37 +1,37 @@
 # Repo Health
 
-Last reviewed: 2026-03-21
+Last reviewed: 2026-04-02
 
 This file is the living summary of current repo health. Keep it concise and factual. Replace stale statements instead of appending history.
 
 ## Current Critical Findings
 
-- Lint is not currently part of the required CI merge gate, even though `next-app/package.json` defines a lint command and repo governance increasingly depends on machine-enforced rules.
-- The current local lint baseline is deeply red: `npm run lint` on 2026-03-21 reported 523 errors and 591 warnings.
-- Architecture intent is much stronger in `AGENTS.md` than in executable lint/guard rules, especially around effect discipline, searchability conventions, and logging/error patterns.
+- Raw `npm run lint` is still outside the required CI `check` contract and remains too red to promote safely; the 2026-04-02 baseline is improved but still failing at `126` errors and `112` warnings.
+- Mobile foundation e2e is currently blocked by `/api/dev/quick-login` returning HTTP 500 in local validation, so that suite is not yet a clean confidence signal for unrelated UI changes.
+- Architecture intent is still somewhat stronger in docs than in executable enforcement outside the already-shipped governance slices and focused backend/runtime hardening surfaces.
 
 ## Regressions Since Last Review
 
-- No prior dated review existed, so a regression delta is not yet available.
+- No repo-contract regression is confirmed from the 2026-03-21 baseline; the main open blockers are still baseline cleanup and local test-environment reliability.
 
 ## Repeated Mistakes
 
+- Repo-root `main` keeps drifting into active-task state unless work is quickly rehomed into `YY/**` task worktrees.
 - Effect-driven orchestration keeps appearing in client runtime code despite the repo's explicit effect-discipline policy.
-- Import/export conventions are inconsistent enough to reduce deterministic search and refactorability for agents.
-- Raw console logging is still common across layers, including places where more structured error handling already exists.
+- Repeated review or advisory findings still risk staying in prose too long instead of being promoted into a rule, test, runbook, or owner-plan update.
 
 ## Open Risks
 
 - Enabling stricter lint rules without a staged cleanup plan will create noise rather than leverage.
-- Leaving lint outside CI means future agent-written code can continue to drift from repo architecture even when tests and typecheck pass.
-- Test coverage is broad, but test placement rules are not deterministic enough for agents to infer automatically in all domains.
+- Leaving raw lint outside the protected `check` contract for too long means future agent-written code can still drift in unguided surfaces even when tests and typecheck pass.
+- Mobile foundation regressions can hide behind a broken local quick-login/bootstrap path until that helper surface is stabilized.
 
 ## What Improved
 
-- Added a durable review system under `docs/reviews/` so future deep analyses can compare current state against prior findings.
-- Added `docs/architecture/decision-log.md` so intentional tradeoffs can be separated from accidental drift.
-- Added the first dated deep review snapshot at `docs/reviews/2026-03-21-review.md`, establishing a lint-governance baseline with concrete enforcement priorities.
-- Added `docs/reviews/2026-03-21-factory-eslint-plugin-benchmark.md`, capturing what LitRev should and should not borrow from Factory's custom ESLint approach.
+- Repo-root `main` was restored to a clean canonical baseline and active work was rehomed into a dedicated task worktree.
+- Added a new dated review snapshot at `docs/reviews/2026-04-02-review.md` plus the companion deep-audit report under `docs/reports/`.
+- Hardened file-asset project scoping in `next-app/lib/server/files.ts` and added focused service tests for canonical versus adversarial storage paths.
+- Added `docs/runbooks/external-pattern-intake.md` so future Factory-style inspirations flow into the correct owner docs instead of becoming parallel policy.
 
 ## Next Review Inputs
 

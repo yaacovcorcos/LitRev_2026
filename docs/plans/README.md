@@ -37,6 +37,7 @@ This file is the active plan registry and the canonical owner for plan-maintenan
 - [**Repo Review Baseline**](../runbooks/repo-review-baseline.md): Canonical baseline for comparing repeated deep repo reviews against current in-repo findings and shipped review-driven fixes.
 - [**Frontend Review Loop**](../runbooks/frontend-review-loop.md): Repeatable frontend implementation and review procedure, including thesis framing and QA checklists.
 - [**Admin Access Runbook**](../runbooks/admin-access.md): Platform admin bootstrap, guard boundaries, mutation safety, and audit/analytics incident procedures.
+- [**External Pattern Intake**](../runbooks/external-pattern-intake.md): Procedure for evaluating external repos, vendor examples, and adapted skill packs before they become LitRev-local code, rules, or docs.
 - [**Chat Runtime Burn-In Runbook**](../runbooks/chat-runtime-burn-in.md): Operational U1.6 canary validation steps and sign-off procedure.
 - [**Reliability A3 Canary Runbook**](../runbooks/reliability-a3-canary.md): staged sample gates, pass/fail thresholds, rollback triggers, and flag interaction matrix.
 

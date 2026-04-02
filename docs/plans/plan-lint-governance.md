@@ -42,6 +42,7 @@ This plan does not own product behavior or `PRD.md`.
   - `npm run lint:governance:audit`
 - The governance audit artifact remains published from the informational path, and broad warning surfaces stay visible without becoming merge blockers.
 - Governance tooling imports now come from direct devDependencies in `next-app/package.json`, not only transitive `eslint-config-next` dependencies.
+- The required governance contract remains intentionally narrower than the legacy full-repo lint baseline. Raw `npm run lint` is still an owner-managed cleanup track and must not enter the protected `check` inventory until the default baseline is intentionally reduced and the CI/runbook contract is updated in the same task.
 - Phase 1 now has explicit config slices for the governed app surface and a scripts-only logging slice, plus a stable `npm run lint:governance:phase1` verifier.
 - Phase 2 now has a dedicated `npm run lint:governance:phase2-hotspots` verifier for the `/ai` + copilot runtime surface, including `hooks/useCopilotStreamActions.ts` and the bundled async-cleanup rules for that same hot-spot slice only.
 - Phase 4 now has stable permanent verifiers for:
@@ -198,9 +199,10 @@ Missing:
 - Nothing material for the finalized Phase 5 scope
 
 ## Active Tasks
-- None currently.
+- [ ] Reduce the red legacy `npm run lint` baseline in narrow owner-mapped slices before considering any change to the protected `check` inventory.
 
 ## Recently Completed
+- [x] Removed stale governance suppressions and typed away the perf-probe `window as any` access that were polluting the informational baseline without adding real policy signal.
 - [x] Completed LG-006 by introducing the stable `lint:governance:logging` verifier for server/runtime raw-console governance, cleaning the governed `lib/server/**`, `app/actions/**`, and `app/api/**` surface onto `@/lib/server/logging`, and rolling that verifier into the required `governance:ci-required` inventory without broadening the policy to UI/client logging.
 - [x] Completed Phase 5 by making GitHub `check` enforce only the stable completed governance inventory via `governance:ci-required`, keeping broad `lint:governance` plus audit reporting always-run but non-blocking through `governance:ci-informational`, and documenting the final required-versus-informational split without promoting the legacy full-repo lint baseline.
 - [x] Completed Phase 4 by shipping permanent `phase4-async`, `phase4-tests`, and `phase4-policy` verifiers, aligning runtime test lint rules and changed-file enforcement to one shared authority with strict one-file waivers, and recording the selective Factory-inspired strictness decisions without pulling Phase 5 CI enforcement forward.

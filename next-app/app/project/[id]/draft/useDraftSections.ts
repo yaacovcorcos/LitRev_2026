@@ -67,8 +67,14 @@ export function useDraftSections(deps: UseDraftSectionsDeps) {
     setTimeout(() => {
       activeEditorRef.current?.chain().focus("end").run();
     }, 60);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flushContentCommit, queueContentUpdate, queueUserRouteNavigation, updateDraft]);
+  }, [
+    activeEditorRef,
+    activeSectionRef,
+    flushContentCommit,
+    queueContentUpdate,
+    queueUserRouteNavigation,
+    updateDraft,
+  ]);
 
   const handleAddSection = useCallback((key: DraftSectionId) => {
     queueUserRouteNavigation({ mode: "section", sectionId: key });
