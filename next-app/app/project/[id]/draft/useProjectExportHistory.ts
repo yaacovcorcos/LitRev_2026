@@ -12,18 +12,28 @@ function filterDraftExports(files: FileAsset[]): FileAsset[] {
   return sortExportsByCreatedAt(files.filter((file) => file.kind === "export" && file.format === "docx"));
 }
 
+type ExportHistoryState = {
+  projectId: string | null;
+  items: FileAsset[];
+};
+
 export function useProjectExportHistory(projectId: string) {
-  const [exportHistory, setExportHistory] = useState<FileAsset[]>([]);
+  const [historyState, setHistoryState] = useState<ExportHistoryState>({
+    projectId: projectId || null,
+    items: [],
+  });
+  const exportHistory = useMemo(
+    () => (historyState.projectId === projectId ? historyState.items : []),
+    [historyState.items, historyState.projectId, projectId],
+  );
   const latestExport = useMemo(() => exportHistory[0] ?? null, [exportHistory]);
 
   useEffect(() => {
     if (!projectId) {
-      setExportHistory([]);
       return;
     }
 
     let isActive = true;
-    setExportHistory([]);
 
     const loadExports = async () => {
       try {
@@ -31,15 +41,15 @@ export function useProjectExportHistory(projectId: string) {
         if (!isActive) return;
         if (!result.success) {
           console.error("Failed to load exports:", result.error);
-          setExportHistory([]);
+          setHistoryState({ projectId, items: [] });
           return;
         }
         const nextExports = filterDraftExports(result.data);
-        setExportHistory(nextExports);
+        setHistoryState({ projectId, items: nextExports });
       } catch (error) {
         if (!isActive) return;
         console.error("Failed to load exports", error);
-        setExportHistory([]);
+        setHistoryState({ projectId, items: [] });
       }
     };
 
@@ -51,12 +61,26 @@ export function useProjectExportHistory(projectId: string) {
   }, [projectId]);
 
   const prependExport = useCallback((file: FileAsset) => {
-    setExportHistory((prev) => sortExportsByCreatedAt([file, ...prev.filter((entry) => entry.id !== file.id)]));
-  }, []);
+    setHistoryState((prev) =>
+      prev.projectId === projectId
+        ? {
+            projectId,
+            items: sortExportsByCreatedAt([file, ...prev.items.filter((entry) => entry.id !== file.id)]),
+          }
+        : prev,
+    );
+  }, [projectId]);
 
   const removeExport = useCallback((fileId: string) => {
-    setExportHistory((prev) => prev.filter((entry) => entry.id !== fileId));
-  }, []);
+    setHistoryState((prev) =>
+      prev.projectId === projectId
+        ? {
+            projectId,
+            items: prev.items.filter((entry) => entry.id !== fileId),
+          }
+        : prev,
+    );
+  }, [projectId]);
 
   return {
     exportHistory,

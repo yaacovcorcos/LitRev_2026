@@ -15,7 +15,15 @@ type AddEvidenceModalProps = {
   projectId: string;
 };
 
-export function AddEvidenceModal({ isOpen, onClose, studies, usedEvidenceIds, onAddEvidence, projectId }: AddEvidenceModalProps) {
+type AddEvidenceModalContentProps = Omit<AddEvidenceModalProps, "isOpen">;
+
+function AddEvidenceModalContent({
+  onClose,
+  studies,
+  usedEvidenceIds,
+  onAddEvidence,
+  projectId,
+}: AddEvidenceModalContentProps) {
   const [evidenceQuery, setEvidenceQuery] = useState("");
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const lastFocusRef = useRef<HTMLElement | null>(null);
@@ -33,12 +41,7 @@ export function AddEvidenceModal({ isOpen, onClose, studies, usedEvidenceIds, on
   }, [studies, evidenceQuery]);
 
   useEffect(() => {
-    if (!isOpen) return;
-    setEvidenceQuery("");
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen || !overlayRef.current) return;
+    if (!overlayRef.current) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     lastFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -73,19 +76,19 @@ export function AddEvidenceModal({ isOpen, onClose, studies, usedEvidenceIds, on
       document.removeEventListener("keydown", onKeyDown);
       lastFocusRef.current?.focus();
     };
-  }, [isOpen, onClose]);
+  }, [onClose]);
 
   return (
     <div
       className="modal-overlay"
-      data-state={isOpen ? "open" : "closed"}
-      aria-hidden={!isOpen}
+      data-state="open"
+      aria-hidden={false}
       ref={overlayRef}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div className="modal-glass" data-state={isOpen ? "open" : "closed"} role="dialog" aria-modal="true" aria-labelledby="addEvidenceTitle">
+      <div className="modal-glass" data-state="open" role="dialog" aria-modal="true" aria-labelledby="addEvidenceTitle">
         <div className="modal-header">
           <h2 id="addEvidenceTitle">Add Evidence</h2>
           <button className="close-modal-btn" aria-label="Close" onClick={onClose}>
@@ -141,4 +144,12 @@ export function AddEvidenceModal({ isOpen, onClose, studies, usedEvidenceIds, on
       </div>
     </div>
   );
+}
+
+export function AddEvidenceModal({ isOpen, ...props }: AddEvidenceModalProps) {
+  if (!isOpen) {
+    return null;
+  }
+
+  return <AddEvidenceModalContent {...props} />;
 }
