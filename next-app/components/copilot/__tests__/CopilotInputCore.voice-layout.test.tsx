@@ -52,7 +52,7 @@ describe("CopilotInputCore composer refresh", () => {
     });
 
     it("keeps model and voice outside the secondary actions flow", () => {
-        const { container } = render(
+        render(
             <CopilotInputCore
                 page="overview"
                 inputPlaceholder="Ask"
@@ -81,7 +81,7 @@ describe("CopilotInputCore composer refresh", () => {
             getByteTimeDomainData: (buffer: Uint8Array) => buffer.fill(138),
         } as unknown as AnalyserNode;
 
-        const { container } = render(
+        render(
             <CopilotInputCore
                 page="overview"
                 inputPlaceholder="Ask"
@@ -104,7 +104,7 @@ describe("CopilotInputCore composer refresh", () => {
     it("renders a permission-pending state without a waveform", () => {
         mockVoiceState.state = "requesting_permission";
 
-        const { container } = render(
+        render(
             <CopilotInputCore
                 page="overview"
                 inputPlaceholder="Ask"

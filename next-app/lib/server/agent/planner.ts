@@ -136,7 +136,8 @@ export async function generatePlan(
 /**
  * Heuristic plan generation — parses the user message for known action patterns.
  */
-function generateHeuristicPlan(message: string, _context: PlanContext): PlanPayload {
+function generateHeuristicPlan(message: string, context: PlanContext): PlanPayload {
+    void context;
     const steps: PlanStep[] = [];
     const lower = message.toLowerCase();
 

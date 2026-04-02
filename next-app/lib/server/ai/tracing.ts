@@ -204,11 +204,15 @@ export function startContextSpan(
  * No-op when tracing is disabled.
  */
 export function recordScore(
-    _traceSpan: TracingSpan,
-    _name: string,
-    _value: number,
-    _comment?: string
+    traceSpan: TracingSpan,
+    name: string,
+    value: number,
+    comment?: string
 ): void {
+    void traceSpan;
+    void name;
+    void value;
+    void comment;
     // Score recording requires LangfuseClient from @langfuse/client.
     // Deferred to a future iteration — the trace/span layer is the priority.
 }

@@ -61,13 +61,8 @@ vi.mock("@radix-ui/react-dialog", () => ({
     Overlay: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
     Content: ({
         children,
-        onEscapeKeyDown: _onEscapeKeyDown,
-        onInteractOutside: _onInteractOutside,
         ...props
-    }: React.HTMLAttributes<HTMLDivElement> & {
-        onEscapeKeyDown?: unknown;
-        onInteractOutside?: unknown;
-    }) => <div {...props}>{children}</div>,
+    }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
     Title: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => <h2 {...props}>{children}</h2>,
     Close: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));

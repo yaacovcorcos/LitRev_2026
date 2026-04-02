@@ -24,13 +24,8 @@ describe("useLedgerActions", () => {
   it("handles selection mode and select-all state transitions", () => {
     const studies = [makeStudy("s1"), makeStudy("s2")];
     const removeStudies = vi.fn(async () => {});
-    const upsertNewStudy = vi.fn(
-      async (_projectId: string, study: Study) => study,
-    );
-    const updateSingleStudy = vi.fn(
-      async (_projectId: string, _studyId: string, _updates: unknown) =>
-        studies[0],
-    );
+    const upsertNewStudy = vi.fn(async (...[, study]: [string, Study]) => study);
+    const updateSingleStudy = vi.fn(async () => studies[0]);
     const setAlertMsg = vi.fn();
     const setConfirmDialog = vi.fn();
 
@@ -77,13 +72,8 @@ describe("useLedgerActions", () => {
   it("adds a new study with trimmed values and resets form state", async () => {
     const studies = [makeStudy("s1")];
     const removeStudies = vi.fn(async () => {});
-    const upsertNewStudy = vi.fn(
-      async (_projectId: string, study: Study) => study,
-    );
-    const updateSingleStudy = vi.fn(
-      async (_projectId: string, _studyId: string, _updates: unknown) =>
-        studies[0],
-    );
+    const upsertNewStudy = vi.fn(async (...[, study]: [string, Study]) => study);
+    const updateSingleStudy = vi.fn(async () => studies[0]);
     const setAlertMsg = vi.fn();
     const setConfirmDialog = vi.fn();
 
@@ -136,13 +126,8 @@ describe("useLedgerActions", () => {
   it("opens delete confirmation and executes delete on confirm", async () => {
     const studies = [makeStudy("s1")];
     const removeStudies = vi.fn(async () => {});
-    const upsertNewStudy = vi.fn(
-      async (_projectId: string, study: Study) => study,
-    );
-    const updateSingleStudy = vi.fn(
-      async (_projectId: string, _studyId: string, _updates: unknown) =>
-        studies[0],
-    );
+    const upsertNewStudy = vi.fn(async (...[, study]: [string, Study]) => study);
+    const updateSingleStudy = vi.fn(async () => studies[0]);
     const setAlertMsg = vi.fn();
     const setConfirmDialog = vi.fn();
 
@@ -182,13 +167,8 @@ describe("useLedgerActions", () => {
     const removeStudies = vi.fn(async () => {
       throw new Error("boom");
     });
-    const upsertNewStudy = vi.fn(
-      async (_projectId: string, study: Study) => study,
-    );
-    const updateSingleStudy = vi.fn(
-      async (_projectId: string, _studyId: string, _updates: unknown) =>
-        studies[0],
-    );
+    const upsertNewStudy = vi.fn(async (...[, study]: [string, Study]) => study);
+    const updateSingleStudy = vi.fn(async () => studies[0]);
     const setAlertMsg = vi.fn();
     const setConfirmDialog = vi.fn();
 
@@ -230,13 +210,8 @@ describe("useLedgerActions", () => {
       makeStudy("s2"),
     ];
     const removeStudies = vi.fn(async () => {});
-    const upsertNewStudy = vi.fn(
-      async (_projectId: string, study: Study) => study,
-    );
-    const updateSingleStudy = vi.fn(
-      async (_projectId: string, _studyId: string, _updates: unknown) =>
-        studies[0],
-    );
+    const upsertNewStudy = vi.fn(async (...[, study]: [string, Study]) => study);
+    const updateSingleStudy = vi.fn(async () => studies[0]);
     const setAlertMsg = vi.fn();
     const setConfirmDialog = vi.fn();
 
@@ -296,13 +271,8 @@ describe("useLedgerActions", () => {
   it("creates quick-add study entries", async () => {
     const studies = [makeStudy("s1")];
     const removeStudies = vi.fn(async () => {});
-    const upsertNewStudy = vi.fn(
-      async (_projectId: string, study: Study) => study,
-    );
-    const updateSingleStudy = vi.fn(
-      async (_projectId: string, _studyId: string, _updates: unknown) =>
-        studies[0],
-    );
+    const upsertNewStudy = vi.fn(async (...[, study]: [string, Study]) => study);
+    const updateSingleStudy = vi.fn(async () => studies[0]);
     const setAlertMsg = vi.fn();
     const setConfirmDialog = vi.fn();
 

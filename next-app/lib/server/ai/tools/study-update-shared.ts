@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/server/prisma";
-import type { StudyDetails, StudyType, TriageDecision } from "@/types/ledger";
+import type { StudyType, TriageDecision } from "@/types/ledger";
 import type { StudyFieldChange, StudyUpdatePayload } from "@/types/artifacts";
 
 const DOI_REGEX = /^10\.\d{4,9}\/\S+$/i;

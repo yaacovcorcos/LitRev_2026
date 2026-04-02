@@ -36,8 +36,6 @@ import {
 } from '../ai/rate-limiter'
 import { prisma } from '@/lib/server/prisma'
 
-const MAX_TOKENS_PER_DAY = 300000
-
 const mockCount = prisma.aIUsage.count as ReturnType<typeof vi.fn>
 const mockAggregate = prisma.aIUsage.aggregate as ReturnType<typeof vi.fn>
 const mockCreate = prisma.aIUsage.create as ReturnType<typeof vi.fn>
