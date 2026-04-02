@@ -104,8 +104,17 @@ export const previewStudyPdfUpdateTool: AITool = {
             }
 
             const file = await prisma.fileAsset.findFirst({
-                where: { studyId, mimeType: "application/pdf" },
-                select: { storagePath: true },
+                where: { studyId, projectId, mimeType: "application/pdf" },
+                select: {
+                    id: true,
+                    projectId: true,
+                    studyId: true,
+                    kind: true,
+                    filename: true,
+                    mimeType: true,
+                    storagePath: true,
+                    publicUrl: true,
+                },
                 orderBy: { createdAt: "desc" },
             });
 
@@ -116,11 +125,11 @@ export const previewStudyPdfUpdateTool: AITool = {
             const details = (study.details as Record<string, unknown>) ?? {};
             const result = deep
                 ? await deepAnalyzeStudyFromPdf(
-                    file.storagePath,
+                    file,
                     { title: study.title, authors: study.authors, details },
                     projectId
                 )
-                : await extractStudyFromPdf(file.storagePath, projectId);
+                : await extractStudyFromPdf(file, projectId);
 
             if (!result.success) {
                 return { callId: "", result: null, error: result.error || "PDF preview failed" };

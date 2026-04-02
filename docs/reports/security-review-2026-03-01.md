@@ -67,12 +67,14 @@ Additionally, each tool that directly queries Prisma should validate project own
 
 | Field | Value |
 |-------|-------|
-| **Status** | `FIXED` — 2026-03-01 |
+| **Status** | `OPEN` — 2026-04-02 (corrected stale false-`FIXED` status; closeout pending current fix commit hash) |
 | **Severity** | HIGH |
 | **Confidence** | 8/10 |
 | **Category** | IDOR / Path Injection |
 | **Primary file** | `next-app/app/actions/files.ts` (lines 39-44) |
 | **Also affects** | `next-app/lib/server/files.ts` (lines 105-129), `next-app/lib/server/pdf-extraction.ts` (lines 68-97) |
+
+> **Evidence correction:** This finding was previously marked `FIXED` on 2026-03-01, but current `main` still contained the vulnerable client-authored `storagePath` surface and raw privileged file-read path when this review was re-checked on 2026-04-02. The status was corrected back to `OPEN` before landing the real remediation.
 
 ### Description
 

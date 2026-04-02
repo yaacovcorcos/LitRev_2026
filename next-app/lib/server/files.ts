@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { ScopeInput } from "@/lib/server/scope";
@@ -15,25 +15,11 @@ import {
   ALLOWED_STUDY_FILE_TYPES,
   ALLOWED_STUDY_FILE_EXTENSIONS,
 } from "@/lib/fileValidation";
+import { deleteFileAssetBlob, fetchFileAssetBytes, getClientFileAssetUrls } from "@/lib/server/file-storage";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET ?? "study-assets";
-
-export type FileAssetInput = {
-  id?: string;
-  projectId?: string;
-  studyId?: string;
-  kind: string;
-  format?: string;
-  filename: string;
-  mimeType: string;
-  size: number;
-  storagePath: string;
-  publicUrl?: string | null;
-  version?: number;
-  metadata?: Record<string, unknown> | null;
-};
 
 export type GeneratedProjectFileInput = {
   directory: string;
@@ -45,33 +31,6 @@ export type GeneratedProjectFileInput = {
   version?: number;
   metadata?: Record<string, unknown> | null;
 };
-
-function toJsonMetadataInput(
-  metadata: Record<string, unknown> | null | undefined
-): Prisma.InputJsonValue | undefined {
-  return metadata == null ? undefined : (metadata as Prisma.InputJsonValue);
-}
-
-function normalizeStoragePathSegments(storagePath: string): string[] {
-  return storagePath
-    .trim()
-    .replace(/^\/+|\/+$/g, "")
-    .split("/")
-    .filter((segment) => segment.length > 0);
-}
-
-function isProjectScopedStoragePath(storagePath: string, projectId: string): boolean {
-  const segments = normalizeStoragePathSegments(storagePath);
-  if (segments.length < 3) return false;
-
-  const offset = segments[0] === STORAGE_BUCKET ? 1 : 0;
-  return (
-    segments[offset] === "projects"
-    && segments[offset + 1] === projectId
-    && typeof segments[offset + 2] === "string"
-    && segments[offset + 2].length > 0
-  );
-}
 
 function toFileAsset(record: {
   id: string;
@@ -89,6 +48,7 @@ function toFileAsset(record: {
   createdAt: Date;
   updatedAt: Date;
 }): FileAsset {
+  const { publicUrl, downloadUrl } = getClientFileAssetUrls(record);
   return {
     id: record.id,
     projectId: record.projectId,
@@ -98,8 +58,8 @@ function toFileAsset(record: {
     filename: record.filename,
     mimeType: record.mimeType,
     size: record.size,
-    storagePath: record.storagePath,
-    publicUrl: record.publicUrl ?? undefined,
+    publicUrl,
+    downloadUrl,
     version: record.version,
     metadata: (record.metadata as Record<string, unknown> | null) ?? undefined,
     createdAt: record.createdAt.toISOString(),
@@ -142,39 +102,6 @@ export async function getFileAssetById(
     where: { id: fileId, projectId },
   });
   return file ? toFileAsset(file) : null;
-}
-
-export async function createFileAsset(
-  scopeInput: ScopeInput,
-  projectId: string,
-  input: FileAssetInput
-): Promise<FileAsset> {
-  const scope = await assertProjectAccess(scopeInput, projectId);
-
-  // Accept only canonical project-scoped object paths, optionally prefixed
-  // by the storage bucket name, to prevent cross-tenant path injection.
-  if (!isProjectScopedStoragePath(input.storagePath, projectId)) {
-    throw new Error("Storage path must belong to the specified project.");
-  }
-
-  const created = await prisma.fileAsset.create({
-    data: {
-      id: input.id ?? undefined,
-      projectId,
-      workspaceId: scope.workspaceId,
-      studyId: input.studyId ?? undefined,
-      kind: input.kind,
-      format: input.format ?? undefined,
-      filename: input.filename,
-      mimeType: input.mimeType,
-      size: input.size,
-      storagePath: input.storagePath,
-      publicUrl: input.publicUrl ?? undefined,
-      version: input.version ?? undefined,
-      metadata: toJsonMetadataInput(input.metadata),
-    },
-  });
-  return toFileAsset(created);
 }
 
 function sanitizeFilename(filename: string): string {
@@ -323,7 +250,12 @@ export async function uploadGeneratedProjectFile(
       storagePath,
       publicUrl,
       version: input.version ?? undefined,
-      metadata: toJsonMetadataInput(input.metadata),
+      metadata:
+        input.metadata === null
+          ? Prisma.JsonNull
+          : input.metadata === undefined
+            ? undefined
+            : (input.metadata as Prisma.InputJsonValue),
     },
   });
 
@@ -339,12 +271,22 @@ export async function deleteFileAsset(
 
   const existing = await prisma.fileAsset.findFirst({
     where: { id: fileId, projectId },
-    select: { storagePath: true },
+    select: {
+      id: true,
+      projectId: true,
+      studyId: true,
+      kind: true,
+      filename: true,
+      mimeType: true,
+      storagePath: true,
+      publicUrl: true,
+    },
   });
   if (!existing) return;
 
-  // Delete blob first; if this fails, keep the DB record so the user can retry.
-  await deleteFromSupabaseStorage(existing.storagePath);
+  // Delete blob first when the row points at a server-owned project blob.
+  // Legacy/demo and invalid storage rows are removed from the DB only.
+  await deleteFileAssetBlob(existing);
   await prisma.fileAsset.deleteMany({ where: { id: fileId, projectId } });
 }
 
@@ -418,8 +360,8 @@ export async function extractTextFromExistingFile(
     throw new Error("Only PDF files can be attached to conversations.");
   }
 
-  const { fetchPdfFromStorage, extractTextFromPdf } = await import("./pdf-extraction");
-  const buffer = await fetchPdfFromStorage(file.storagePath);
+  const { extractTextFromPdf } = await import("./pdf-extraction");
+  const buffer = await fetchFileAssetBytes(file, { projectId, studyId: file.studyId });
   const extractedText = await extractTextFromPdf(buffer);
 
   return { fileAsset: toFileAsset(file), extractedText };
@@ -471,16 +413,11 @@ export async function importStudyWithPdf(
   // 2. Create Study + FileAsset in a single DB transaction
   try {
     const [studyRecord, fileRecord] = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      let s;
-      if (matchedDuplicate) {
-        s = await tx.study.findFirst({
+      const studyRecord = matchedDuplicate
+        ? await tx.study.findFirst({
           where: { id: studyId, projectId, deletedAt: null },
-        });
-        if (!s) {
-          throw new Error("Duplicate matched study not found.");
-        }
-      } else {
-        s = await tx.study.create({
+        })
+        : await tx.study.create({
           data: {
             id: studyId,
             projectId,
@@ -493,8 +430,12 @@ export async function importStudyWithPdf(
             details: { source: "pdf-import" },
           },
         });
+
+      if (!studyRecord) {
+        throw new Error("Duplicate matched study not found.");
       }
-      const f = await tx.fileAsset.create({
+
+      const fileRecord = await tx.fileAsset.create({
         data: {
           projectId,
           workspaceId: scope.workspaceId,
@@ -508,7 +449,7 @@ export async function importStudyWithPdf(
           publicUrl,
         },
       });
-      return [s, f] as const;
+      return [studyRecord, fileRecord] as const;
     });
 
     const study: Study = {

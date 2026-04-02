@@ -29,7 +29,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 - `DATABASE_URL` is the runtime connection string. In deployed environments this is the pooled/pooler-facing path.
 - `DIRECT_URL` is the direct migration connection string and is required for production migration traffic.
 - Supabase Storage stores uploaded file blobs.
-- `FileAsset` rows store file metadata and storage paths, not file contents.
+- `FileAsset` rows store file metadata and server-only storage pointers, not file contents. Raw `storagePath` is never a client contract or trust boundary; clients consume derived URLs while privileged reads validate canonical project-owned namespace first.
 - Better Auth is the identity authority. Supabase Auth is not used in this project.
 
 ## Domain Map
@@ -60,7 +60,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 | `DraftCheckpoint` | Immutable whole-draft authoring-state snapshot for compare/restore and export provenance | `projectId -> Project`, `fileAssetId -> FileAsset`, `artifactId -> Artifact`, `conversationId -> AIConversation` | Indexes on `projectId + createdAt`, `projectId + kind + createdAt`, `workspaceId`, `fileAssetId`, `artifactId`, `conversationId` | `workspaceId` is denormalized optional scope; `label`, `fileAssetId`, `artifactId`, `conversationId` are optional provenance metadata; `snapshot` intentionally excludes transient route/UI state | No |
 | `Study` | Study records under a project | `projectId -> Project` | Indexes on `projectId`, `projectId + deletedAt`, `workspaceId` | `workspaceId` is denormalized optional scope; `details`, `deletedAt` optional | `deletedAt` |
 | `StudyProcessingJob` | Durable transient workflow state for ledger study PDF quick extraction and deep analysis | `studyId -> Study`, `projectId -> Project`, `fileAssetId -> FileAsset` | Unique on `studyId + phase`; indexes on `projectId + state + priority + requestedAt`, `leaseExpiresAt`, `studyId` | `workspaceId` is denormalized optional scope; `fileAssetId`, `startedAt`, `leaseExpiresAt`, `completedAt`, `lastErrorCode`, `lastErrorMessage` are optional because jobs move through queued/running/terminal states on one mutable row per phase | No |
-| `FileAsset` | File metadata and storage pointer | `projectId -> Project`, `studyId -> Study` | Indexes on `projectId`, `workspaceId`, `studyId` | `workspaceId` denormalized optional scope; `studyId`, `format`, `publicUrl`, `metadata` optional | No |
+| `FileAsset` | File metadata and server-owned storage pointer | `projectId -> Project`, `studyId -> Study` | Indexes on `projectId`, `workspaceId`, `studyId` | `workspaceId` denormalized optional scope; `studyId`, `format`, `publicUrl`, `metadata` optional. `storagePath` is internal metadata and must not be exposed as a client URL or accepted from client-authored input | No |
 | `AIConversation` | Chat container for global/project/study contexts | `projectId -> Project` | Indexes on `userId + context`, `userId + projectId`, `workspaceId`, `workspaceId + context`, `projectId`, `studyId`, `context` | `userId`, `workspaceId`, `title`, `page`, `projectId`, `studyId` are optional to support global and scoped chats | No |
 | `AIMessage` | Ordered messages within a conversation | `conversationId -> AIConversation` | Indexes on `conversationId`, `conversationId + createdAt + id` | `toolCalls`, `toolResultId`, `attachments` optional for tool/attachment flows | No |
 | `AIUsage` | Token/cost attribution records | `conversationId -> AIConversation`, `projectId -> Project` | Indexes on user/workspace/project/conversation/source/contextPage + `createdAt` | `userId`, `workspaceId`, `projectId`, `conversationId` are optional because attribution can vary by surface/context | No |
@@ -81,7 +81,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 ## Core Invariants
 
 - `Project` is the main application hub. Most DB-domain features eventually attach to project scope.
-- `FileAsset` stores metadata and storage paths only. Blob storage lives in Supabase Storage.
+- `FileAsset` stores metadata and storage paths only. Blob storage lives in Supabase Storage, and app-layer ownership validation must treat `storagePath` as server-owned internal metadata rather than a client-controlled locator.
 - `StudyProcessingJob` is owned by ledger study PDF processing only. It is not a generic background-job framework.
 - Each `(studyId, phase)` uses one mutable row with the lifecycle `queued -> running -> succeeded|failed`.
 - Page-focus priority upgrades may mutate an existing queued/running background job, but they must never create a new job row by themselves.

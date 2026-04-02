@@ -529,7 +529,7 @@ async function handleQuickExtractJob(job: StudyProcessingRow, startedAt: Date) {
     } as const;
   }
 
-  const result = await extractStudyFromPdf(file.storagePath, job.projectId);
+  const result = await extractStudyFromPdf(file, job.projectId);
   if (!result.success) {
     await prisma.studyProcessingJob.updateMany({
       where: { id: job.id, state: "running", startedAt },
@@ -605,7 +605,7 @@ async function handleDeepAnalysisJob(job: StudyProcessingRow, startedAt: Date) {
 
   const details = (study.details as StudyDetails | null) ?? undefined;
   const result = await deepAnalyzeStudyFromPdf(
-    file.storagePath,
+    file,
     {
       title: study.title,
       authors: study.authors,
