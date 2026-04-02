@@ -7,7 +7,6 @@ This file is the living summary of current repo health. Keep it concise and fact
 ## Current Critical Findings
 
 - Raw `npm run lint` is still outside the required CI `check` contract and remains too red to promote safely; the 2026-04-02 baseline is improved but still failing at `126` errors and `112` warnings.
-- Mobile foundation e2e is currently blocked by `/api/dev/quick-login` returning HTTP 500 in local validation, so that suite is not yet a clean confidence signal for unrelated UI changes.
 - Architecture intent is still somewhat stronger in docs than in executable enforcement outside the already-shipped governance slices and focused backend/runtime hardening surfaces.
 
 ## Regressions Since Last Review
@@ -24,7 +23,7 @@ This file is the living summary of current repo health. Keep it concise and fact
 
 - Enabling stricter lint rules without a staged cleanup plan will create noise rather than leverage.
 - Leaving raw lint outside the protected `check` contract for too long means future agent-written code can still drift in unguided surfaces even when tests and typecheck pass.
-- Mobile foundation regressions can hide behind a broken local quick-login/bootstrap path until that helper surface is stabilized.
+- Advisory findings can still linger in prose unless the new internal review loops are used to promote repeated issues into owner docs, tests, evals, or repo-local rules.
 
 ## What Improved
 
@@ -32,6 +31,7 @@ This file is the living summary of current repo health. Keep it concise and fact
 - Added a new dated review snapshot at `docs/reviews/2026-04-02-review.md` plus the companion deep-audit report under `docs/reports/`.
 - Hardened file-asset project scoping in `next-app/lib/server/files.ts` and added focused service tests for canonical versus adversarial storage paths.
 - Added `docs/runbooks/external-pattern-intake.md` so future Factory-style inspirations flow into the correct owner docs instead of becoming parallel policy.
+- Restored mobile foundation confidence by aligning Playwright auth bootstrapping with the e2e origin and stabilizing the zero-state to workspace transition helper.
 
 ## Next Review Inputs
 
