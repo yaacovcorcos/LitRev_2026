@@ -6,6 +6,7 @@
  */
 
 import "server-only";
+import { createRequire } from "node:module";
 import { logServerWarn } from "@/lib/server/logging";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ const g = globalThis as typeof globalThis & {
     __langfuseSDK?: unknown;
     __langfuseProcessor?: { forceFlush(): Promise<void> };
 };
+const tracingRequire = createRequire(import.meta.url);
 
 /**
  * Initialize Langfuse tracing. Called once from instrumentation.ts.
@@ -104,8 +106,13 @@ export function startRunTrace(
     if (!isTracingEnabled()) return NOOP_SPAN;
 
     try {
-        // Use dynamic require to avoid loading @langfuse/tracing when disabled
-        const { startObservation } = require("@langfuse/tracing");
+        // Resolve Langfuse lazily so disabled environments avoid loading it entirely.
+        const { startObservation } = tracingRequire("@langfuse/tracing") as {
+            startObservation: (
+                name: string,
+                input: { metadata: Record<string, unknown> },
+            ) => TracingSpan;
+        };
         const span = startObservation(
             "agent-run",
             { metadata: { runId, ...metadata } },
