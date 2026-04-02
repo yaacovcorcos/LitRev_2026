@@ -68,6 +68,26 @@ describe("parseOpenAlexWork", () => {
     expect(result.year).toBeUndefined();
     expect(result.metadata?.yearEstimated).toBeUndefined();
   });
+
+  it("rejects malformed publication_date values instead of coercing partial numeric years", () => {
+    const malformedAlpha = parseOpenAlexWork({
+      id: "https://openalex.org/W998",
+      display_name: "Malformed Alpha Date",
+      publication_year: null,
+      publication_date: "20XX-01-01",
+      authorships: [{ author: { display_name: "Alice Example" } }],
+    });
+    const malformedShort = parseOpenAlexWork({
+      id: "https://openalex.org/W997",
+      display_name: "Malformed Short Date",
+      publication_year: null,
+      publication_date: "202X",
+      authorships: [{ author: { display_name: "Bob Example" } }],
+    });
+
+    expect(malformedAlpha.year).toBeUndefined();
+    expect(malformedShort.year).toBeUndefined();
+  });
 });
 
 describe("searchOpenAlex", () => {
