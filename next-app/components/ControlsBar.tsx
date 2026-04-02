@@ -49,19 +49,24 @@ export function ControlsBar({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [isSortOpen]);
 
-  // Focus the active option when dropdown opens
-  useEffect(() => {
-    if (isSortOpen) {
-      const activeIndex = SORT_OPTIONS.indexOf(sortMode);
-      setFocusedIndex(activeIndex >= 0 ? activeIndex : 0);
-      optionRefs.current[activeIndex >= 0 ? activeIndex : 0]?.focus();
-    }
-  }, [isSortOpen, sortMode]);
+  const focusSortOption = useCallback((index: number) => {
+    optionRefs.current[index]?.focus();
+  }, []);
 
-  const selectSort = (mode: SortMode) => {
+  const openSortMenu = useCallback(() => {
+    const activeIndex = SORT_OPTIONS.indexOf(sortMode);
+    const nextIndex = activeIndex >= 0 ? activeIndex : 0;
+    setFocusedIndex(nextIndex);
+    setSortOpen(true);
+    requestAnimationFrame(() => {
+      focusSortOption(nextIndex);
+    });
+  }, [focusSortOption, sortMode]);
+
+  const selectSort = useCallback((mode: SortMode) => {
     onSortChange(mode);
     setSortOpen(false);
-  };
+  }, [onSortChange]);
 
   const handleListboxKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -122,7 +127,13 @@ export function ControlsBar({
             aria-haspopup="listbox"
             aria-expanded={isSortOpen}
             aria-controls="sortOptions"
-            onClick={() => setSortOpen((prev) => !prev)}
+            onClick={() => {
+              if (isSortOpen) {
+                setSortOpen(false);
+                return;
+              }
+              openSortMenu();
+            }}
           >
             <span className="material-icons-round">sort</span>
             Sort by

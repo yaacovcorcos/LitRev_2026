@@ -8,7 +8,7 @@ import {
   calculateEligibilityScore,
   evaluateCriteria,
   calculatePRISMACounts,
-} from '../criteriaMatching'
+} from '../criteria-matching'
 
 // ---------------------------------------------------------------------------
 // Helpers – factory functions for minimal valid objects

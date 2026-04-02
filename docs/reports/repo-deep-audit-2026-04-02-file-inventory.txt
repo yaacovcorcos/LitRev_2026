@@ -564,8 +564,8 @@ next-app/lib/__tests__/citation-formatting.test.ts
 next-app/lib/__tests__/citation-key.test.ts
 next-app/lib/__tests__/citation-preview-cache.test.ts
 next-app/lib/__tests__/citation-preview-feature-flags.test.ts
-next-app/lib/__tests__/criteriaMatching-highConfidence.test.ts
-next-app/lib/__tests__/criteriaMatching.test.ts
+next-app/lib/__tests__/criteria-matching-high-confidence.test.ts
+next-app/lib/__tests__/criteria-matching.test.ts
 next-app/lib/__tests__/demo-onboarding.test.ts
 next-app/lib/__tests__/draftStorage.test.ts
 next-app/lib/__tests__/durable-route-state.test.ts
@@ -688,7 +688,7 @@ next-app/lib/context-capture/format.ts
 next-app/lib/context-capture/history.ts
 next-app/lib/context-capture/targets.ts
 next-app/lib/context-capture/telemetry.ts
-next-app/lib/criteriaMatching.ts
+next-app/lib/criteria-matching.ts
 next-app/lib/demo/constants.ts
 next-app/lib/demo/onboarding.ts
 next-app/lib/demo/sample-card.ts
@@ -705,7 +705,7 @@ next-app/lib/draftStateContracts.ts
 next-app/lib/draftStorage.ts
 next-app/lib/durable-route-state.ts
 next-app/lib/feature-flags.ts
-next-app/lib/fileValidation.ts
+next-app/lib/file-validation.ts
 next-app/lib/guided-setup-availability.ts
 next-app/lib/ledgerStorage.ts
 next-app/lib/manuscript/schema.ts

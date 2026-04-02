@@ -38,7 +38,9 @@ export function useTimelineWindowing<T>({
     const pendingPrependRef = useRef<{ firstIdBeforeLoad: string | null } | null>(null);
     const revealPendingRef = useRef(false);
 
-    latestFirstItemIdRef.current = visibleFirstItemId;
+    useLayoutEffect(() => {
+        latestFirstItemIdRef.current = visibleFirstItemId;
+    }, [visibleFirstItemId]);
 
     const handleLoadOlder = useCallback(async () => {
         if (!onLoadOlder) return;
