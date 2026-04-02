@@ -8,7 +8,7 @@ export type SearchResult = {
   doi?: string;
   title: string;
   authors: string; // "Smith J, Doe A, Chen W"
-  year?: number;
+  year?: number; // omitted when the source does not provide a trustworthy publication year
   journal?: string;
   volume?: string;
   issue?: string;

@@ -154,14 +154,12 @@ export function parseOpenAlexWork(work: OpenAlexWork): SearchResult {
   const authors = authorNames.length > 0 ? authorNames.join(", ") : "Unknown";
 
   let year = work.publication_year ?? null;
-  let yearEstimated = false;
   if (year == null || !Number.isFinite(year)) {
     const parsed = work.publication_date ? parseInt(work.publication_date.slice(0, 4), 10) : NaN;
     if (Number.isFinite(parsed)) {
       year = parsed;
     } else {
-      year = new Date().getFullYear();
-      yearEstimated = true;
+      year = null;
     }
   }
 
@@ -185,16 +183,13 @@ export function parseOpenAlexWork(work: OpenAlexWork): SearchResult {
     type: work.type ?? undefined,
     isOpenAccess: work.open_access?.is_oa ?? undefined,
   };
-  if (yearEstimated) {
-    metadata.yearEstimated = true;
-  }
 
   return {
     pmid,
     doi,
     title,
     authors,
-    year,
+    year: Number.isFinite(year) ? year ?? undefined : undefined,
     journal,
     volume,
     issue,
@@ -237,11 +232,8 @@ async function enrichFromCrossref(results: SearchResult[]): Promise<void> {
       if (!result.journal && crossref.journal) {
         result.journal = crossref.journal;
       }
-      if (crossref.year && ((result.metadata?.yearEstimated as boolean | undefined) || !Number.isFinite(result.year))) {
+      if (crossref.year && !Number.isFinite(result.year)) {
         result.year = crossref.year;
-        if (result.metadata && "yearEstimated" in result.metadata) {
-          delete result.metadata.yearEstimated;
-        }
       }
 
       result.metadata = {
@@ -282,10 +274,10 @@ export async function searchOpenAlex(
   const data = (await res.json()) as OpenAlexSearchResponse;
   const works = data.results ?? [];
   const parsed = works.map(parseOpenAlexWork);
+  await enrichFromCrossref(parsed);
 
   const yearFilter = parseYearRange(options?.yearRange);
   const filtered = parsed.filter((result) => matchesYearRange(result.year, yearFilter));
-  await enrichFromCrossref(filtered);
 
   return {
     query,

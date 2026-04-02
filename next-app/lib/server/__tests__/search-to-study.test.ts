@@ -93,4 +93,22 @@ describe("searchResultToStudyInput", () => {
 
     expect(hasConcreteSearchResultYear(result)).toBe(false);
   });
+
+  it("returns false from the year guard for non-finite year values", () => {
+    const nanYear: SearchResult = {
+      title: "NaN Year Study",
+      authors: "Test A",
+      year: Number.NaN,
+      source: "pubmed",
+    };
+    const infinityYear: SearchResult = {
+      title: "Infinity Year Study",
+      authors: "Test B",
+      year: Number.POSITIVE_INFINITY,
+      source: "pubmed",
+    };
+
+    expect(hasConcreteSearchResultYear(nanYear)).toBe(false);
+    expect(hasConcreteSearchResultYear(infinityYear)).toBe(false);
+  });
 });

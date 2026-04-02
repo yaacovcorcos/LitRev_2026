@@ -1,5 +1,10 @@
-import { describe, it, expect } from "vitest";
-import { parseS2Paper, buildS2PaperIds, type S2Paper } from "@/lib/server/search/semantic-scholar";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import {
+    parseS2Paper,
+    buildS2PaperIds,
+    searchSemanticScholar,
+    type S2Paper,
+} from "@/lib/server/search/semantic-scholar";
 import {
     hasConcreteSearchResultYear,
     searchResultToStudyInput,
@@ -53,6 +58,16 @@ const NO_YEAR_PAPER: S2Paper = {
     fieldsOfStudy: null,
 };
 
+function mockJsonResponse(body: unknown, status = 200): Response {
+    return {
+        ok: status >= 200 && status < 300,
+        status,
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+        headers: new Headers(),
+    } as unknown as Response;
+}
+
 // ── parseS2Paper ─────────────────────────────────────────────────────────────
 
 describe("parseS2Paper", () => {
@@ -99,10 +114,10 @@ describe("parseS2Paper", () => {
         expect(result.metadata?.yearEstimated).toBeUndefined();
     });
 
-    it("falls back to current year and sets yearEstimated when no year at all", () => {
+    it("preserves an unknown year when no year metadata exists", () => {
         const result = parseS2Paper(NO_YEAR_PAPER);
-        expect(result.year).toBe(new Date().getFullYear());
-        expect(result.metadata?.yearEstimated).toBe(true);
+        expect(result.year).toBeUndefined();
+        expect(result.metadata?.yearEstimated).toBeUndefined();
     });
 
     it("handles null abstract and empty authors gracefully", () => {
@@ -116,6 +131,65 @@ describe("parseS2Paper", () => {
         expect(parseS2Paper(FULL_PAPER).source).toBe("semantic-scholar");
         expect(parseS2Paper(MINIMAL_PAPER).source).toBe("semantic-scholar");
         expect(parseS2Paper(NO_YEAR_PAPER).source).toBe("semantic-scholar");
+    });
+});
+
+describe("searchSemanticScholar", () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it("preserves yearless results when no year range is requested", async () => {
+        const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+            mockJsonResponse({
+                total: 1,
+                data: [
+                    {
+                        paperId: "yearless-paper",
+                        title: "Semantic Scholar Yearless Result",
+                        year: null,
+                        publicationDate: null,
+                        authors: [{ name: "Author A" }],
+                    },
+                ],
+            })
+        );
+
+        const response = await searchSemanticScholar("yearless");
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(response.returnedCount).toBe(1);
+        expect(response.results[0]?.title).toBe("Semantic Scholar Yearless Result");
+        expect(response.results[0]?.year).toBeUndefined();
+    });
+
+    it("excludes unknown-year results when a year range is requested", async () => {
+        const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+            mockJsonResponse({
+                total: 2,
+                data: [
+                    {
+                        paperId: "unknown-year",
+                        title: "Unknown Year",
+                        year: null,
+                        publicationDate: null,
+                        authors: [{ name: "Author A" }],
+                    },
+                    {
+                        paperId: "known-year",
+                        title: "Known Year",
+                        year: 2022,
+                        authors: [{ name: "Author B" }],
+                    },
+                ],
+            })
+        );
+
+        const response = await searchSemanticScholar("range", { yearRange: "2020-2024" });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(response.returnedCount).toBe(1);
+        expect(response.results.map((result) => result.title)).toEqual(["Known Year"]);
     });
 });
 

@@ -19,7 +19,7 @@ const outputSchema = z.object({
             .object({
                 title: z.string(),
                 authors: z.string(),
-                year: z.number(),
+                year: z.number().optional(),
             })
             .passthrough()
     ),
@@ -30,7 +30,7 @@ export const openAlexSearchTool: AITool = {
     definition: {
         name: "search_openalex",
         description:
-            "Search OpenAlex for scholarly works across disciplines (open index of 240M+ papers). Best for broad discovery, cross-disciplinary recall, and non-biomedical literature where PubMed coverage is limited. Returns titles, authors, years, DOIs/PMIDs when available, abstracts, and source links.",
+            "Search OpenAlex for scholarly works across disciplines (open index of 240M+ papers). Best for broad discovery, cross-disciplinary recall, and non-biomedical literature where PubMed coverage is limited. Returns titles, authors, publication years when available, DOIs/PMIDs when available, abstracts, and source links.",
         parameters: {
             type: "object",
             properties: {
@@ -88,4 +88,3 @@ export const openAlexSearchTool: AITool = {
         }
     },
 };
-
