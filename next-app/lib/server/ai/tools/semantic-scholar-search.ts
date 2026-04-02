@@ -11,7 +11,7 @@ const inputSchema = z.object({
 const outputSchema = z.object({
     query: z.string(),
     source: z.string(),
-    totalResults: z.number(),
+    totalResults: z.number().optional(),
     returnedCount: z.number(),
     results: z.array(z.object({
         title: z.string(),

@@ -14,7 +14,9 @@ export function hasConcreteSearchResultYear(
 function resolveStudySource(resultSource: string): StudySource {
   switch (resultSource) {
     case "pubmed": return "pubmed";
+    case "openalex": return "openalex";
     case "semantic-scholar": return "semantic-scholar";
+    case "crossref": return "crossref";
     default: return "copilot";
   }
 }

@@ -23,7 +23,7 @@ export type SearchResult = {
 export type SearchResponse = {
   query: string;
   source: string;
-  totalResults: number;
+  totalResults?: number; // omitted when the runtime cannot truthfully derive a count for the current query contract
   returnedCount: number;
   results: SearchResult[];
   nextCursor?: string; // retstart for PubMed pagination

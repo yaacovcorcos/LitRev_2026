@@ -88,6 +88,10 @@ type CrossrefLookupResult = {
     status: "ok" | "timeout" | "provider_error";
 };
 
+type CrossrefDateParts = {
+    "date-parts"?: unknown;
+};
+
 type RetryableContinuationReason = Extract<
     CitationResolutionDiagnostics["reason"],
     "icite_timeout" | "crossref_timeout" | "budget_exhausted"
@@ -118,6 +122,28 @@ function mergeCitationCount(
 
 function remainingBudgetMs(deadlineMs: number): number {
     return Math.max(0, deadlineMs - Date.now());
+}
+
+function extractCrossrefPublishedYear(work: Record<string, unknown>): number | undefined {
+    const candidates = [
+        work["published-print"],
+        work["published-online"],
+        work.issued,
+    ];
+
+    for (const candidate of candidates) {
+        const dateParts = (candidate as CrossrefDateParts | null | undefined)?.["date-parts"];
+        const year = Array.isArray(dateParts)
+            ? Array.isArray(dateParts[0])
+                ? dateParts[0][0]
+                : undefined
+            : undefined;
+        if (typeof year === "number" && Number.isInteger(year) && year >= 1000 && year <= 9999) {
+            return year;
+        }
+    }
+
+    return undefined;
 }
 
 async function fetchWithTimeout(
@@ -549,11 +575,7 @@ async function fetchCrossrefMetadataWithStatus(
             .filter(Boolean)
             .join(", ") || "Unknown";
 
-        let year: number | undefined;
-        const published = work["published-print"] ?? work["published-online"] ?? work["created"];
-        if (published?.["date-parts"]?.[0]?.[0]) {
-            year = published["date-parts"][0][0];
-        }
+        const year = extractCrossrefPublishedYear(work as Record<string, unknown>);
 
         const containerTitle = work["container-title"];
         const journal = Array.isArray(containerTitle) ? containerTitle[0] : containerTitle;
