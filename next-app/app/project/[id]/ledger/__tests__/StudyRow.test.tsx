@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Study } from "@/types/ledger";
-import type { CriteriaMatchResult } from "@/lib/criteriaMatching";
+import type { CriteriaMatchResult } from "@/lib/criteria-matching";
 import { StudyRow } from "../StudyRow";
 
 const { mockPush, mockOpenPopupChat } = vi.hoisted(() => ({

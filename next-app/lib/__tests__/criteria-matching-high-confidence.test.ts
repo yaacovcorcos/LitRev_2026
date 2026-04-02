@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Study } from "@/types/ledger";
 import type { ProtocolData } from "@/types/protocol";
-import { isHighConfidenceExclusion } from "@/lib/criteriaMatching";
+import { isHighConfidenceExclusion } from "@/lib/criteria-matching";
 
 function makeStudy(overrides: Partial<Study> = {}): Study {
     return {

@@ -28,11 +28,11 @@ import { useProjectData } from "@/hooks/useProjectData";
 import {
   evaluateCriteria,
   type CriteriaMatchResult,
-} from "@/lib/criteriaMatching";
+} from "@/lib/criteria-matching";
 import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
 import type { FileAsset } from "@/types/files";
 import type { Study } from "@/types/ledger";
-import { validateStudyFile } from "@/lib/fileValidation";
+import { validateStudyFile } from "@/lib/file-validation";
 import { ConfirmDialog, AlertDialog } from "@/components/ConfirmDialog";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import { StudyRow } from "./StudyRow";

@@ -14,7 +14,7 @@ import {
   MAX_STUDY_FILE_SIZE,
   ALLOWED_STUDY_FILE_TYPES,
   ALLOWED_STUDY_FILE_EXTENSIONS,
-} from "@/lib/fileValidation";
+} from "@/lib/file-validation";
 import { deleteFileAssetBlob, fetchFileAssetBytes, getClientFileAssetUrls } from "@/lib/server/file-storage";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
