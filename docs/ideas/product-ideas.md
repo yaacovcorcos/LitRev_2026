@@ -266,6 +266,24 @@ Default rule: prefer updating the right existing section or idea rather than cre
   - Which LitRev surfaces should be scanned first if adopted
   - Whether the operational overhead of a separate Rails/Docker scanner stack is justified
 
+## Security and Governance
+
+### Tighten CODEOWNERS for Security-Sensitive Paths
+- Status: idea
+- Summary: Later consider tightening `.github/CODEOWNERS` so security-sensitive paths have more explicit review ownership instead of relying mostly on broad default ownership.
+- Why this matters:
+  - Security-critical paths such as auth, admin, storage/files, cron/internal routes, security docs, and CI/workflow config deserve clearer review routing.
+  - Explicit ownership makes sensitive changes easier to notice and harder to merge without the right review context.
+  - This pairs naturally with future security-fast CI work, but it is not a current priority.
+- Direction:
+  - Revisit `.github/CODEOWNERS` when security governance becomes a higher-priority pass.
+  - Prefer explicit ownership entries for auth, admin, storage, internal routes, AI tool boundaries, and security docs/workflows.
+  - Keep the rules simple enough that GitHub's last-match-wins behavior does not accidentally weaken review coverage.
+- Open questions:
+  - Whether one owner remains enough or whether a separate security-review owner should exist later
+  - Which paths truly need explicit security ownership versus normal code ownership
+  - Whether to bundle this with future CI security-fast work or keep it as a standalone governance pass
+
 ### Evaluate LiteParse as a Narrow PDF Intake Spike, Not a Pipeline Replacement
 - Status: exploring
 - Summary: `run-llama/liteparse` looks potentially useful as a narrow local PDF parsing spike, but it should not replace LitRev's current PDF extraction pipeline by default.
