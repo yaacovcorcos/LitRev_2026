@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, ReactNode, useEffect, useMemo, useState } from "react";
+import { CSSProperties, ReactNode, useMemo, useSyncExternalStore } from "react";
 import { AppShell } from "@/components/AppShell";
 import { ProjectCopilot, type ProjectCopilotProps } from "@/components/ProjectCopilot";
 import { ResizableSplitter } from "@/components/ui/ResizableSplitter";
@@ -11,6 +11,32 @@ import styles from "./ProjectPageLayout.module.css";
 
 const RAIL_WIDTH = 44;
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+function subscribeViewportClass(onStoreChange: () => void) {
+    if (typeof window === "undefined") {
+        return () => {};
+    }
+
+    window.addEventListener("resize", onStoreChange, { passive: true });
+    window.addEventListener("orientationchange", onStoreChange, { passive: true });
+
+    return () => {
+        window.removeEventListener("resize", onStoreChange);
+        window.removeEventListener("orientationchange", onStoreChange);
+    };
+}
+
+function getClientViewportClassSnapshot(): ResponsiveViewportClass {
+    if (typeof window === "undefined") {
+        return "unknown";
+    }
+
+    return getViewportClass(window);
+}
+
+function getServerViewportClassSnapshot(): ResponsiveViewportClass {
+    return "unknown";
+}
 
 export type ProjectPageLayoutProps = {
     children: ReactNode;
@@ -106,31 +132,13 @@ function StandaloneCopilotGrid({
     contentScrollMode: "wrapper" | "child";
 }) {
     const { isCollapsed, panelWidth, setPanelWidth } = useProjectCopilot();
-    const [viewportClass, setViewportClass] = useState<ResponsiveViewportClass>(() => {
-        if (typeof window === "undefined") return "unknown";
-        return getViewportClass(window);
-    });
+    const liveViewportClass = useSyncExternalStore(
+        subscribeViewportClass,
+        getClientViewportClassSnapshot,
+        getServerViewportClassSnapshot,
+    );
+    const viewportClass = copilotCollapseMode === "phone-only" ? liveViewportClass : "unknown";
     const boundedWidth = clamp(panelWidth, 300, 560);
-
-    useEffect(() => {
-        if (copilotCollapseMode !== "phone-only") {
-            setViewportClass("unknown");
-            return;
-        }
-
-        const updateViewportClass = () => {
-            setViewportClass(getViewportClass(window));
-        };
-
-        updateViewportClass();
-        window.addEventListener("resize", updateViewportClass, { passive: true });
-        window.addEventListener("orientationchange", updateViewportClass, { passive: true });
-
-        return () => {
-            window.removeEventListener("resize", updateViewportClass);
-            window.removeEventListener("orientationchange", updateViewportClass);
-        };
-    }, [copilotCollapseMode]);
 
     const panelVars = useMemo<CSSProperties>(() => {
         const w = isCollapsed ? RAIL_WIDTH : boundedWidth;
