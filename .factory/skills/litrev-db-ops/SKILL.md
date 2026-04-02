@@ -7,6 +7,14 @@ description: Manage LitRev database health, migrations, and production remediati
 
 Execute a safe, repeatable workflow for LitRev DB diagnostics, migration updates, and production recovery.
 
+## Authoritative Reads
+
+Before using this skill for real repo work:
+
+- Read `docs/runbooks/db-architecture.md` for schema/domain semantics.
+- Read `docs/runbooks/db-ops.md` for diagnosis/remediation.
+- Read `docs/plans/db-production-runbook.md` for production posture.
+
 ## Command Map
 
 Use commands from `next-app/`.
