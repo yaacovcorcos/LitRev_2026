@@ -38,6 +38,9 @@ import { UserInputCard } from "@/components/artifacts/UserInputCard";
 import styles from "./CopilotInput.module.css";
 import { VoiceLevelVisualizer } from "./VoiceLevelVisualizer";
 
+const MAX_TEXTAREA_HEIGHT_PX = 200;
+const DEFAULT_SELECTABLE_MODEL_ID: SelectableModelId = "gpt-5.2";
+
 const CopilotActionsMenuButton = dynamic(() =>
     import("./CopilotActionsMenuButton").then((module) => module.CopilotActionsMenuButton)
 );
@@ -145,17 +148,17 @@ function formatElapsedVoiceTime(elapsedMs: number): string {
 function resizeTextareaToFit(el: HTMLTextAreaElement | null) {
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT_PX)}px`;
 }
 
 function readStoredSelectedModel(modelStorageKey: string): SelectableModelId {
     if (typeof window === "undefined") {
-        return "gpt-5.2";
+        return DEFAULT_SELECTABLE_MODEL_ID;
     }
 
     const stored = window.localStorage.getItem(modelStorageKey);
     const valid = USER_SELECTABLE_MODELS.some((model) => model.id === stored);
-    return valid ? (stored as SelectableModelId) : "gpt-5.2";
+    return valid ? (stored as SelectableModelId) : DEFAULT_SELECTABLE_MODEL_ID;
 }
 
 export function CopilotInputCore({
@@ -224,27 +227,6 @@ export function CopilotInputCore({
     const isModelControlled = typeof selectedModelProp !== "undefined";
 
     const sendLockRef = useRef(false);
-    const latestInputRef = useRef("");
-    const latestPendingAttachmentRef = useRef<InputAttachment | null>(pendingAttachment);
-    const latestAttachedContextTargetsRef = useRef<ContextCaptureTarget[]>(attachedContextTargets);
-    const latestSendContextRef = useRef<{
-        page: CopilotPage;
-        section?: string;
-        studyId?: string;
-        selectedModel: SelectableModelId;
-        selection: ComposerModeSelection;
-        autoMode: AgentMode;
-        hasProtocol?: boolean;
-    }>({
-        page,
-        section,
-        studyId,
-        selectedModel,
-        selection: AUTO_COMPOSER_MODE_SELECTION,
-        autoMode: "general",
-        hasProtocol,
-    });
-    const queuedVoiceSendRef = useRef(false);
 
     const [autoMode, setAutoMode] = useState<AgentMode>("general");
     const [modeSelection, setModeSelection] = useState<ComposerModeSelection>(AUTO_COMPOSER_MODE_SELECTION);
@@ -267,36 +249,6 @@ export function CopilotInputCore({
         scheduleTextareaResize();
     }, [scheduleTextareaResize]);
 
-    useEffect(() => {
-        latestInputRef.current = input;
-    }, [input]);
-
-    useEffect(() => {
-        latestPendingAttachmentRef.current = pendingAttachment;
-    }, [pendingAttachment]);
-
-    useEffect(() => {
-        latestAttachedContextTargetsRef.current = attachedContextTargets;
-    }, [attachedContextTargets]);
-
-    useEffect(() => {
-        latestSendContextRef.current = {
-            page,
-            section,
-            studyId,
-            selectedModel,
-            selection: modeSelection,
-            autoMode,
-            hasProtocol,
-        };
-    }, [autoMode, hasProtocol, modeSelection, page, section, selectedModel, studyId]);
-
-    useEffect(() => {
-        if (!isLoading) {
-            sendLockRef.current = false;
-        }
-    }, [isLoading]);
-
     const effectiveMode = isManualComposerModeSelection(modeSelection) ? modeSelection.mode : autoMode;
     const modeMeta = AGENT_MODE_META[effectiveMode];
     const resolveCurrentComposerMode = useCallback((message: string) => {
@@ -311,9 +263,18 @@ export function CopilotInputCore({
     }, [autoMode, hasProtocol, modeSelection, page]);
 
     const setQueuedVoiceSendState = useCallback((next: boolean) => {
-        queuedVoiceSendRef.current = next;
         setQueuedVoiceSend(next);
     }, []);
+
+    const releaseSendLock = useEffectEvent(() => {
+        sendLockRef.current = false;
+    });
+
+    useEffect(() => {
+        if (!isLoading) {
+            releaseSendLock();
+        }
+    }, [isLoading]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -331,38 +292,29 @@ export function CopilotInputCore({
     const dispatchSend = useCallback((rawText: string) => {
         if (sendLockRef.current) return false;
         const text = rawText.trim();
-        const activeAttachment = latestPendingAttachmentRef.current;
+        const activeAttachment = pendingAttachment;
         if (!text && !activeAttachment) return false;
 
-        const {
-            page: currentPage,
-            section: currentSection,
-            studyId: currentStudyId,
-            selectedModel: currentSelectedModel,
-            selection: currentSelection,
-            autoMode: currentAutoMode,
-            hasProtocol: currentHasProtocol,
-        } = latestSendContextRef.current;
-        const nextContextTargets = latestAttachedContextTargetsRef.current.length > 0
-            ? latestAttachedContextTargetsRef.current
+        const nextContextTargets = attachedContextTargets.length > 0
+            ? attachedContextTargets
             : undefined;
-        const routerPage: RouterPage = currentPage === "ai" ? "overview" : (currentPage as RouterPage);
+        const routerPage: RouterPage = page === "ai" ? "overview" : (page as RouterPage);
         const currentEffectiveMode = resolveComposerMode({
-            selection: currentSelection,
+            selection: modeSelection,
             message: text,
             page: routerPage,
-            hasProtocol: currentHasProtocol,
-            previousAutoMode: currentAutoMode,
+            hasProtocol,
+            previousAutoMode: autoMode,
         });
 
         sendLockRef.current = true;
         sendMessage(
             text,
-            currentPage,
-            currentSection,
-            currentSelectedModel,
+            page,
+            section,
+            selectedModel,
             currentEffectiveMode,
-            currentStudyId,
+            studyId,
             undefined,
             nextContextTargets,
         );
@@ -372,14 +324,28 @@ export function CopilotInputCore({
         setComposerInput("");
         requestAnimationFrame(() => getTextareaElement()?.focus());
         return true;
-    }, [clearAttachedContextTargets, getTextareaElement, sendMessage, setComposerInput]);
+    }, [
+        attachedContextTargets,
+        autoMode,
+        clearAttachedContextTargets,
+        getTextareaElement,
+        hasProtocol,
+        modeSelection,
+        page,
+        pendingAttachment,
+        section,
+        selectedModel,
+        sendMessage,
+        setComposerInput,
+        studyId,
+    ]);
 
     const handleTranscription = useCallback((text: string) => {
-        const currentInput = latestInputRef.current;
+        const currentInput = input;
         const separator = currentInput.trim() ? " " : "";
         const nextText = currentInput + separator + text;
 
-        if (queuedVoiceSendRef.current) {
+        if (queuedVoiceSend) {
             const didSend = dispatchSend(nextText);
             setQueuedVoiceSendState(false);
             if (!didSend) {
@@ -389,17 +355,17 @@ export function CopilotInputCore({
         }
 
         setComposerInput(nextText);
-    }, [dispatchSend, setComposerInput, setQueuedVoiceSendState]);
+    }, [dispatchSend, input, queuedVoiceSend, setComposerInput, setQueuedVoiceSendState]);
 
     const handleTranscriptionSettled = useCallback((result: VoiceTranscriptionSettlement) => {
-        if (!queuedVoiceSendRef.current) return;
+        if (!queuedVoiceSend) return;
 
         if (result.status === "success") {
             if (result.text) {
                 return;
             }
 
-            const didSend = dispatchSend(latestInputRef.current);
+            const didSend = dispatchSend(input);
             setQueuedVoiceSendState(false);
             if (!didSend) {
                 requestAnimationFrame(() => getTextareaElement()?.focus());
@@ -408,7 +374,7 @@ export function CopilotInputCore({
         }
 
         setQueuedVoiceSendState(false);
-    }, [dispatchSend, getTextareaElement, setQueuedVoiceSendState]);
+    }, [dispatchSend, getTextareaElement, input, queuedVoiceSend, setQueuedVoiceSendState]);
 
     const {
         state: voiceState,
@@ -480,16 +446,18 @@ export function CopilotInputCore({
     const handleSend = useCallback(() => {
         if (interactionLocked) return;
         if (voiceState === "recording") {
-            if (queuedVoiceSendRef.current) return;
+            if (queuedVoiceSend) return;
             setQueuedVoiceSendState(true);
             stopRecording();
             return;
         }
         if (voiceState === "requesting_permission" || voiceState === "transcribing") return;
-        void dispatchSend(latestInputRef.current);
+        void dispatchSend(input);
     }, [
         dispatchSend,
+        input,
         interactionLocked,
+        queuedVoiceSend,
         setQueuedVoiceSendState,
         stopRecording,
         voiceState,

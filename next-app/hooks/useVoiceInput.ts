@@ -34,6 +34,16 @@ export function useVoiceInput(
     const elapsedIntervalRef = useRef<number | null>(null);
     const recordingStartedAtRef = useRef<number | null>(null);
     const frozenElapsedRef = useRef(0);
+    const onTranscriptionRef = useRef(onTranscription);
+    const onTranscriptionSettledRef = useRef(onTranscriptionSettled);
+
+    useEffect(() => {
+        onTranscriptionRef.current = onTranscription;
+    }, [onTranscription]);
+
+    useEffect(() => {
+        onTranscriptionSettledRef.current = onTranscriptionSettled;
+    }, [onTranscriptionSettled]);
 
     const stopElapsedTracking = useCallback(() => {
         if (elapsedIntervalRef.current !== null) {
@@ -119,7 +129,7 @@ export function useVoiceInput(
 
         if (blob.size < 1000) {
             setError("Recording was too short. Try speaking a little longer.");
-            onTranscriptionSettled?.({ status: "too_short" });
+            onTranscriptionSettledRef.current?.({ status: "too_short" });
             setState("idle");
             resetElapsedTracking();
             return;
@@ -148,17 +158,17 @@ export function useVoiceInput(
             const { text } = await response.json();
             const trimmedText = typeof text === "string" ? text.trim() : "";
             if (trimmedText) {
-                onTranscription(trimmedText);
+                onTranscriptionRef.current(trimmedText);
             }
-            onTranscriptionSettled?.({ status: "success", text: trimmedText || null });
+            onTranscriptionSettledRef.current?.({ status: "success", text: trimmedText || null });
         } catch (err) {
             if (err instanceof DOMException && err.name === "AbortError") {
-                onTranscriptionSettled?.({ status: "aborted" });
+                onTranscriptionSettledRef.current?.({ status: "aborted" });
                 return;
             }
             const msg = err instanceof Error ? err.message : "Transcription failed";
             setError(msg);
-            onTranscriptionSettled?.({ status: "error", message: msg });
+            onTranscriptionSettledRef.current?.({ status: "error", message: msg });
             console.error("Transcription error:", err);
         } finally {
             transcriptionAbortRef.current = null;
@@ -167,8 +177,6 @@ export function useVoiceInput(
         }
     }, [
         freezeElapsedTracking,
-        onTranscription,
-        onTranscriptionSettled,
         resetElapsedTracking,
         stopAudioRuntime,
         stopMediaTracks,
