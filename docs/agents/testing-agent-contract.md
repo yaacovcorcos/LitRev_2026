@@ -2,6 +2,7 @@
 
 This file is the durable testing doctrine for LitRev.
 It defines how agents should think about tests, what "well tested" means in this repository, and how to choose the right test layer for a change.
+Execution ergonomics, CI-lane evolution, and shared testing-operations improvements are tracked separately in `docs/plans/plan-testing-execution.md`.
 
 This is not a changelog and not a per-task checklist.
 Use it as the canonical cross-cutting testing contract when deciding what tests to add, improve, or require before merge.
