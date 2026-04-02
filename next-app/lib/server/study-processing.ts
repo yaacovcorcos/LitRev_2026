@@ -755,12 +755,33 @@ function getDispatcherBaseUrl(): URL | null {
   return null;
 }
 
+function startLocalStudyProcessingDispatcherFallback(): void {
+  void processOneStudyProcessingJob().catch((error) => {
+    logServerWarn("study-processing", "local direct dispatcher fallback failed", undefined, error);
+  });
+}
+
 export async function kickStudyProcessingDispatcher() {
   const token = process.env.STUDY_PROCESSING_INTERNAL_TOKEN;
   const baseUrl = getDispatcherBaseUrl();
-  if (!token || !baseUrl || process.env.NODE_ENV === "test") {
+  if (process.env.NODE_ENV === "test") {
     return false;
   }
+
+  if (!token || !baseUrl) {
+    if (process.env.NODE_ENV !== "production") {
+      startLocalStudyProcessingDispatcherFallback();
+      return true;
+    }
+
+    logServerWarn("study-processing", "best-effort dispatcher kick unavailable in deployed environment", {
+      hasInternalToken: Boolean(token),
+      hasBaseUrl: Boolean(baseUrl),
+      nodeEnv: process.env.NODE_ENV ?? "undefined",
+    });
+    return false;
+  }
+
   const dispatcherUrl = new URL(STUDY_PROCESSING_INTERNAL_PATH, baseUrl).toString();
 
   try {
