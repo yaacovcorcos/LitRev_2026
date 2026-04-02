@@ -96,4 +96,47 @@ describe("ArtifactWrapper", () => {
 
     vi.useRealTimers();
   });
+
+  it("collapses auto-applied artifacts without waiting when no settled action is present", () => {
+    vi.useFakeTimers();
+
+    const { rerender } = render(
+      <ArtifactWrapper
+        artifactId="artifact-3"
+        artifactType="study_update"
+        status="proposed"
+        title="Study update"
+        version={1}
+        onReview={vi.fn()}
+        summaryText="Study updated"
+      >
+        <div>Body</div>
+      </ArtifactWrapper>,
+    );
+
+    rerender(
+      <ArtifactWrapper
+        artifactId="artifact-3"
+        artifactType="study_update"
+        status="auto_applied"
+        title="Study update"
+        version={1}
+        onReview={vi.fn()}
+        summaryText="Study updated"
+      >
+        <div>Body</div>
+      </ArtifactWrapper>,
+    );
+
+    expect(screen.getByText("Body")).not.toBeNull();
+
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+
+    expect(screen.queryByText("Body")).toBeNull();
+    expect(screen.getByText("Study updated")).not.toBeNull();
+
+    vi.useRealTimers();
+  });
 });
