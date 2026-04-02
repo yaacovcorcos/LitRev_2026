@@ -125,8 +125,6 @@ function ProjectShellInner({
     // Sync shell mode from route and persisted mode bucket.
     // Route tabs always force workspace mode. Root route (/project/:id) restores the saved bucket synchronously.
     useEffect(() => {
-        setActiveTabState(initialShellState.activeTab);
-        setFocusMode(initialShellState.focusMode);
         const isRootProjectRoute = pathname === `/project/${projectId}`;
         if (projectEntryRestoreEnabled && initialShellState.bootMode !== "conversation" && !isRootProjectRoute) {
             setProjectModeBucket(projectId, "workspace");
@@ -374,10 +372,16 @@ function ProjectShellInner({
     const copilotPage = isStudyDetail ? "study" : (activeTab ?? "overview");
 
     // Fetch study title for the copilot context display
-    const [studyTitle, setStudyTitle] = useState<string | null>(null);
+    const [studyTitleState, setStudyTitleState] = useState<{
+        studyId: string | null;
+        title: string | null;
+    }>({
+        studyId: copilotStudyId ?? null,
+        title: null,
+    });
+    const studyTitle = studyTitleState.studyId === copilotStudyId ? studyTitleState.title : null;
     useEffect(() => {
         if (!copilotStudyId || !projectId) {
-            setStudyTitle(null);
             return;
         }
 
@@ -386,10 +390,16 @@ function ProjectShellInner({
             try {
                 const result = await getStudyAction(projectId, copilotStudyId);
                 if (!active) return;
-                setStudyTitle(result.success && result.data ? result.data.title : null);
+                setStudyTitleState({
+                    studyId: copilotStudyId,
+                    title: result.success && result.data ? result.data.title : null,
+                });
             } catch {
                 if (active) {
-                    setStudyTitle(null);
+                    setStudyTitleState({
+                        studyId: copilotStudyId,
+                        title: null,
+                    });
                 }
             }
         };
@@ -508,6 +518,10 @@ export default function ProjectLayout({ children }: ProjectLayoutProps) {
         projectId,
         projectEntryRestoreEnabled,
     }), [pathname, projectEntryRestoreEnabled, projectId]);
+    const shellRouteStateKey = useMemo(
+        () => `${projectId}:${pathname}:${initialShellState.bootMode}:${initialShellState.focusMode}:${initialShellState.activeTab ?? "none"}`,
+        [initialShellState.activeTab, initialShellState.bootMode, initialShellState.focusMode, pathname, projectId],
+    );
 
     useEffect(() => {
         if (!projectEntryRestoreEnabled) return;
@@ -532,6 +546,7 @@ export default function ProjectLayout({ children }: ProjectLayoutProps) {
             <PopupChatProvider>
                 <ProjectDataProvider projectId={projectId} bootMode={initialShellState.bootMode}>
                     <ProjectShellInner
+                        key={shellRouteStateKey}
                         projectId={projectId}
                         initialShellState={initialShellState}
                         routeConversationId={routeConversationId}
