@@ -31,6 +31,7 @@ This plan does not own:
 - Required `check` in `.github/workflows/ci.yml` already provides a meaningful base lane:
   - Prisma migrate deploy + schema-drift check
   - `npx tsc --noEmit`
+  - `npm run lint` through `governance:ci-required`
   - `npm run governance:ci-required`
   - `npm run governance:ci-informational` as non-blocking reporting
   - chat stream architecture guard
@@ -43,7 +44,7 @@ This plan does not own:
 - Changed-scope execution already exists in two narrow forms:
   - path filtering for the mobile foundation workflow
   - `next-app/scripts/check-runtime-test-impact.mjs` for governed runtime test-impact enforcement
-- `docs/reviews/repo-health.md` currently records raw `npm run lint` at `0` errors and `40` warnings on `main`; raw lint is no longer broadly red, but it remains intentionally outside the protected `check` contract.
+- `docs/reviews/repo-health.md` currently records raw `npm run lint` at `0` errors and `0` warnings on `main`, and raw lint now runs inside the protected `check` contract through `governance:ci-required`.
 - LitRev already has several good execution ideas shipped in pieces, but they are not yet presented as one coherent testing operating system.
 
 ## External Pattern Position
@@ -158,7 +159,7 @@ Missing:
 ## Recently Completed
 - [x] Established a durable repo-wide testing doctrine in `docs/agents/testing-agent-contract.md` and linked it from Tier 3 retrieval.
 - [x] Landed a stable governance-required versus governance-informational split so cross-cutting testing policy can evolve without making broad warning debt an accidental merge blocker.
-- [x] Restored the raw lint baseline from broadly red to `0` errors / `40` warnings on `main` without prematurely widening the protected `check` contract.
+- [x] Closed the raw lint baseline from broadly red to `0` errors / `0` warnings on `main` and promoted raw lint into the protected `check` contract through `governance:ci-required`.
 - [x] Added high-signal direct regression coverage for recent cleanup-sensitive flows such as timeline anchoring, streamed tool-call delta assembly, conversation JSON serialization, and hydration/body-scroll behavior.
 
 ## Implementation Rules
