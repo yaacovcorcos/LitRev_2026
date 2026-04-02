@@ -199,9 +199,10 @@ Missing:
 - Nothing material for the finalized Phase 5 scope
 
 ## Active Tasks
-- [ ] Reduce the red legacy `npm run lint` baseline in narrow owner-mapped slices before considering any change to the protected `check` inventory.
+- [ ] Finish the remaining warning-only legacy `npm run lint` cleanup in narrow owner-mapped slices, then decide whether raw lint is trustworthy enough to fold into the protected `check` inventory with the matching CI/runbook update.
 
 ## Recently Completed
+- [x] Reduced the default raw lint baseline from `126` errors / `112` warnings to `0` errors / `40` warnings through narrow owner-mapped cleanup slices, including the ESLint-config anonymous-default-export wave and the first low-signal unused-vars burndown, without broadening the protected `check` contract prematurely.
 - [x] Removed stale governance suppressions and typed away the perf-probe `window as any` access that were polluting the informational baseline without adding real policy signal.
 - [x] Completed LG-006 by introducing the stable `lint:governance:logging` verifier for server/runtime raw-console governance, cleaning the governed `lib/server/**`, `app/actions/**`, and `app/api/**` surface onto `@/lib/server/logging`, and rolling that verifier into the required `governance:ci-required` inventory without broadening the policy to UI/client logging.
 - [x] Completed Phase 5 by making GitHub `check` enforce only the stable completed governance inventory via `governance:ci-required`, keeping broad `lint:governance` plus audit reporting always-run but non-blocking through `governance:ci-informational`, and documenting the final required-versus-informational split without promoting the legacy full-repo lint baseline.
