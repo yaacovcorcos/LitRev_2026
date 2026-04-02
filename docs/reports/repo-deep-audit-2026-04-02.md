@@ -584,7 +584,7 @@ Agent/runtime:
 - open work includes continuation, idempotency envelopes, reasoning transparency completion, lazy context loading, centralized context budget policy, delegation matrix, telemetry, run board, continuation tokens, eval harnesses, rollout templates, SLOs, and incident playbooks
 
 Chat runtime:
-- `docs/plans/chatRuntime.md`
+- `docs/plans/chat-runtime.md`
 - open work includes `U1.6` replay parity/burn-in sign-off, popup migration to shared engine, and shadow cleanup
 
 UI/UX:

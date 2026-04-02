@@ -52,7 +52,7 @@ docs/plans/agent-runtime-remediation/plan-fix-012-baseline-stability.md
 docs/plans/agent-runtime-remediation/plan-general-scope-and-clarification.md
 docs/plans/agent-runtime-remediation/plan-plan-execution-confinement.md
 docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md
-docs/plans/chatRuntime.md
+docs/plans/chat-runtime.md
 docs/plans/db-production-runbook.md
 docs/plans/mobile-admin-audit.md
 docs/plans/mobile-breakpoint-migration-map.md
@@ -71,7 +71,7 @@ docs/plans/plan-settings.md
 docs/plans/plan-speed-performance.md
 docs/plans/plan-ux-ui.md
 docs/plans/reliability-a0-brief.md
-docs/plans/transparencyUI.md
+docs/plans/transparency-ui.md
 docs/reports/auth-implementation-history.md
 docs/reports/diagnosis-03-02.md
 docs/reports/effect-discipline-audit-2026-03-18.md

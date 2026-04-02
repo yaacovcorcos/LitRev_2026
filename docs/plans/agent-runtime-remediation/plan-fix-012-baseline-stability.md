@@ -53,8 +53,8 @@ This fix does not own:
 This file is not a second owner for runtime, transparency, or prompt architecture.
 
 - [plan-agentic.md](../plan-agentic.md) owns `FIX-012` status, ordering, and retirement.
-- [chatRuntime.md](../chatRuntime.md) owns shared runtime and recovery truth.
-- [transparencyUI.md](../transparencyUI.md) owns trace, receipt, summary, and visible-message UX contracts.
+- [chat-runtime.md](../chat-runtime.md) owns shared runtime and recovery truth.
+- [transparency-ui.md](../transparency-ui.md) owns trace, receipt, summary, and visible-message UX contracts.
 - [plan-prompts.md](../plan-prompts.md) owns prompt-side hygiene and degradation rules.
 - this file owns only the remaining `FIX-012` rescue sequencing, evidence, and closeout criteria.
 
@@ -491,6 +491,6 @@ These are valuable, but they are not first-wave `FIX-012` blockers:
 ## Relationship To Other Plans
 
 - [plan-agentic.md](../plan-agentic.md) remains the canonical owner of `FIX-012` status, severity, ordering, and completion rules.
-- [chatRuntime.md](../chatRuntime.md) owns shared runtime parity, shared terminal-state semantics, and later-stage `U1.6` burn-in positioning.
-- [transparencyUI.md](../transparencyUI.md) owns the facts-first UI contract, semantic receipts, summary semantics, and visible-message boundaries.
+- [chat-runtime.md](../chat-runtime.md) owns shared runtime parity, shared terminal-state semantics, and later-stage `U1.6` burn-in positioning.
+- [transparency-ui.md](../transparency-ui.md) owns the facts-first UI contract, semantic receipts, summary semantics, and visible-message boundaries.
 - [plan-prompts.md](../plan-prompts.md) owns prompt-side visible-answer hygiene, anti-echo rules, and degradation behavior.
