@@ -16,6 +16,13 @@ Each entry should stay short and include:
 
 ## Entries
 
+### 2026-04-02 - Security policy explicitly models LitRev as multi-tenant and defines report-quality gates
+
+- Decision: Keep `SECURITY.md` and `docs/runbooks/security-baseline.md` explicit about LitRev's multi-tenant trust model, non-boundary signals, and minimum evidence needed for security triage.
+- Why it was made: The repo now has enough history of real authorization, storage, and internal-route findings that vague security language creates review drift. Making the trust model and acceptance gate explicit keeps future triage aligned with the actual boundaries LitRev must defend.
+- Constraints or assumptions: LitRev is not a trusted-operator system. Authenticated users remain mutually untrusted for workspace, project, study, file, memory, and admin surfaces, and identifiers or request metadata are never authorization by themselves.
+- What would invalidate it: A future product or infrastructure change that materially alters the trust model or moves security triage into a stronger canonical owner with equal clarity and enforcement.
+
 ### 2026-04-02 - Security ownership uses a layered repo-local baseline instead of chat-only memory
 
 - Decision: Keep repository-level security process in `SECURITY.md` and a LitRev-specific operating baseline in `docs/runbooks/security-baseline.md`, with subsystem owner docs remaining authoritative for their own boundaries.
