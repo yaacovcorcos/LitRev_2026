@@ -1,0 +1,4 @@
+interface:
+  display_name: "LitRev Security Review"
+  short_description: "Review LitRev backend trust boundaries for security findings using repo-owned backend and admin contracts. Advisory only."
+  default_prompt: "Use $litrev-security-review to review this LitRev backend surface for security issues, staying advisory-only and grounded in the repo’s backend and admin contracts."

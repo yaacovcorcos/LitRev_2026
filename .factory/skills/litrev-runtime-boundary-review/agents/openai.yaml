@@ -1,0 +1,4 @@
+interface:
+  display_name: "LitRev Runtime Boundary Review"
+  short_description: "Review LitRev agent-runtime and AI orchestration boundaries for correctness, safety, and truthful recovery behavior. Advisory only."
+  default_prompt: "Use $litrev-runtime-boundary-review to review this LitRev agent-runtime surface for boundary, recovery, delegation, or tool-envelope issues, staying advisory-only and grounded in the canonical runtime plan."
