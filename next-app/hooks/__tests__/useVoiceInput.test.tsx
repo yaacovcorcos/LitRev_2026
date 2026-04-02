@@ -226,6 +226,63 @@ describe("useVoiceInput", () => {
         expect(onTranscriptionSettled).toHaveBeenCalledWith({ status: "too_short" });
     });
 
+    it("uses the latest transcription callbacks after a rerender", async () => {
+        let resolveFetch: ((value: unknown) => void) | null = null;
+        fetchMock.mockImplementation(
+            () =>
+                new Promise((resolve) => {
+                    resolveFetch = resolve;
+                }),
+        );
+
+        const initialOnTranscription = vi.fn();
+        const initialOnTranscriptionSettled = vi.fn();
+        const nextOnTranscription = vi.fn();
+        const nextOnTranscriptionSettled = vi.fn();
+        const { result, rerender } = renderHook(
+            ({ onTranscription, onTranscriptionSettled }) =>
+                useVoiceInput(onTranscription, onTranscriptionSettled),
+            {
+                initialProps: {
+                    onTranscription: initialOnTranscription,
+                    onTranscriptionSettled: initialOnTranscriptionSettled,
+                },
+            },
+        );
+
+        await act(async () => {
+            result.current.toggleRecording();
+            await Promise.resolve();
+        });
+
+        await act(async () => {
+            result.current.stopRecording();
+            await Promise.resolve();
+        });
+
+        rerender({
+            onTranscription: nextOnTranscription,
+            onTranscriptionSettled: nextOnTranscriptionSettled,
+        });
+
+        await act(async () => {
+            resolveFetch?.({
+                ok: true,
+                json: async () => ({ text: "updated callback text" }),
+            });
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(initialOnTranscription).not.toHaveBeenCalled();
+        expect(initialOnTranscriptionSettled).not.toHaveBeenCalled();
+        expect(nextOnTranscription).toHaveBeenCalledWith("updated callback text");
+        expect(nextOnTranscriptionSettled).toHaveBeenCalledWith({
+            status: "success",
+            text: "updated callback text",
+        });
+    });
+
     it("reports aborted transcription through the settlement callback", async () => {
         let abortSignal: AbortSignal | null = null;
         fetchMock.mockImplementation(async (_url, init) => {

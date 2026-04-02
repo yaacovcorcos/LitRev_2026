@@ -7,7 +7,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { FocusEvent as ReactFocusEvent, MouseEvent as ReactMouseEvent } from "react";
 import type {
@@ -37,6 +37,9 @@ import { useWindowEvent } from "@/hooks/useWindowEvent";
 import { UserInputCard } from "@/components/artifacts/UserInputCard";
 import styles from "./CopilotInput.module.css";
 import { VoiceLevelVisualizer } from "./VoiceLevelVisualizer";
+
+const MAX_TEXTAREA_HEIGHT_PX = 200;
+const DEFAULT_SELECTABLE_MODEL_ID: SelectableModelId = "gpt-5.2";
 
 const CopilotActionsMenuButton = dynamic(() =>
     import("./CopilotActionsMenuButton").then((module) => module.CopilotActionsMenuButton)
@@ -142,6 +145,22 @@ function formatElapsedVoiceTime(elapsedMs: number): string {
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function resizeTextareaToFit(el: HTMLTextAreaElement | null) {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT_PX)}px`;
+}
+
+function readStoredSelectedModel(modelStorageKey: string): SelectableModelId {
+    if (typeof window === "undefined") {
+        return DEFAULT_SELECTABLE_MODEL_ID;
+    }
+
+    const stored = window.localStorage.getItem(modelStorageKey);
+    const valid = USER_SELECTABLE_MODELS.some((model) => model.id === stored);
+    return valid ? (stored as SelectableModelId) : DEFAULT_SELECTABLE_MODEL_ID;
+}
+
 export function CopilotInputCore({
     page,
     section,
@@ -190,7 +209,9 @@ export function CopilotInputCore({
     const inputBoxRef = useRef<HTMLFormElement | null>(null);
     const hasMounted = useHydrated();
     const [input, setInput] = useState("");
-    const [uncontrolledSelectedModel, setUncontrolledSelectedModel] = useState<SelectableModelId>("gpt-5.2");
+    const [uncontrolledSelectedModel, setUncontrolledSelectedModel] = useState<SelectableModelId>(
+        () => readStoredSelectedModel(modelStorageKey),
+    );
     const [answeredUserInput, setAnsweredUserInput] = useState<{
         request: UserInputRequest;
         answer: string;
@@ -198,66 +219,35 @@ export function CopilotInputCore({
 
     useEffect(() => {
         if (!hasMounted) return;
-        if (!textareaRef.current) return;
+        if (!inputBoxRef.current?.querySelector("textarea")) return;
         onReady?.();
     }, [hasMounted, onReady]);
 
     const selectedModel = selectedModelProp ?? uncontrolledSelectedModel;
     const isModelControlled = typeof selectedModelProp !== "undefined";
 
-    useEffect(() => {
-        if (isModelControlled) return;
-        const stored = window.localStorage.getItem(modelStorageKey);
-        const valid = USER_SELECTABLE_MODELS.some((m) => m.id === stored);
-        if (valid && stored !== selectedModel) {
-            setUncontrolledSelectedModel(stored as SelectableModelId);
-        }
-    }, [isModelControlled, modelStorageKey, selectedModel]);
-
-    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
     const sendLockRef = useRef(false);
-    const latestInputRef = useRef("");
-    const latestPendingAttachmentRef = useRef<InputAttachment | null>(pendingAttachment);
-    const latestAttachedContextTargetsRef = useRef<ContextCaptureTarget[]>(attachedContextTargets);
-    const latestSendContextRef = useRef<{
-        page: CopilotPage;
-        section?: string;
-        studyId?: string;
-        selectedModel: SelectableModelId;
-        selection: ComposerModeSelection;
-        autoMode: AgentMode;
-        hasProtocol?: boolean;
-    }>({
-        page,
-        section,
-        studyId,
-        selectedModel,
-        selection: AUTO_COMPOSER_MODE_SELECTION,
-        autoMode: "general",
-        hasProtocol,
-    });
-    const queuedVoiceSendRef = useRef(false);
 
     const [autoMode, setAutoMode] = useState<AgentMode>("general");
     const [modeSelection, setModeSelection] = useState<ComposerModeSelection>(AUTO_COMPOSER_MODE_SELECTION);
     const [queuedVoiceSend, setQueuedVoiceSend] = useState(false);
     const [recordingHint, setRecordingHint] = useState<{ label: string; x: number } | null>(null);
 
-    latestInputRef.current = input;
-    latestPendingAttachmentRef.current = pendingAttachment;
-    latestAttachedContextTargetsRef.current = attachedContextTargets;
-    latestSendContextRef.current = {
-        page,
-        section,
-        studyId,
-        selectedModel,
-        selection: modeSelection,
-        autoMode,
-        hasProtocol,
-    };
-    if (!isLoading) {
-        sendLockRef.current = false;
-    }
+    const getTextareaElement = useCallback(
+        () => inputBoxRef.current?.querySelector("textarea") ?? null,
+        [],
+    );
+
+    const scheduleTextareaResize = useCallback((target?: HTMLTextAreaElement | null) => {
+        requestAnimationFrame(() => {
+            resizeTextareaToFit(target ?? getTextareaElement());
+        });
+    }, [getTextareaElement]);
+
+    const setComposerInput = useCallback((nextInput: string) => {
+        setInput(nextInput);
+        scheduleTextareaResize();
+    }, [scheduleTextareaResize]);
 
     const effectiveMode = isManualComposerModeSelection(modeSelection) ? modeSelection.mode : autoMode;
     const modeMeta = AGENT_MODE_META[effectiveMode];
@@ -273,9 +263,18 @@ export function CopilotInputCore({
     }, [autoMode, hasProtocol, modeSelection, page]);
 
     const setQueuedVoiceSendState = useCallback((next: boolean) => {
-        queuedVoiceSendRef.current = next;
         setQueuedVoiceSend(next);
     }, []);
+
+    const releaseSendLock = useEffectEvent(() => {
+        sendLockRef.current = false;
+    });
+
+    useEffect(() => {
+        if (!isLoading) {
+            releaseSendLock();
+        }
+    }, [isLoading]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -293,84 +292,89 @@ export function CopilotInputCore({
     const dispatchSend = useCallback((rawText: string) => {
         if (sendLockRef.current) return false;
         const text = rawText.trim();
-        const activeAttachment = latestPendingAttachmentRef.current;
+        const activeAttachment = pendingAttachment;
         if (!text && !activeAttachment) return false;
 
-        const {
-            page: currentPage,
-            section: currentSection,
-            studyId: currentStudyId,
-            selectedModel: currentSelectedModel,
-            selection: currentSelection,
-            autoMode: currentAutoMode,
-            hasProtocol: currentHasProtocol,
-        } = latestSendContextRef.current;
-        const nextContextTargets = latestAttachedContextTargetsRef.current.length > 0
-            ? latestAttachedContextTargetsRef.current
+        const nextContextTargets = attachedContextTargets.length > 0
+            ? attachedContextTargets
             : undefined;
-        const routerPage: RouterPage = currentPage === "ai" ? "overview" : (currentPage as RouterPage);
+        const routerPage: RouterPage = page === "ai" ? "overview" : (page as RouterPage);
         const currentEffectiveMode = resolveComposerMode({
-            selection: currentSelection,
+            selection: modeSelection,
             message: text,
             page: routerPage,
-            hasProtocol: currentHasProtocol,
-            previousAutoMode: currentAutoMode,
+            hasProtocol,
+            previousAutoMode: autoMode,
         });
 
         sendLockRef.current = true;
         sendMessage(
             text,
-            currentPage,
-            currentSection,
-            currentSelectedModel,
+            page,
+            section,
+            selectedModel,
             currentEffectiveMode,
-            currentStudyId,
+            studyId,
             undefined,
             nextContextTargets,
         );
         if (nextContextTargets?.length) {
             clearAttachedContextTargets?.();
         }
-        setInput("");
-        requestAnimationFrame(() => textareaRef.current?.focus());
+        setComposerInput("");
+        requestAnimationFrame(() => getTextareaElement()?.focus());
         return true;
-    }, [clearAttachedContextTargets, sendMessage]);
+    }, [
+        attachedContextTargets,
+        autoMode,
+        clearAttachedContextTargets,
+        getTextareaElement,
+        hasProtocol,
+        modeSelection,
+        page,
+        pendingAttachment,
+        section,
+        selectedModel,
+        sendMessage,
+        setComposerInput,
+        studyId,
+    ]);
 
     const handleTranscription = useCallback((text: string) => {
-        const currentInput = latestInputRef.current;
+        const currentInput = input;
         const separator = currentInput.trim() ? " " : "";
         const nextText = currentInput + separator + text;
 
-        if (queuedVoiceSendRef.current) {
+        if (queuedVoiceSend) {
             const didSend = dispatchSend(nextText);
             setQueuedVoiceSendState(false);
             if (!didSend) {
-                setInput(nextText);
+                setComposerInput(nextText);
             }
             return;
         }
 
-        setInput(nextText);
-    }, [dispatchSend, setQueuedVoiceSendState]);
+        setComposerInput(nextText);
+    }, [dispatchSend, input, queuedVoiceSend, setComposerInput, setQueuedVoiceSendState]);
 
     const handleTranscriptionSettled = useCallback((result: VoiceTranscriptionSettlement) => {
-        if (!queuedVoiceSendRef.current) return;
+        if (!queuedVoiceSend) return;
 
         if (result.status === "success") {
             if (result.text) {
                 return;
             }
 
-            const didSend = dispatchSend(latestInputRef.current);
+            const didSend = dispatchSend(input);
             setQueuedVoiceSendState(false);
             if (!didSend) {
-                requestAnimationFrame(() => textareaRef.current?.focus());
+                requestAnimationFrame(() => getTextareaElement()?.focus());
             }
             return;
         }
 
         setQueuedVoiceSendState(false);
-    }, [dispatchSend, setQueuedVoiceSendState]);
+    }, [dispatchSend, getTextareaElement, input, queuedVoiceSend, setQueuedVoiceSendState]);
 
     const {
         state: voiceState,
@@ -396,26 +400,28 @@ export function CopilotInputCore({
         }
     }, [isModelControlled, onModelChange]);
 
-    useEffect(() => {
-        const el = textareaRef.current;
-        if (!el) return;
-        el.style.height = "auto";
-        el.style.height = Math.min(el.scrollHeight, 200) + "px";
-    }, [input]);
+    const consumePrefill = useEffectEvent(() => {
+        onPrefillConsumed?.();
+    });
+    const prefillCommandId = prefillCommand?.id;
+    const prefillCommandText = prefillCommand?.text;
 
     useEffect(() => {
-        if (!prefillCommand) return;
+        if (!prefillCommandId || !prefillCommandText) return;
         if (sendLockRef.current) return;
-        setInput(prefillCommand.text);
-        onPrefillConsumed?.();
-        requestAnimationFrame(() => {
-            const el = textareaRef.current;
+
+        const frame = requestAnimationFrame(() => {
+            setComposerInput(prefillCommandText);
+            consumePrefill();
+            const el = getTextareaElement();
             if (el) {
                 el.focus();
                 el.selectionStart = el.selectionEnd = el.value.length;
             }
         });
-    }, [prefillCommand?.id]);
+
+        return () => cancelAnimationFrame(frame);
+    }, [getTextareaElement, prefillCommandId, prefillCommandText, setComposerInput]);
 
     const canShowAutonomy =
         (showAutonomyPreset ?? true) && !!autonomyPreset && !!updateAutonomyPreset && !!setShowAutonomySettings;
@@ -440,16 +446,18 @@ export function CopilotInputCore({
     const handleSend = useCallback(() => {
         if (interactionLocked) return;
         if (voiceState === "recording") {
-            if (queuedVoiceSendRef.current) return;
+            if (queuedVoiceSend) return;
             setQueuedVoiceSendState(true);
             stopRecording();
             return;
         }
         if (voiceState === "requesting_permission" || voiceState === "transcribing") return;
-        void dispatchSend(latestInputRef.current);
+        void dispatchSend(input);
     }, [
         dispatchSend,
+        input,
         interactionLocked,
+        queuedVoiceSend,
         setQueuedVoiceSendState,
         stopRecording,
         voiceState,
@@ -479,9 +487,9 @@ export function CopilotInputCore({
             model: selectedModel,
             agentMode: resolveCurrentComposerMode(text),
         });
-        setInput("");
-        requestAnimationFrame(() => textareaRef.current?.focus());
-    }, [input, interactionLocked, onQueueFollowUp, page, resolveCurrentComposerMode, section, selectedModel, studyId]);
+        setComposerInput("");
+        requestAnimationFrame(() => getTextareaElement()?.focus());
+    }, [getTextareaElement, input, interactionLocked, onQueueFollowUp, page, resolveCurrentComposerMode, section, selectedModel, setComposerInput, studyId]);
 
     useWindowEvent("keydown", (event) => {
         if (event.defaultPrevented) return;
@@ -901,7 +909,7 @@ export function CopilotInputCore({
                                         resolveCurrentComposerMode(choice.value),
                                         studyId,
                                     );
-                                    setInput("");
+                                    setComposerInput("");
                                 }}
                                 disabled={interactionLocked}
                             >
@@ -917,9 +925,8 @@ export function CopilotInputCore({
                 </div>
 
                 <textarea
-                    ref={textareaRef}
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
+                    onChange={(e) => setComposerInput(e.target.value)}
                     onKeyDown={(e) => {
                         if (e.key === "Escape" && (isLoading || voiceState === "recording" || voiceState === "transcribing")) {
                             e.preventDefault();
