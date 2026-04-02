@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { User } from "@prisma/client";
 import { prisma } from "@/lib/server/prisma";
 import {
   bootstrapPlatformAdmin,
@@ -19,6 +20,20 @@ const userFindMany = vi.mocked(prisma.user.findMany);
 const userCount = vi.mocked(prisma.user.count);
 const userUpdate = vi.mocked(prisma.user.update);
 
+function createMockUser(overrides: Partial<User> = {}): User {
+  return {
+    id: "u1",
+    email: "coryacos1@gmail.com",
+    isPlatformAdmin: false,
+    name: "Yaacov",
+    emailVerified: false,
+    image: null,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    ...overrides,
+  };
+}
+
 describe("platform admin bootstrap", () => {
   beforeEach(() => {
     userFindMany.mockReset();
@@ -28,11 +43,9 @@ describe("platform admin bootstrap", () => {
   });
 
   it("bootstraps the first platform admin", async () => {
-    userFindMany.mockResolvedValue([
-      { id: "u1", email: "coryacos1@gmail.com", isPlatformAdmin: false, name: "Yaacov" },
-    ] as any);
+    userFindMany.mockResolvedValue([createMockUser()]);
     userCount.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
-    userUpdate.mockResolvedValue({} as any);
+    userUpdate.mockResolvedValue(createMockUser({ isPlatformAdmin: true }));
 
     const result = await bootstrapPlatformAdmin("coryacos1@gmail.com");
     expect(userUpdate).toHaveBeenCalledWith({
@@ -49,9 +62,7 @@ describe("platform admin bootstrap", () => {
   });
 
   it("blocks bootstrap when an admin already exists and target is not admin", async () => {
-    userFindMany.mockResolvedValue([
-      { id: "u1", email: "coryacos1@gmail.com", isPlatformAdmin: false, name: "Yaacov" },
-    ] as any);
+    userFindMany.mockResolvedValue([createMockUser()]);
     userCount.mockResolvedValueOnce(2);
 
     await expect(bootstrapPlatformAdmin("coryacos1@gmail.com")).rejects.toThrow(
@@ -61,11 +72,9 @@ describe("platform admin bootstrap", () => {
   });
 
   it("allows recovery to grant admin when admins already exist", async () => {
-    userFindMany.mockResolvedValue([
-      { id: "u1", email: "coryacos1@gmail.com", isPlatformAdmin: false, name: "Yaacov" },
-    ] as any);
+    userFindMany.mockResolvedValue([createMockUser()]);
     userCount.mockResolvedValueOnce(3);
-    userUpdate.mockResolvedValue({} as any);
+    userUpdate.mockResolvedValue(createMockUser({ isPlatformAdmin: true }));
 
     const result = await recoverPlatformAdmin("coryacos1@gmail.com");
     expect(userUpdate).toHaveBeenCalledTimes(1);
@@ -75,9 +84,7 @@ describe("platform admin bootstrap", () => {
 
   it("supports env var email fallback", async () => {
     process.env.PLATFORM_ADMIN_BOOTSTRAP_EMAIL = "coryacos1@gmail.com";
-    userFindMany.mockResolvedValue([
-      { id: "u1", email: "coryacos1@gmail.com", isPlatformAdmin: true, name: "Yaacov" },
-    ] as any);
+    userFindMany.mockResolvedValue([createMockUser({ isPlatformAdmin: true })]);
     userCount.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
 
     const result = await bootstrapPlatformAdmin();

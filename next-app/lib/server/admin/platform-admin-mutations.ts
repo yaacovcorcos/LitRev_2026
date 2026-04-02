@@ -31,16 +31,51 @@ export type SetPlatformAdminStatusResult = {
   isPlatformAdmin: boolean;
 };
 
+type PlatformAdminMutationTx = {
+  user: {
+    findUnique(args: {
+      where: { id: string };
+      select: { id: true; isPlatformAdmin: true };
+    }): Promise<{ id: string; isPlatformAdmin: boolean } | null>;
+    findUnique(args: {
+      where: { id: string };
+      select: { id: true; isPlatformAdmin: true; email: true; name: true };
+    }): Promise<{ id: string; isPlatformAdmin: boolean; email: string | null; name: string | null } | null>;
+    count(args: { where: { isPlatformAdmin: boolean } }): Promise<number>;
+    update(args: {
+      where: { id: string };
+      data: { isPlatformAdmin: boolean };
+    }): Promise<unknown>;
+  };
+  adminAuditLog: {
+    create(args: {
+      data: {
+        actorUserId: string;
+        targetUserId: string;
+        action: "platform_admin_grant" | "platform_admin_revoke";
+        reason: string | null;
+        requestId: string | null;
+        before: { isPlatformAdmin: boolean };
+        after: { isPlatformAdmin: boolean };
+      };
+    }): Promise<unknown>;
+  };
+  $executeRaw: (
+    strings: TemplateStringsArray | Prisma.Sql,
+    ...values: readonly unknown[]
+  ) => Promise<unknown>;
+};
+
 type TransactionCapableClient = {
   $transaction: <T>(
-    fn: (tx: any) => Promise<T>,
+    fn: (tx: PlatformAdminMutationTx) => Promise<T>,
     options?: { isolationLevel?: Prisma.TransactionIsolationLevel },
   ) => Promise<T>;
 };
 
 export async function setPlatformAdminStatus(
   input: SetPlatformAdminStatusInput,
-  client: TransactionCapableClient = prisma,
+  client: TransactionCapableClient = prisma as unknown as TransactionCapableClient,
 ): Promise<SetPlatformAdminStatusResult> {
   const actorUserId = input.actorUserId.trim();
   const targetUserId = input.targetUserId.trim();

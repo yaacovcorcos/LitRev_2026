@@ -11,7 +11,25 @@ type UserState = { id: string; isPlatformAdmin: boolean; email: string; name: st
 type FakeClient = {
   users: Map<string, UserState>;
   auditLogs: Array<Record<string, unknown>>;
-  $transaction: <T>(fn: (tx: any) => Promise<T>) => Promise<T>;
+  $transaction: <T>(fn: (tx: FakeTransactionClient) => Promise<T>) => Promise<T>;
+};
+
+type FakeTransactionClient = {
+  user: {
+    findUnique: (args: { where: { id: string } }) => Promise<UserState | null>;
+    count: (args: { where: { isPlatformAdmin: boolean } }) => Promise<number>;
+    update: (args: {
+      where: { id: string };
+      data: { isPlatformAdmin: boolean };
+    }) => Promise<UserState>;
+  };
+  adminAuditLog: {
+    create: (args: { data: Record<string, unknown> }) => Promise<Record<string, unknown>>;
+  };
+  $executeRaw: (
+    strings: TemplateStringsArray | { readonly values: readonly unknown[] },
+    ...values: readonly unknown[]
+  ) => Promise<unknown>;
 };
 
 function createFakeClient(initialUsers: UserState[]): FakeClient {
