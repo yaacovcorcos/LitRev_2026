@@ -3,7 +3,7 @@ import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
 import { ensureProtocol } from "@/lib/server/protocols";
 import { safeParseJson } from "@/lib/server/ai/json-repair";
-import { isHighConfidenceExclusion } from "@/lib/criteriaMatching";
+import { isHighConfidenceExclusion } from "@/lib/criteria-matching";
 import { isTieredScreeningEnabled } from "@/lib/agent/feature-flags";
 import type { ScreeningTier, Study } from "@/types/ledger";
 

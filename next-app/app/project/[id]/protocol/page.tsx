@@ -11,7 +11,7 @@ import { BaseBackButton } from "@/components/BaseBackButton";
 import styles from "./protocol.module.css";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { ProtocolProvider, useProtocol } from "@/contexts/ProtocolContext";
-import { calculatePRISMACounts } from "@/lib/criteriaMatching";
+import { calculatePRISMACounts } from "@/lib/criteria-matching";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import { buildProtocolMarkdown, getProtocolSuggestions } from "./protocolExport";
 import { ProtocolSections } from "./ProtocolSections";

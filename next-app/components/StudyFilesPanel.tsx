@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import styles from "./StudyFilesPanel.module.css";
 import type { FileAsset } from "@/types/files";
-import { validateStudyFile } from "@/lib/fileValidation";
+import { validateStudyFile } from "@/lib/file-validation";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 type StudyFilesPanelProps = {

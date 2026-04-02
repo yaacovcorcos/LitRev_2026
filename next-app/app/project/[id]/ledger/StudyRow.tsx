@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { usePopupChat } from "@/contexts/PopupChatContext";
 import { useContextCaptureActions } from "@/hooks/useContextCaptureActions";
 import { buildStudyTarget } from "@/lib/context-capture/targets";
-import { type CriteriaMatchResult } from "@/lib/criteriaMatching";
+import { type CriteriaMatchResult } from "@/lib/criteria-matching";
 import { getStudyProcessingStatusView } from "@/lib/study-processing-ui";
 import type { Study, StudyDetails, TriageDecision } from "@/types/ledger";
 import styles from "./ledger.module.css";
