@@ -17,7 +17,7 @@ This plan owns:
 
 This plan does not own:
 - agent-runtime orchestration fixes in [plan-agentic.md](./plan-agentic.md)
-- truthful execution-trace design in [transparencyUI.md](./transparencyUI.md)
+- truthful execution-trace design in [transparency-ui.md](./transparency-ui.md)
 - route-specific UI polish in [plan-ux-ui.md](./plan-ux-ui.md)
 - the durable URL/navigation contract for conversation identity, which is owned by [plan-ux-ui.md](./plan-ux-ui.md) and must be reflected here only where route identity constrains shared chat-runtime behavior
 
@@ -267,7 +267,7 @@ Architecture guardrails:
 - [agent-runtime-remediation/plan-fix-012-baseline-stability.md](./agent-runtime-remediation/plan-fix-012-baseline-stability.md) owns the execution detail for the baseline rescue; this plan owns only the shared runtime portion of that rescue.
 - `U1.6` should be treated as blocked whenever `plan-agentic.md` still tracks baseline agent breakage under `FIX-012`; burn-in is later-stage validation once ordinary manual use is no longer obviously broken.
 - [agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md](./agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md) defines the durable recovery/continuation contract that chat runtime work must consume rather than reinterpret per surface.
-- [transparencyUI.md](./transparencyUI.md) depends on this plan for shared runtime parity across `/ai` and project copilot before broader truthful execution-trace rollout.
+- [transparency-ui.md](./transparency-ui.md) depends on this plan for shared runtime parity across `/ai` and project copilot before broader truthful execution-trace rollout.
 - [plan-agentic.md](./plan-agentic.md) depends on this plan whenever agent fixes require shared stream/runtime semantics instead of per-surface adapters.
 - [plan-ux-ui.md](./plan-ux-ui.md) owns the durable navigation contract for chat surfaces:
   - `/project/[id]` becomes overview-only
