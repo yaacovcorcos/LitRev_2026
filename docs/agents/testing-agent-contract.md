@@ -274,6 +274,11 @@ Use Playwright for:
 - hydration/client-side navigation regressions
 - mobile-shell and desktop-shell critical journeys
 
+Use `agent-browser` for:
+- live interactive verification against a running dev server
+- exploratory browser checks and screenshots during implementation
+- fast agent-driven inspection before deciding whether durable coverage is needed
+
 Keep browser tests:
 - isolated
 - scenario-focused
@@ -281,6 +286,7 @@ Keep browser tests:
 - built around user-facing locators and outcomes
 
 Do not use Playwright as a substitute for missing unit or integration coverage.
+Do not use `agent-browser` as a substitute for durable checked-in Playwright coverage when the risk should be caught in CI.
 
 ## High-Risk Surfaces That Need Stronger Coverage
 
