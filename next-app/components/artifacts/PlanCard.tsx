@@ -31,7 +31,7 @@ const STEP_STYLES: Record<PlanStep["status"], string> = {
 export function PlanCard({ payload, status, onRun, onCancel, canRun = true }: PlanCardProps) {
     const allIndexes = useMemo(
         () => new Set(payload.steps.map((_, i) => i)),
-        [payload.steps.length],
+        [payload.steps],
     );
     const [selected, setSelected] = useState<Set<number>>(allIndexes);
 
