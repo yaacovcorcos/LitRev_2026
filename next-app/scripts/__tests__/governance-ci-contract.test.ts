@@ -12,6 +12,7 @@ describe("governance CI command contract", () => {
   it("pins the required governance inventory to the completed phase verifiers", () => {
     expect(splitCommands(packageJson.scripts["governance:ci-required"])).toEqual([
       "npm run governance:check",
+      "npm run lint",
       "npm run test:eslint-rules",
       "npm run test:governance-tooling",
       "npm run lint:governance:phase1",

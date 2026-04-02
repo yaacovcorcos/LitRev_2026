@@ -212,7 +212,18 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
                 setIsLoadingConversations(false);
             }
         })();
-    }, [fetchConversations, projectId]);
+    }, [
+        abortControllerRef,
+        fetchConversations,
+        projectId,
+        setCurrentConversationId,
+        setCurrentRunId,
+        setIsLoading,
+        setPendingChoices,
+        setPendingUserInput,
+        setState,
+        streamGenRef,
+    ]);
 
     useCopilotConversationBootstrap({
         projectId,
@@ -350,7 +361,19 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
                 setIsConversationLoading(false);
             }
         }
-    }, [projectEntryRestoreEnabled, projectId, setCurrentConversationId, updateState]);
+    }, [
+        abortControllerRef,
+        projectEntryRestoreEnabled,
+        projectId,
+        setArtifacts,
+        setCurrentConversationId,
+        setCurrentRunId,
+        setIsLoading,
+        setPendingChoices,
+        setPendingUserInput,
+        streamGenRef,
+        updateState,
+    ]);
 
     // Keep ref in sync so setStudyFilter (declared earlier) can call it
     selectConversationRef.current = selectConversation;
@@ -484,7 +507,19 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             console.error("Failed to create conversation:", err);
             return null;
         }
-    }, [projectEntryRestoreEnabled, projectId, loadConversations, setCurrentConversationId]);
+    }, [
+        abortControllerRef,
+        projectEntryRestoreEnabled,
+        projectId,
+        loadConversations,
+        setCurrentConversationId,
+        setCurrentRunId,
+        setIsLoading,
+        setPendingChoices,
+        setPendingUserInput,
+        setState,
+        streamGenRef,
+    ]);
 
     const renameConversation = useCallback(async (conversationId: string, title: string) => {
         try {
@@ -555,7 +590,17 @@ export function useCopilotConversations(deps: CopilotConversationsDeps) {
             console.error("Failed to branch conversation:", err);
             return null;
         }
-    }, [projectId, loadConversations, selectConversation]);
+    }, [
+        abortControllerRef,
+        projectId,
+        loadConversations,
+        selectConversation,
+        setCurrentRunId,
+        setIsLoading,
+        setPendingChoices,
+        setPendingUserInput,
+        streamGenRef,
+    ]);
 
     const summarizeAndRefresh = useCallback(async () => {
         if (!currentConversationId || isSummarizing) return;

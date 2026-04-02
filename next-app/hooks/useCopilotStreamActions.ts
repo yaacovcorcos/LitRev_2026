@@ -145,7 +145,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         }
         setIsLoading(false);
         setPendingChoices([]);
-    }, []);
+    }, [abortControllerRef, setIsLoading, setPendingChoices, streamGenRef]);
 
     const buildProjectRecoverySeedState = useCallback((params: {
         messages: CopilotMessage[];
@@ -441,7 +441,19 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
             runStatus: recoveryResult.response?.runStatus ?? null,
             abnormalEndClassification: recoveryResult.response?.abnormalEndClassification ?? null,
         };
-    }, [buildProjectRecoverySeedState, convo, onNavigate, projectId, setArtifacts, setCurrentRunId, setPendingChoices, setPendingUserInput, stateRef, updateState]);
+    }, [
+        buildProjectRecoverySeedState,
+        convo,
+        onNavigate,
+        projectId,
+        setArtifacts,
+        setCurrentRunId,
+        setPendingChoices,
+        setPendingUserInput,
+        stateRef,
+        streamGenRef,
+        updateState,
+    ]);
 
     /**
      * Core stream lifecycle: fetch → parse → dispatch chunks.
@@ -1173,7 +1185,26 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 });
             }
         }
-    }, [updateState, projectId, convo]);
+    }, [
+        abortControllerRef,
+        appendProjectRecoveryCheckpoint,
+        appendProjectRecoveryError,
+        convo,
+        currentRunId,
+        onNavigate,
+        progressiveAnswerStreamingEnabled,
+        projectId,
+        runProjectRecovery,
+        setArtifacts,
+        setCurrentRunId,
+        setIsLoading,
+        setPendingChoices,
+        setPendingUserInput,
+        setStreamPhase,
+        streamGenRef,
+        stripReservedAssistantMessages,
+        updateState,
+    ]);
 
     const sendMessage = useCallback(
         async (
@@ -1759,6 +1790,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         setIsLoading,
         setStreamPhase,
         stateRef,
+        streamGenRef,
         updateState,
     ]);
 

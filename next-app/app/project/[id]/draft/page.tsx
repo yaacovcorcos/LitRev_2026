@@ -459,7 +459,7 @@ function DraftContent() {
             activeSection: projection.activeSection,
           };
     });
-  }, [draftRouteState.mode, draftRouteState.sectionId]);
+  }, [draftRouteState]);
 
   useEffect(() => {
     if (!id) return;
@@ -942,7 +942,7 @@ function DraftContent() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [updateDraft]);
+  }, [setCopilotPanelWidth, updateDraft]);
 
   if (isLoadingProjects) {
     return (

@@ -6,11 +6,12 @@ type UseIdleTaskOptions = {
     enabled?: boolean;
     timeoutMs?: number;
     fallbackDelayMs?: number;
+    rescheduleKey?: unknown;
 };
 
 export function useIdleTask(
     task: () => void,
-    { enabled = true, timeoutMs = 1000, fallbackDelayMs = 0 }: UseIdleTaskOptions = {},
+    { enabled = true, timeoutMs = 1000, fallbackDelayMs = 0, rescheduleKey }: UseIdleTaskOptions = {},
 ) {
     const runTask = useEffectEvent(task);
 
@@ -37,5 +38,5 @@ export function useIdleTask(
             cancelled = true;
             window.clearTimeout(timeoutId);
         };
-    }, [enabled, fallbackDelayMs, runTask, timeoutMs]);
+    }, [enabled, fallbackDelayMs, rescheduleKey, timeoutMs]);
 }

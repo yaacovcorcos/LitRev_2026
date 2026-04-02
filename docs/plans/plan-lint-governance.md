@@ -29,6 +29,7 @@ This plan does not own product behavior or `PRD.md`.
   - `npm run test:governance-tooling`
 - CI now enforces completed governance phases through `npm run governance:ci-required` inside the required `check` status:
   - `npm run governance:check`
+  - `npm run lint`
   - `npm run test:eslint-rules`
   - `npm run test:governance-tooling`
   - `npm run lint:governance:phase1`
@@ -42,7 +43,7 @@ This plan does not own product behavior or `PRD.md`.
   - `npm run lint:governance:audit`
 - The governance audit artifact remains published from the informational path, and broad warning surfaces stay visible without becoming merge blockers.
 - Governance tooling imports now come from direct devDependencies in `next-app/package.json`, not only transitive `eslint-config-next` dependencies.
-- The required governance contract remains intentionally narrower than the legacy full-repo lint baseline. Raw `npm run lint` is still an owner-managed cleanup track and must not enter the protected `check` inventory until the default baseline is intentionally reduced and the CI/runbook contract is updated in the same task.
+- The required governance contract remains phase-owned through `governance:ci-required`, and the legacy full-repo lint baseline has now been intentionally reduced to zero warnings and folded into the protected `check` inventory as its own required step.
 - Phase 1 now has explicit config slices for the governed app surface and a scripts-only logging slice, plus a stable `npm run lint:governance:phase1` verifier.
 - Phase 2 now has a dedicated `npm run lint:governance:phase2-hotspots` verifier for the `/ai` + copilot runtime surface, including `hooks/useCopilotStreamActions.ts` and the bundled async-cleanup rules for that same hot-spot slice only.
 - Phase 4 now has stable permanent verifiers for:
@@ -182,6 +183,7 @@ Shipped:
   - `npm run governance:ci-informational`
 - Required `check` status now enforces the completed governance inventory only:
   - `npm run governance:check`
+  - `npm run lint`
   - `npm run test:eslint-rules`
   - `npm run test:governance-tooling`
   - `npm run lint:governance:phase1`
@@ -199,9 +201,10 @@ Missing:
 - Nothing material for the finalized Phase 5 scope
 
 ## Active Tasks
-- [ ] Finish the remaining warning-only legacy `npm run lint` cleanup in narrow owner-mapped slices, then decide whether raw lint is trustworthy enough to fold into the protected `check` inventory with the matching CI/runbook update.
+- [x] Finish the remaining warning-only legacy `npm run lint` cleanup in narrow owner-mapped slices and fold raw lint into the protected `check` inventory with the matching CI/runbook update.
 
 ## Recently Completed
+- [x] Closed the raw-lint cleanup track by removing the last warning-only baseline in `/ai`, copilot hooks, draft route helpers, `ProjectDataContext`, and shared hooks/components, then promoted `npm run lint` into the required `check` workflow and updated the runbook/current-state docs in the same task.
 - [x] Reduced the default raw lint baseline from `126` errors / `112` warnings to `0` errors / `40` warnings through narrow owner-mapped cleanup slices, including the ESLint-config anonymous-default-export wave and the first low-signal unused-vars burndown, without broadening the protected `check` contract prematurely.
 - [x] Removed stale governance suppressions and typed away the perf-probe `window as any` access that were polluting the informational baseline without adding real policy signal.
 - [x] Completed LG-006 by introducing the stable `lint:governance:logging` verifier for server/runtime raw-console governance, cleaning the governed `lib/server/**`, `app/actions/**`, and `app/api/**` surface onto `@/lib/server/logging`, and rolling that verifier into the required `governance:ci-required` inventory without broadening the policy to UI/client logging.
@@ -223,7 +226,7 @@ Missing:
 - Pair rule rollout with code cleanup in the same task whenever the rule is intended to become actionable.
 - Keep effect-discipline rollout split into mechanical and semantic waves.
 - Do not treat a phase as complete just because its rules exist; the phase is complete only when the intended cleanup/tuning and enforcement posture are also complete.
-- Do not promote the full `npm run lint` baseline to required CI until the broader repo baseline is intentionally cleaned or waived.
+- Keep the raw-lint step in `check` as a required repo-baseline gate now that the default baseline is intentionally clean; future waivers should be explicit owner decisions, not accidental drift.
 
 ## Phase 4 Selective Strictness Decision Matrix
 
