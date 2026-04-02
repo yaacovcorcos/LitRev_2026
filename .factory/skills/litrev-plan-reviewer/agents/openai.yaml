@@ -1,0 +1,4 @@
+interface:
+  display_name: "LitRev Plan Reviewer"
+  short_description: "Critically review LitRev implementation and governance plans against current repo truth, canonical owner docs, and plan-governance rules."
+  default_prompt: "Use $litrev-plan-reviewer to review this LitRev plan critically against the current repo, active owner docs, and the correct governance/runtime/UI/DB/release contracts."
