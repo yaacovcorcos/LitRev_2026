@@ -6,7 +6,7 @@ import {
     loadProtocolData,
     loadProtocolStorageEntry,
     saveProtocolStorageEntry,
-} from "@/lib/protocolStorage";
+} from "@/lib/protocol-storage";
 
 const PROJECT_ID = "proj-protocol-storage";
 const STORAGE_KEY = `litrev_protocol_v2:${PROJECT_ID}`;
