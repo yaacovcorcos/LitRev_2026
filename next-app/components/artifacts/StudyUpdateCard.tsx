@@ -41,7 +41,7 @@ export function StudyUpdateCard({ payload, status = "proposed", onAccept, onReje
         <>
             <div className={styles.studyUpdateHeader}>
                 <div className={styles.studyUpdateTitle}>
-                    Proposed edits to "{payload.studyTitle}"
+                    Proposed edits to &ldquo;{payload.studyTitle}&rdquo;
                 </div>
                 <p className={styles.studyUpdateRationale}>
                     {payload.rationale}
