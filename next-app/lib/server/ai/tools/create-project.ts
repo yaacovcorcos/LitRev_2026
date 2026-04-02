@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AITool, ToolExecutionContext } from "./base";
+import type { AITool } from "./base";
 import { createProject } from "@/lib/server/projects";
 
 const inputSchema = z.object({
@@ -51,7 +51,7 @@ export const createProjectTool: AITool = {
         hardCap: 2,
     },
 
-    async execute(args: Record<string, unknown>, _context?: ToolExecutionContext) {
+    async execute(args: Record<string, unknown>) {
         const name = (args.name as string)?.trim();
         const description = (args.description as string | undefined)?.trim();
         const approved = args.approved === true;

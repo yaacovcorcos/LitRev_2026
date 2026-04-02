@@ -430,7 +430,7 @@ describe("AIService scoping runtime", () => {
           actualModel: "gpt-5.2",
         };
       })
-      .mockImplementationOnce(async function* (_messages: Array<{ role: string; content: string }>) {
+      .mockImplementationOnce(async function* () {
         yield { type: "content", content: "I stayed broad first and synthesized the strongest direction." };
         yield {
           type: "done",

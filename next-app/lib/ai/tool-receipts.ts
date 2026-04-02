@@ -47,10 +47,6 @@ function isSearchToolName(toolName: string | undefined): toolName is SearchToolN
   return typeof toolName === "string" && toolName in SEARCH_TOOL_LABELS;
 }
 
-function getSearchToolLabel(toolName: string | undefined): string | null {
-  return isSearchToolName(toolName) ? SEARCH_TOOL_LABELS[toolName] : null;
-}
-
 function formatSearchResultIdentifier(toolName: SearchToolName, value: Record<string, unknown>): string | null {
   const pmid = typeof value.pmid === "string" ? value.pmid.trim() : "";
   const doi = typeof value.doi === "string" ? value.doi.trim() : "";

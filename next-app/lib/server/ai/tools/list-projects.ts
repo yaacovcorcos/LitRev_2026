@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AITool, ToolExecutionContext } from "./base";
+import type { AITool } from "./base";
 import { listProjects } from "@/lib/server/projects";
 import { prisma } from "@/lib/server/prisma";
 
@@ -44,7 +44,7 @@ export const listProjectsTool: AITool = {
         allowedRange: [2, 4],
     },
 
-    async execute(args: Record<string, unknown>, _context?: ToolExecutionContext) {
+    async execute(args: Record<string, unknown>) {
         const query = (args.query as string | undefined)?.trim().toLowerCase();
 
         try {

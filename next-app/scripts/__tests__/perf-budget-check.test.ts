@@ -208,8 +208,6 @@ describe("perf-budget-check", () => {
 
   it("passes with distinct valid artifacts in warn mode", () => {
     const cwd = createTempDir();
-    const budgetPath = path.join(cwd, "budget.json");
-    const baselinePath = path.join(cwd, "baseline.json");
     const resultsPath = path.join(cwd, "results.json");
     const logger = createLogger();
 
@@ -238,7 +236,6 @@ describe("perf-budget-check", () => {
 
   it("fails in enforce mode when regressions exceed the configured limit", () => {
     const cwd = createTempDir();
-    const budgetPath = path.join(cwd, "budget.json");
     const baselinePath = path.join(cwd, "baseline.json");
     const resultsPath = path.join(cwd, "results.json");
     const logger = createLogger();

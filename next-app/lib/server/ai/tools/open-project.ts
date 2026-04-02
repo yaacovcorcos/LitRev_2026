@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AITool, ToolExecutionContext } from "./base";
+import type { AITool } from "./base";
 import { listProjects, getProject } from "@/lib/server/projects";
 
 const VALID_PAGES = ["overview", "protocol", "ledger", "draft"] as const;
@@ -52,7 +52,7 @@ export const openProjectTool: AITool = {
         allowedRange: [1, 3],
     },
 
-    async execute(args: Record<string, unknown>, _context?: ToolExecutionContext) {
+    async execute(args: Record<string, unknown>) {
         const projectId = args.projectId as string | undefined;
         const name = (args.name as string | undefined)?.trim();
         const page = args.page as string | undefined;

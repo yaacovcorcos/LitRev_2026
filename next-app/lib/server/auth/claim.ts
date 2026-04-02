@@ -443,6 +443,7 @@ export async function claimLegacySingleUserData(params: {
 
   claimedUsers.add(userId);
 
-  const { debug: _debug, ...publicResult } = result;
+  const { debug, ...publicResult } = result;
+  void debug;
   return publicResult;
 }
