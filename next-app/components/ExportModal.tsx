@@ -82,7 +82,10 @@ export function ExportModal({
 
   useEffect(() => {
     if (!isOpen) {
-      resetState();
+      const timer = window.setTimeout(() => {
+        resetState();
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
   }, [isOpen, resetState]);
 
@@ -227,14 +230,25 @@ export function ExportModal({
                     </span>
                   </div>
                   <div className={styles.exportActions}>
-                    <a
-                      href={displayExport.publicUrl || displayExport.storagePath}
-                      download={displayExport.filename}
-                      className={styles.downloadBtn}
-                    >
-                      <span className="material-icons-round">download</span>
-                      Download
-                    </a>
+                    {displayExport.downloadUrl ? (
+                      <a
+                        href={displayExport.downloadUrl}
+                        download={displayExport.filename}
+                        className={styles.downloadBtn}
+                      >
+                        <span className="material-icons-round">download</span>
+                        Download
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        className={styles.downloadBtn}
+                        disabled
+                      >
+                        <span className="material-icons-round">download</span>
+                        Download Unavailable
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -295,15 +309,27 @@ export function ExportModal({
                           </span>
                         </div>
                         <div className={styles.historyActions}>
-                          <a
-                            href={file.publicUrl || file.storagePath}
-                            download={file.filename}
-                            className={styles.historyBtn}
-                            aria-label="Download export"
-                            title="Download"
-                          >
-                            <span className="material-icons-round">download</span>
-                          </a>
+                          {file.downloadUrl ? (
+                            <a
+                              href={file.downloadUrl}
+                              download={file.filename}
+                              className={styles.historyBtn}
+                              aria-label="Download export"
+                              title="Download"
+                            >
+                              <span className="material-icons-round">download</span>
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              className={styles.historyBtn}
+                              disabled
+                              aria-label="Download unavailable"
+                              title="Download unavailable"
+                            >
+                              <span className="material-icons-round">download</span>
+                            </button>
+                          )}
                           {file.publicUrl && (
                             <button
                               type="button"

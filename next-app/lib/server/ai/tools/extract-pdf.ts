@@ -128,8 +128,17 @@ export const extractPdfTool: AITool = {
 
             // Find the associated PDF FileAsset
             const file = await prisma.fileAsset.findFirst({
-                where: { studyId, mimeType: "application/pdf" },
-                select: { storagePath: true },
+                where: { studyId, projectId, mimeType: "application/pdf" },
+                select: {
+                    id: true,
+                    projectId: true,
+                    studyId: true,
+                    kind: true,
+                    filename: true,
+                    mimeType: true,
+                    storagePath: true,
+                    publicUrl: true,
+                },
                 orderBy: { createdAt: "desc" },
             });
 
@@ -140,7 +149,7 @@ export const extractPdfTool: AITool = {
             if (deep) {
                 // Deep analysis
                 const result = await deepAnalyzeStudyFromPdf(
-                    file.storagePath,
+                    file,
                     { title: study.title, authors: study.authors, details: details as Record<string, unknown> },
                     projectId
                 );
@@ -187,7 +196,8 @@ export const extractPdfTool: AITool = {
                 };
             } else {
                 // Quick extraction
-                const result = await extractStudyFromPdf(file.storagePath, projectId);
+                const result = await extractStudyFromPdf(file, projectId);
+
 
                 if (!result.success) {
                     return { callId: "", result: null, error: result.error || "Extraction failed" };

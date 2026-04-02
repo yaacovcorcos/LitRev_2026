@@ -158,7 +158,13 @@ describe("study-processing", () => {
     });
     mocks.fileFindUnique.mockResolvedValue({
       id: "file-1",
-      storagePath: "bucket/study.pdf",
+      projectId: "project-1",
+      studyId: "study-1",
+      kind: "source",
+      filename: "study.pdf",
+      mimeType: "application/pdf",
+      storagePath: "study-assets/projects/project-1/studies/study-1/study.pdf",
+      publicUrl: "https://example.com/study.pdf",
     });
     mocks.extractStudyFromPdf.mockResolvedValue({
       success: true,

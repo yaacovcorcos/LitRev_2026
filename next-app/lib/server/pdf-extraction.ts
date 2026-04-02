@@ -10,6 +10,7 @@ import {
 } from "./pdf-extraction-prompts";
 import type { StudyDetails, StudyType } from "@/types/ledger";
 import { extractHeaderWithGrobid, type GrobidHeaderExtraction } from "./grobid";
+import { fetchFileAssetBytes, type FileAssetStorageRecord } from "./file-storage";
 
 // Constants
 const MAX_PDF_SIZE_MB = 50;
@@ -18,10 +19,6 @@ const MAX_TEXT_CHARS = 40000; // ~10k tokens
 const AI_TIMEOUT_MS = 30000;
 const QUICK_EXTRACT_MODEL = "grok-4-1-fast";
 const DEEP_ANALYSIS_MODEL = "grok-4-1-fast";
-
-// Environment variables (server-only)
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Types
 export type ConfidenceLevel = "high" | "medium" | "low";
@@ -76,38 +73,31 @@ function hasGrobidMetadata(result: GrobidHeaderExtraction | null): boolean {
     );
 }
 
-/**
- * Fetch PDF from Supabase storage using storagePath + service role key
- */
-export async function fetchPdfFromStorage(storagePath: string): Promise<Buffer> {
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-        throw new ExtractionError(
-            "CONFIG_ERROR",
-            "Missing Supabase configuration (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY)"
-        );
-    }
-
-    const encodedPath = storagePath.split("/").map(encodeURIComponent).join("/");
-    const url = `${SUPABASE_URL}/storage/v1/object/${encodedPath}`;
-
-    const response = await fetch(url, {
-        headers: {
-            Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        },
-    });
-
-    if (!response.ok) {
-        if (response.status === 404) {
-            throw new ExtractionError("FILE_NOT_FOUND", "PDF file not found in storage");
+export async function fetchPdfFromFileAsset(
+    file: FileAssetStorageRecord,
+    projectId: string
+): Promise<Buffer> {
+    try {
+        return await fetchFileAssetBytes(file, {
+            projectId,
+            studyId: file.studyId ?? null,
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to fetch PDF";
+        if (message === "PDF file not found in storage") {
+            throw new ExtractionError("FILE_NOT_FOUND", message);
         }
-        throw new ExtractionError(
-            "STORAGE_ERROR",
-            `Failed to fetch PDF: ${response.status} ${response.statusText}`
-        );
+        if (message.includes("Missing Supabase configuration")) {
+            throw new ExtractionError("CONFIG_ERROR", message);
+        }
+        if (
+            message === "Invalid file storage location." ||
+            message === "Demo file is missing a readable public URL."
+        ) {
+            throw new ExtractionError("STORAGE_ERROR", message);
+        }
+        throw new ExtractionError("STORAGE_ERROR", message);
     }
-
-    const arrayBuffer = await response.arrayBuffer();
-    return Buffer.from(arrayBuffer);
 }
 
 /**
@@ -429,14 +419,14 @@ export async function deepAnalyzeWithAI(
  * Stage 1 orchestrator: Quick extraction (regex + fast AI)
  */
 export async function extractStudyFromPdf(
-    storagePath: string,
+    file: FileAssetStorageRecord,
     projectId: string
 ): Promise<ExtractionResult> {
     try {
-        const pdfBuffer = await fetchPdfFromStorage(storagePath);
+        const pdfBuffer = await fetchPdfFromFileAsset(file, projectId);
         const grobidPromise = extractHeaderWithGrobid(pdfBuffer).catch((error) => {
             logServerWarn("pdf-extraction", "grobid header extraction failed", {
-                storagePath,
+                fileAssetId: file.id,
             }, error);
             return null;
         });
@@ -493,7 +483,7 @@ export async function extractStudyFromPdf(
                         error instanceof Error ? error.message : "Unknown AI extraction error"
                     );
                 logServerWarn("pdf-extraction", "ai quick extraction failed", {
-                    storagePath,
+                    fileAssetId: file.id,
                     reason: aiFailure.message,
                 });
             }
@@ -575,12 +565,12 @@ export async function extractStudyFromPdf(
  * Stage 2 orchestrator: Deep analysis (fetches PDF, runs deep AI)
  */
 export async function deepAnalyzeStudyFromPdf(
-    storagePath: string,
+    file: FileAssetStorageRecord,
     existingStudy: { title: string; authors: string; details?: Partial<StudyDetails> },
     projectId: string
 ): Promise<DeepAnalysisResult> {
     try {
-        const pdfBuffer = await fetchPdfFromStorage(storagePath);
+        const pdfBuffer = await fetchPdfFromFileAsset(file, projectId);
         const text = await extractTextFromPdf(pdfBuffer);
 
         if (!text || text.length < 100) {

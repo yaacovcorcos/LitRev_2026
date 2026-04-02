@@ -44,7 +44,14 @@ describe("study direct-edit tools", () => {
             updatedAt: new Date("2026-01-10T00:00:00.000Z"),
         } as never);
         mockFindFile.mockResolvedValue({
-            storagePath: "study-pdfs/project-1/study-1.pdf",
+            id: "file-1",
+            projectId: "proj-1",
+            studyId: "study-1",
+            kind: "source",
+            filename: "study.pdf",
+            mimeType: "application/pdf",
+            storagePath: "study-assets/projects/proj-1/studies/study-1/study.pdf",
+            publicUrl: "https://example.com/study.pdf",
         } as never);
     });
 

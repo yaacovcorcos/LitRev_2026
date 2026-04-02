@@ -3,15 +3,13 @@
 import { z } from "zod";
 import type { FileAsset } from "@/types/files";
 import type { Study } from "@/types/ledger";
-import type { FileAssetInput } from "@/lib/server/files";
-import { createFileAsset, deleteFileAsset, listProjectFiles, listStudyFiles, uploadStudyFile, importStudyWithPdf, uploadChatAttachment, extractTextFromExistingFile } from "@/lib/server/files";
+import { deleteFileAsset, listProjectFiles, listStudyFiles, uploadStudyFile, importStudyWithPdf, uploadChatAttachment, extractTextFromExistingFile } from "@/lib/server/files";
 import { getStudy } from "@/lib/server/ledger";
 import { enqueueStudyProcessingJob, kickStudyProcessingDispatcher } from "@/lib/server/study-processing";
 import { classifyError, sanitizeErrorMessage, withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
 import { logServerError } from "@/lib/server/logging";
 import { projectIdSchema, studyIdSchema, resourceIdSchema } from "@/lib/schemas/ids";
-import { fileAssetInputSchema } from "@/lib/schemas/files";
 
 type FilesActionErrorCode =
   | "ACCESS_DENIED"
@@ -90,19 +88,6 @@ export async function listStudyFilesAction(projectId: string, studyId: string): 
   return withValidatedAction(listStudyFilesInput, { projectId, studyId },
     (v) => withAuth(({ userId, workspaceId }) =>
       listStudyFiles({ ownerId: userId, workspaceId }, v.projectId, v.studyId),
-    ),
-  );
-}
-
-const createFileAssetInput = z.object({
-  projectId: projectIdSchema,
-  input: fileAssetInputSchema,
-});
-
-export async function createFileAssetAction(projectId: string, input: FileAssetInput): Promise<ActionResult<FileAsset>> {
-  return withValidatedAction(createFileAssetInput, { projectId, input },
-    (v) => withAuth(({ userId, workspaceId }) =>
-      createFileAsset({ ownerId: userId, workspaceId }, v.projectId, v.input as FileAssetInput),
     ),
   );
 }

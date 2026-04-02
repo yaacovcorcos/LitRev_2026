@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
-import { fetchPdfFromStorage, extractTextFromPdf } from "@/lib/server/pdf-extraction";
+import { fetchPdfFromFileAsset, extractTextFromPdf } from "@/lib/server/pdf-extraction";
 import { extractFulltextWithGrobid, type GrobidSectionKey } from "@/lib/server/grobid";
 import { logServerWarn } from "@/lib/server/logging";
 
@@ -122,8 +122,17 @@ export const readStudyContentTool: AITool = {
 
             // Find the associated PDF
             const file = await prisma.fileAsset.findFirst({
-                where: { studyId, mimeType: "application/pdf" },
-                select: { storagePath: true },
+                where: { studyId, projectId, mimeType: "application/pdf" },
+                select: {
+                    id: true,
+                    projectId: true,
+                    studyId: true,
+                    kind: true,
+                    filename: true,
+                    mimeType: true,
+                    storagePath: true,
+                    publicUrl: true,
+                },
                 orderBy: { createdAt: "desc" },
             });
 
@@ -132,7 +141,7 @@ export const readStudyContentTool: AITool = {
             }
 
             // Fetch and parse PDF
-            const buffer = await fetchPdfFromStorage(file.storagePath);
+            const buffer = await fetchPdfFromFileAsset(file, projectId);
             const grobidPromise = extractFulltextWithGrobid(buffer).catch((error) => {
                 logServerWarn("read_study_content", "grobid fulltext extraction failed", {
                     studyId,

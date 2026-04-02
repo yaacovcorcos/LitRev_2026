@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   withAuth: vi.fn(),
-  createFileAsset: vi.fn(),
   deleteFileAsset: vi.fn(),
   listProjectFiles: vi.fn(),
   listStudyFiles: vi.fn(),
@@ -22,7 +21,6 @@ vi.mock("@/lib/server/auth/session", () => ({
 }));
 
 vi.mock("@/lib/server/files", () => ({
-  createFileAsset: (...args: unknown[]) => mocks.createFileAsset(...args),
   deleteFileAsset: (...args: unknown[]) => mocks.deleteFileAsset(...args),
   listProjectFiles: (...args: unknown[]) => mocks.listProjectFiles(...args),
   listStudyFiles: (...args: unknown[]) => mocks.listStudyFiles(...args),
@@ -92,8 +90,8 @@ describe("files actions", () => {
         filename: "study.pdf",
         mimeType: "application/pdf",
         size: 123,
-        storagePath: "study-assets/projects/project-1/studies/study-1/file-1-study.pdf",
         publicUrl: "https://example.test/study.pdf",
+        downloadUrl: "https://example.test/study.pdf",
         version: 1,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -135,8 +133,8 @@ describe("files actions", () => {
         filename: "study.pdf",
         mimeType: "application/pdf",
         size: 123,
-        storagePath: "study-assets/projects/project-1/studies/study-1/file-1-study.pdf",
         publicUrl: "https://example.test/study.pdf",
+        downloadUrl: "https://example.test/study.pdf",
         version: 1,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -174,8 +172,8 @@ describe("files actions", () => {
         filename: "study.pdf",
         mimeType: "application/pdf",
         size: 123,
-        storagePath: "study-assets/projects/project-1/studies/study-1/file-1-study.pdf",
         publicUrl: "https://example.test/study.pdf",
+        downloadUrl: "https://example.test/study.pdf",
         version: 1,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

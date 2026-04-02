@@ -9,8 +9,8 @@ export type FileAsset = {
   filename: string;
   mimeType: string;
   size: number;
-  storagePath: string;
   publicUrl?: string;
+  downloadUrl?: string;
   version: number;
   metadata?: Record<string, unknown>;
   createdAt: string;

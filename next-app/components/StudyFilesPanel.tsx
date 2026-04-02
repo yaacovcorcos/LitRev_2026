@@ -225,15 +225,27 @@ export function StudyFilesPanel({
                     <span className="material-icons-round">open_in_new</span>
                   </a>
                 )}
-                <a
-                  href={file.publicUrl || file.storagePath}
-                  download={file.filename}
-                  className={styles.actionBtn}
-                  aria-label="Download file"
-                  title="Download"
-                >
-                  <span className="material-icons-round">download</span>
-                </a>
+                {file.downloadUrl ? (
+                  <a
+                    href={file.downloadUrl}
+                    download={file.filename}
+                    className={styles.actionBtn}
+                    aria-label="Download file"
+                    title="Download"
+                  >
+                    <span className="material-icons-round">download</span>
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.actionBtn}
+                    disabled
+                    aria-label="Download unavailable"
+                    title="Download unavailable"
+                  >
+                    <span className="material-icons-round">download</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   className={`${styles.actionBtn} ${styles.deleteBtn}`}
