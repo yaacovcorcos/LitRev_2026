@@ -54,7 +54,7 @@ export function getToolAutonomyLevel(
 
     // Check tool-specific override first
     if (overrides[toolName] !== undefined) {
-        let level = overrides[toolName] as AutonomyLevel;
+        const level = overrides[toolName] as AutonomyLevel;
         return applyHardCap(toolName, level);
     }
 
@@ -62,7 +62,7 @@ export function getToolAutonomyLevel(
     const preset = config.preset as AutonomyPreset;
     const presetLevels = PRESET_LEVELS[preset] ?? PRESET_LEVELS.assisted;
     const tool = getTool(toolName);
-    let level = (presetLevels[toolName] ?? tool?.autonomy?.defaultLevel ?? 2) as AutonomyLevel;
+    const level = (presetLevels[toolName] ?? tool?.autonomy?.defaultLevel ?? 2) as AutonomyLevel;
 
     return applyHardCap(toolName, level);
 }

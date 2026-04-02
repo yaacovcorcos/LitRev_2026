@@ -413,7 +413,7 @@ export async function getRunLineage(runId: string): Promise<RunLineageNode | nul
         });
     }
 
-    let root = byId.get(rootId) ?? null;
+    const root = byId.get(rootId) ?? null;
     if (!root) {
         return null;
     }
