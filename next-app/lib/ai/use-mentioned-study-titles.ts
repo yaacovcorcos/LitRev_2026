@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchCitationMetadata } from "@/app/actions/citation";
 import { loadCitationMetadataWithClientCache } from "@/lib/citation-preview-cache";
 import { resolveCitationKey } from "@/lib/citation-key";
@@ -22,27 +22,31 @@ function resolveHydrationUrl(study: MentionedStudy): string | null {
 export function useMentionedStudyTitles(mentions: MentionedStudy[]): Record<string, string> {
     const [hydratedTitles, setHydratedTitles] = useState<Record<string, string>>({});
     const attemptedKeysRef = useRef<Set<string>>(new Set());
+    const activeKeys = useMemo(
+        () => new Set(mentions.map((study) => study.key)),
+        [mentions],
+    );
 
     useEffect(() => {
-        const activeKeys = new Set(mentions.map((study) => study.key));
-
         attemptedKeysRef.current = new Set(
             [...attemptedKeysRef.current].filter((key) => activeKeys.has(key))
         );
+    }, [activeKeys]);
 
-        setHydratedTitles((prev) => {
-            const nextEntries = Object.entries(prev).filter(([key]) => activeKeys.has(key));
-            if (nextEntries.length === Object.keys(prev).length) return prev;
-            return Object.fromEntries(nextEntries);
-        });
-    }, [mentions]);
+    const visibleHydratedTitles = useMemo(
+        () =>
+            Object.fromEntries(
+                Object.entries(hydratedTitles).filter(([key]) => activeKeys.has(key)),
+            ),
+        [activeKeys, hydratedTitles],
+    );
 
     useEffect(() => {
         let cancelled = false;
 
         for (const study of mentions) {
             if (study.title) continue;
-            if (hydratedTitles[study.key]) continue;
+            if (visibleHydratedTitles[study.key]) continue;
             if (attemptedKeysRef.current.has(study.key)) continue;
 
             const url = resolveHydrationUrl(study);
@@ -69,7 +73,7 @@ export function useMentionedStudyTitles(mentions: MentionedStudy[]): Record<stri
         return () => {
             cancelled = true;
         };
-    }, [hydratedTitles, mentions]);
+    }, [mentions, visibleHydratedTitles]);
 
-    return hydratedTitles;
+    return visibleHydratedTitles;
 }
