@@ -235,12 +235,13 @@ function ProjectCopilotRuntime({
     );
 
     useEffect(() => {
+        const abortController = abortControllerRef.current;
         return () => {
             if (saveTimerRef.current) {
                 clearTimeout(saveTimerRef.current);
             }
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
+            if (abortController) {
+                abortController.abort();
             }
         };
     }, []);
@@ -703,6 +704,7 @@ function ProjectCopilotRuntime({
             removeAttachedContextTarget,
             clearAttachedContextTargets,
             recordContextHistory,
+            projectId,
             prefillCommand,
             queuePrefillCommand,
             consumePrefillCommand,
@@ -715,6 +717,7 @@ function ProjectCopilotRuntime({
             autonomyPreset,
             autonomyToolOverrides,
             showAutonomySettings,
+            setShowAutonomySettings,
             updateAutonomyPreset,
             updateAutonomyOverrides,
             resetToPreset,
