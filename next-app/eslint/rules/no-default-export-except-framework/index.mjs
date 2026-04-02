@@ -1,6 +1,6 @@
 import { isFrameworkDefaultAllowedFile, isTestFile } from "../../shared.mjs";
 
-export default {
+const defaultExport = {
   meta: {
     type: "problem",
     docs: {
@@ -27,3 +27,5 @@ export default {
     };
   },
 };
+
+export default defaultExport;

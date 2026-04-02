@@ -1,7 +1,7 @@
 import path from "node:path";
 import { getExportName, isIgnoredPrimaryExportFilename } from "../../shared.mjs";
 
-export default {
+const defaultExport = {
   meta: {
     type: "suggestion",
     docs: {
@@ -44,3 +44,5 @@ export default {
     };
   },
 };
+
+export default defaultExport;

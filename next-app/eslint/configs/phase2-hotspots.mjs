@@ -41,4 +41,6 @@ export function createPhase2HotspotConfigs({
   ];
 }
 
-export default createPhase2HotspotConfigs();
+const defaultExport = createPhase2HotspotConfigs();
+
+export default defaultExport;

@@ -8,7 +8,7 @@ import {
   loadRuntimeTestImpactWaivers,
 } from "../../runtime-test-governance.mjs";
 
-export default {
+const defaultExport = {
   meta: {
     type: "suggestion",
     docs: {
@@ -51,3 +51,5 @@ export default {
     };
   },
 };
+
+export default defaultExport;

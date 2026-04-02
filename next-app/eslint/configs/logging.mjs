@@ -18,4 +18,6 @@ export function createLoggingConfigs({
   ];
 }
 
-export default createLoggingConfigs();
+const defaultExport = createLoggingConfigs();
+
+export default defaultExport;

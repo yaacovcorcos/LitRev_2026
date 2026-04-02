@@ -1,4 +1,4 @@
-export default [
+const defaultExport = [
   {
     name: "litrev/runtime-hotspots-mechanical",
     files: [
@@ -33,3 +33,5 @@ export default [
     },
   },
 ];
+
+export default defaultExport;

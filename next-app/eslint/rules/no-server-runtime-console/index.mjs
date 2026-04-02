@@ -19,7 +19,7 @@ function isAllowedLoggingHelper(filename) {
   return relativeToRoot(filename) === "lib/server/logging.ts";
 }
 
-export default {
+const defaultExport = {
   meta: {
     type: "problem",
     docs: {
@@ -44,3 +44,5 @@ export default {
     };
   },
 };
+
+export default defaultExport;

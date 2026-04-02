@@ -1,6 +1,6 @@
 import { getEffectArguments, getEffectSignals, isHotspotEffectFile, isTestFile } from "../../shared.mjs";
 
-export default {
+const defaultExport = {
   meta: {
     type: "suggestion",
     docs: {
@@ -36,3 +36,5 @@ export default {
     };
   },
 };
+
+export default defaultExport;

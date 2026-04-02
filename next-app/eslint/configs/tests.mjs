@@ -3,7 +3,7 @@ import {
   REQUIRE_RUNTIME_TEST_DOMAINS,
 } from "../runtime-test-governance.mjs";
 
-export default {
+const defaultExport = {
   name: "litrev/tests",
   files: [
     "lib/agent/**/*.ts",
@@ -25,3 +25,5 @@ export default {
     ],
   },
 };
+
+export default defaultExport;

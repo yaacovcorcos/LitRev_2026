@@ -1,4 +1,4 @@
-export default {
+const defaultExport = {
   name: "litrev/server",
   files: [
     "lib/server/**/*.ts",
@@ -10,3 +10,5 @@ export default {
     "litrev/no-server-runtime-console": "warn",
   },
 };
+
+export default defaultExport;

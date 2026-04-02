@@ -36,4 +36,6 @@ export function createPhase1Configs({
   ];
 }
 
-export default createPhase1Configs();
+const defaultExport = createPhase1Configs();
+
+export default defaultExport;

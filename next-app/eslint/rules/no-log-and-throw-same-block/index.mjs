@@ -33,7 +33,7 @@ function getExecutionOwner(node) {
   return null;
 }
 
-export default {
+const defaultExport = {
   meta: {
     type: "problem",
     docs: {
@@ -71,3 +71,5 @@ export default {
     };
   },
 };
+
+export default defaultExport;

@@ -4,7 +4,7 @@ function isParentRelativeSource(source) {
   return typeof source?.value === "string" && source.value.startsWith("../");
 }
 
-export default {
+const defaultExport = {
   meta: {
     type: "problem",
     docs: {
@@ -43,3 +43,5 @@ export default {
     };
   },
 };
+
+export default defaultExport;
