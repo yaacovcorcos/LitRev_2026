@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "@/components/ProjectGrid.module.css";
 import { openOrCreateDemoProjectAction } from "@/app/actions/demo";
@@ -8,6 +8,7 @@ import { useProjects } from "@/contexts/ProjectsContext";
 import { isDemoProject } from "@/lib/demo/constants";
 import { dismissSampleCard, isSampleCardDismissed } from "@/lib/demo/sample-card";
 import { isAuthError, redirectToLogin } from "@/lib/action-client";
+import { useHydrated } from "@/hooks/useHydrated";
 
 type SampleReviewCardProps = {
   viewMode: "grid" | "list";
@@ -16,9 +17,15 @@ type SampleReviewCardProps = {
 export function SampleReviewCard({ viewMode }: SampleReviewCardProps) {
   const { projects, refresh } = useProjects();
   const router = useRouter();
-  const [dismissed, setDismissed] = useState(() => isSampleCardDismissed());
+  const hydrated = useHydrated();
+  const [dismissed, setDismissed] = useState(false);
   const [isOpening, setIsOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    setDismissed(isSampleCardDismissed());
+  }, [hydrated]);
 
   const handleOpen = useCallback(async () => {
     setIsOpening(true);

@@ -575,6 +575,7 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
             projects={sortedProjects}
             viewMode={viewMode}
             onNewProject={openModal}
+            showSampleCard={isHydrated}
           />
         </div>
       </div>
