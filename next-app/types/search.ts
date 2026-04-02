@@ -8,7 +8,7 @@ export type SearchResult = {
   doi?: string;
   title: string;
   authors: string; // "Smith J, Doe A, Chen W"
-  year: number;
+  year?: number;
   journal?: string;
   volume?: string;
   issue?: string;

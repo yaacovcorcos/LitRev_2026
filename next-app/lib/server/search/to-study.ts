@@ -2,6 +2,14 @@ import type { SearchResult } from "@/types/search";
 import type { StudyInput } from "@/lib/utils/normalize";
 import type { StudyDetails, StudySource } from "@/types/ledger";
 
+export type SearchResultWithYear = SearchResult & { year: number };
+
+export function hasConcreteSearchResultYear(
+  result: SearchResult
+): result is SearchResultWithYear {
+  return typeof result.year === "number" && Number.isFinite(result.year);
+}
+
 /** Map SearchResult.source to the StudySource enum used in the ledger. */
 function resolveStudySource(resultSource: string): StudySource {
   switch (resultSource) {
@@ -17,7 +25,7 @@ const ALLOWED_METADATA_KEYS = ["s2PaperId", "citationCount", "influentialCitatio
 /**
  * Convert a SearchResult to a StudyInput for upsert into the ledger.
  */
-export function searchResultToStudyInput(result: SearchResult): StudyInput {
+export function searchResultToStudyInput(result: SearchResultWithYear): StudyInput {
   const details: StudyDetails = {
     source: resolveStudySource(result.source),
   };
