@@ -41,7 +41,7 @@ export function useMediaQuery(
 
         mediaQuery.addListener(syncMatches);
         return () => mediaQuery.removeListener(syncMatches);
-    }, [query, syncMatches]);
+    }, [query]);
 
     return matches;
 }

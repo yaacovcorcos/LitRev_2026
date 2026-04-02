@@ -981,7 +981,7 @@ function TimelineRendererInner({
         });
     }, []);
 
-    const renderArtifactContent = (item: TimelineArtifact) => {
+    const renderArtifactContent = useCallback((item: TimelineArtifact) => {
         const actionModel = getArtifactInlineActionModel(item.artifactType, item.status);
         const actionMap = new Map(actionModel.actions.map((action) => [action.key, action] as const));
         const isMutationBusy = pendingArtifactMutation !== null;
@@ -1308,9 +1308,21 @@ function TimelineRendererInner({
                     </ArtifactWrapper>
                 );
         }
-    };
+    }, [
+        executeArtifactMutation,
+        isConversationLoading,
+        isLoading,
+        onActionPrompt,
+        onExecutePlan,
+        onReviewArtifact,
+        onSuggestionClick,
+        onUndoArtifact,
+        pendingArtifactMutation,
+        projectId,
+        requestArtifactConfirmation,
+    ]);
 
-    const renderCheckpoint = (item: Extract<TimelineItem, { type: "checkpoint" }>, options?: { grouped?: boolean }) => {
+    const renderCheckpoint = useCallback((item: Extract<TimelineItem, { type: "checkpoint" }>, options?: { grouped?: boolean }) => {
         if (options?.grouped) {
             return (
                 <div key={item.id} className={styles.groupedCheckpoint}>
@@ -1326,9 +1338,9 @@ function TimelineRendererInner({
                 <div className={artifactStyles.checkpointLine} />
             </div>
         );
-    };
+    }, []);
 
-    const renderTimelineItem = (item: TimelineItem, index: number, options?: { grouped?: boolean }) => {
+    const renderTimelineItem = useCallback((item: TimelineItem, index: number, options?: { grouped?: boolean }) => {
         switch (item.type) {
             case "user_message":
                 return <UserMessageRow key={item.id} item={item} onCopy={handleCopy} onBranchFromMessage={onBranchFromMessage} />;
@@ -1491,9 +1503,30 @@ function TimelineRendererInner({
             default:
                 return null;
         }
-    };
+    }, [
+        handleCopy,
+        handleSaveToNotes,
+        isStreaming,
+        lastAssistantIndex,
+        onAnswerUserInput,
+        onBranchFromMessage,
+        onContinueFromDurableStateRun,
+        onInsert,
+        onReconnectRun,
+        onResumeRun,
+        onRetryLastMessage,
+        onSaveToNotes,
+        onStopAndRetryRun,
+        projectId,
+        reasoningMode,
+        renderArtifactContent,
+        renderCheckpoint,
+        savedNoteId,
+        savingNoteId,
+        suppressedProgressId,
+    ]);
 
-    const renderPresentedTimelineItem = (entry: PresentedTimelineItem, index: number, options?: { grouped?: boolean }) => {
+    const renderPresentedTimelineItem = useCallback((entry: PresentedTimelineItem, index: number, options?: { grouped?: boolean }) => {
         if (entry.kind === "single") {
             return renderTimelineItem(entry.item, index, options);
         }
@@ -1574,8 +1607,8 @@ function TimelineRendererInner({
                 ) : null}
             </div>
         );
-    };
-    const renderExecutionTraceEntry = (entry: Extract<ExecutionTraceEntry, { kind: "execution_trace" }>) => {
+    }, [expandedSequenceIds, renderTimelineItem, toggleSequenceExpanded]);
+    const renderExecutionTraceEntry = useCallback((entry: Extract<ExecutionTraceEntry, { kind: "execution_trace" }>) => {
         const presentedTraceItems = buildPresentedTimeline(entry.traceItems);
         const visibleInterstitialProgressItems = entry.interstitialProgressItems.filter(
             (progressItem) => progressItem.id !== suppressedProgressId,
@@ -1661,7 +1694,22 @@ function TimelineRendererInner({
                 ) : null}
             </div>
         );
-    };
+    }, [
+        collapsedTraceByAssistantId,
+        handleCopy,
+        handleSaveToNotes,
+        onBranchFromMessage,
+        onInsert,
+        onSaveToNotes,
+        projectId,
+        reasoningMode,
+        renderPresentedTimelineItem,
+        savedNoteId,
+        savingNoteId,
+        streamingAssistantMessageId,
+        suppressedProgressId,
+        toggleCollapsedTrace,
+    ]);
 
     const renderTimelineEntries = useMemo(() => {
         const rendered: Array<{ key: string; node: ReactNode }> = [];

@@ -206,13 +206,6 @@ export function ProjectDataProvider({
         []
     );
 
-    const scheduleProtocolSave = useCallback((delayMs = PROTOCOL_SAVE_DEBOUNCE_MS) => {
-        clearProtocolSaveTimer();
-        saveTimerRef.current = setTimeout(() => {
-            void flushProtocolSave();
-        }, delayMs);
-    }, [clearProtocolSaveTimer]);
-
     const flushProtocolSave = useCallback(async (): Promise<boolean> => {
         clearProtocolSaveTimer();
 
@@ -310,10 +303,20 @@ export function ProjectDataProvider({
             saveInFlightRef.current = false;
             if (resaveAfterCurrentRef.current && !pendingPatchRef.current) {
                 resaveAfterCurrentRef.current = false;
-                scheduleProtocolSave(0);
+                clearProtocolSaveTimer();
+                saveTimerRef.current = setTimeout(() => {
+                    void flushProtocolSave();
+                }, 0);
             }
         }
-    }, [clearProtocolSaveTimer, scheduleProtocolSave]);
+    }, [clearProtocolSaveTimer]);
+
+    const scheduleProtocolSave = useCallback((delayMs = PROTOCOL_SAVE_DEBOUNCE_MS) => {
+        clearProtocolSaveTimer();
+        saveTimerRef.current = setTimeout(() => {
+            void flushProtocolSave();
+        }, delayMs);
+    }, [clearProtocolSaveTimer, flushProtocolSave]);
 
     const applyIncomingProtocolPatch = useCallback(
         (patch: ProtocolArtifactPatch, options?: { forceResync?: boolean }) => {

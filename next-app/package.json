@@ -38,7 +38,7 @@
     "memory:warmup": "tsx scripts/warmup-memory-embeddings.ts",
     "memory:validate": "tsx scripts/validate-memory-rollout.ts",
     "governance:check": "node scripts/check-governance-docs.mjs --mode=${GOVERNANCE_CHECK_MODE:-enforce}",
-    "governance:ci-required": "npm run governance:check && npm run test:eslint-rules && npm run test:governance-tooling && npm run lint:governance:phase1 && npm run lint:governance:phase2-hotspots && npm run lint:governance:phase3-searchability && npm run lint:governance:phase4-policy && npm run lint:governance:logging && npm run check:runtime-test-impact",
+    "governance:ci-required": "npm run governance:check && npm run lint && npm run test:eslint-rules && npm run test:governance-tooling && npm run lint:governance:phase1 && npm run lint:governance:phase2-hotspots && npm run lint:governance:phase3-searchability && npm run lint:governance:phase4-policy && npm run lint:governance:logging && npm run check:runtime-test-impact",
     "governance:ci-informational": "npm run lint:governance && npm run lint:governance:audit > governance-audit.json",
     "citation:report": "tsx scripts/report-citation-preview-metrics.ts",
     "citation:smoke": "tsx scripts/smoke-citation-providers.ts",

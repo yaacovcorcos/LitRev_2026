@@ -52,10 +52,13 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
 - CI publishes the required `check` status on pushes to `main` and `YY/**`.
 - CI also runs on PRs targeting `main` when the PR event itself triggers workflows normally.
 - `YY/**` push CI is the branch-protection backstop for auto-created PRs, so the required `check` must not depend only on the PR event path.
+- Raw repo lint is now a required part of `check`:
+  - `npm run lint`
 - The required governance portion of `check` is reproduced locally by `cd next-app && npm run governance:ci-required`.
 - The informational governance reporting portion of `check` is reproduced locally by `cd next-app && npm run governance:ci-informational`.
 - `governance:ci-required` is the frozen phase-owned governance inventory:
   - `npm run governance:check`
+  - `npm run lint`
   - `npm run test:eslint-rules`
   - `npm run test:governance-tooling`
   - `npm run lint:governance:phase1`

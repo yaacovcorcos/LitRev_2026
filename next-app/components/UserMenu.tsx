@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { clearAllContextCaptureHistory } from "@/lib/context-capture/history";
@@ -83,11 +84,14 @@ export function UserMenu({ collapsed = false }: UserMenuProps) {
       >
         <span className={styles.avatar} aria-hidden="true">
           {user?.image ? (
-            <img
+            <Image
               src={user.image}
               alt=""
+              width={28}
+              height={28}
               className={styles.avatarImg}
               referrerPolicy="no-referrer"
+              unoptimized
             />
           ) : (
             initials

@@ -379,7 +379,7 @@ export default function AIView() {
     if (typeof window === "undefined") return;
     performance.mark(`${AI_ROUTE_MEASURE}:start`);
     window.__litrevAiPerf = {
-      activeConversationId: activeConversationId ?? null,
+      activeConversationId: activeConversationIdRef.current ?? null,
     };
   }, []);
 
@@ -587,6 +587,7 @@ export default function AIView() {
     enabled: !selectedProjectId && isComposerReady && !workspaceContextText,
     timeoutMs: 1500,
     fallbackDelayMs: 250,
+    rescheduleKey: historyScopeKey,
   });
 
   useIdleTask(() => {
@@ -595,6 +596,7 @@ export default function AIView() {
     enabled: isComposerReady && historyLoadedScopeRef.current !== historyScopeKey,
     timeoutMs: 1200,
     fallbackDelayMs: 150,
+    rescheduleKey: historyScopeKey,
   });
 
   useEffect(() => {
@@ -625,7 +627,7 @@ export default function AIView() {
     setPrefillCommand(null);
     setQueuedFollowUp(null);
     setIsConversationLoading(false);
-  }, [activateConversation, selectedProjectId]);
+  }, [selectedProjectId]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const selectedScopeLabel = selectedProject
@@ -639,7 +641,10 @@ export default function AIView() {
     () => (isHistoryCollapsed ? [] : groupConversationsByDate(conversations)),
     [conversations, isHistoryCollapsed]
   );
-  const activeTimeline = activeConversationId ? (timelineByConversation[activeConversationId] ?? []) : [];
+  const activeTimeline = useMemo(
+    () => (activeConversationId ? (timelineByConversation[activeConversationId] ?? []) : []),
+    [activeConversationId, timelineByConversation],
+  );
   const { activeProgress, suppressedProgressId } = useMemo(
     () => selectActiveProgress(normalizeTimelineProgressItems(activeTimeline)),
     [activeTimeline],
@@ -893,7 +898,7 @@ export default function AIView() {
     activateConversation(id);
     updateConversationTimeline(id, () => []);
     return id;
-  }, [activeConversationId, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
+  }, [activeConversationId, activateConversation, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleSelectConversation = useCallback(async (id: string) => {
     if (mobileAiV2Enabled && isPhoneViewport) {
@@ -922,7 +927,7 @@ export default function AIView() {
     } finally {
       setIsConversationLoading(false);
     }
-  }, [isPhoneViewport, mobileAiV2Enabled, timelineByConversation, updateConversationTimeline]);
+  }, [activateConversation, isPhoneViewport, mobileAiV2Enabled, timelineByConversation, updateConversationTimeline]);
 
   useEffect(() => {
     if (historyLoadedScopeRef.current !== historyScopeKey) return;
@@ -1026,7 +1031,7 @@ export default function AIView() {
         activateConversation(null);
       }
     }
-  }, [activeConversationId, handleSelectConversation]);
+  }, [activeConversationId, activateConversation, handleSelectConversation]);
 
   const handleBranchConversation = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1062,7 +1067,7 @@ export default function AIView() {
     } finally {
       setBranchingConversationId(null);
     }
-  }, [branchingConversationId, branchingMessageId, isTyping, cancelStream, sortConversationsByUpdatedAt, updateConversationTimeline]);
+  }, [activateConversation, branchingConversationId, branchingMessageId, isTyping, cancelStream, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleBranchFromMessage = useCallback(async (messageId: string, createdAt: string) => {
     const sourceConversationId = activeConversationId;
@@ -1104,6 +1109,7 @@ export default function AIView() {
     }
   }, [
     activeConversationId,
+    activateConversation,
     branchingConversationId,
     branchingMessageId,
     isTyping,
@@ -1231,7 +1237,7 @@ export default function AIView() {
     } finally {
       setIsCompressing(false);
     }
-  }, [activeConversationId, isCompressing, isTyping, cancelStream, sortConversationsByUpdatedAt, updateConversationTimeline]);
+  }, [activeConversationId, activateConversation, isCompressing, isTyping, cancelStream, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleNewChat = useCallback(async () => {
     emitMobileActionTap("ai_new_chat", 44);
@@ -1263,7 +1269,7 @@ export default function AIView() {
     setPendingChoices([]);
     setPendingUserInput(null);
     setPrefillCommand(null);
-  }, [emitMobileActionTap, isPhoneViewport, mobileAiV2Enabled, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
+  }, [activateConversation, emitMobileActionTap, isPhoneViewport, mobileAiV2Enabled, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleSend = useCallback(async (
     rawText: string,
@@ -1775,7 +1781,6 @@ export default function AIView() {
     reasoningMode,
     handleNavigate,
     clearRecoverableAiEntry,
-    progressiveAnswerStreamingEnabled,
     markRecoverableAiEntry,
 
     workspaceContextText,
@@ -1786,6 +1791,10 @@ export default function AIView() {
     upsertConversationTitle,
     updateConversationTimeline,
     sortConversationsByUpdatedAt,
+    appendRecoveryCheckpoint,
+    appendRecoveryTimelineError,
+    handleRunIntent,
+    setPendingUserInputWithRestore,
   ]);
 
   const handleAnswerUserInput = useCallback((
@@ -2050,8 +2059,6 @@ export default function AIView() {
       : `ai-plan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let runStatus: string | null = null;
     let terminalReason: StreamTerminalReason | null = null;
-    let actualModel: string | null = null;
-    let actualModelSource: "provider" | "requested" | "unknown" = "unknown";
     let unresolvedCountBeforeClear: number | null = null;
     let unresolvedCountAfterClear: number | null = null;
     let firstVisibleContentMs: number | null = null;
@@ -2182,8 +2189,6 @@ export default function AIView() {
       convId = runtime.getConversationId();
       runStatus = summary.runStatus;
       terminalReason = summary.terminalReason;
-      actualModel = summary.actualModel;
-      actualModelSource = summary.actualModelSource;
       const runEndToolCounts = runtime.getLastRunEndToolCounts();
       unresolvedCountBeforeClear = runEndToolCounts?.beforeClear ?? null;
       unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
@@ -2320,6 +2325,8 @@ export default function AIView() {
     upsertConversationTitle,
     sortConversationsByUpdatedAt,
     updateConversationTimeline,
+    handleRunIntent,
+    setPendingUserInputWithRestore,
   ]);
 
   useQueuedFollowUpController({
@@ -2519,7 +2526,6 @@ export default function AIView() {
     activeConversationId,
     appendRecoveryCheckpoint,
     appendRecoveryTimelineError,
-    isTyping,
     markRecoverableAiEntry,
     recoverConversationRun,
     updateConversationTimeline,

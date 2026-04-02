@@ -85,10 +85,7 @@ export function useDraftExport(deps: UseDraftExportDeps) {
     projectId,
     flushContentCommit,
     exportMode,
-    orderedSections,
-    latestExport,
     prependExport,
-    studies,
   ]);
 
   const handleDeleteExport = useCallback(async (fileId: string) => {
