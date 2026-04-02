@@ -66,18 +66,19 @@ export function ArtifactWrapper({
         if (prevStatusRef.current === status) return;
         prevStatusRef.current = status;
 
-        if (status === "auto_applied") {
-            if (settledAction) {
-                const timer = setTimeout(() => setIsCollapsed(true), 2000);
-                return () => clearTimeout(timer);
-            }
-            setIsCollapsed(true);
-            return;
-        }
-        if (status === "accepted") {
-            const timer = setTimeout(() => setIsCollapsed(true), 2000);
-            return () => clearTimeout(timer);
-        }
+        const collapseDelay =
+            status === "accepted"
+                ? 2000
+                : status === "auto_applied"
+                    ? settledAction
+                        ? 2000
+                        : 0
+                    : null;
+
+        if (collapseDelay === null) return;
+
+        const timer = setTimeout(() => setIsCollapsed(true), collapseDelay);
+        return () => clearTimeout(timer);
     }, [settledAction, status]);
 
     const cardClass = [
