@@ -68,7 +68,7 @@ export class AnthropicProvider extends BaseAIProvider {
         const params = this.buildRequestParams(messages, normalizedOptions, false);
 
         // Pass AbortSignal through so callers can cancel in-flight requests.
-        const response = await client.messages.create(params, { signal: normalizedOptions.signal } as any);
+        const response = await client.messages.create(params, { signal: normalizedOptions.signal });
 
         let content = "";
         const toolCalls: ToolCall[] = [];
@@ -127,7 +127,7 @@ export class AnthropicProvider extends BaseAIProvider {
 
         try {
             // Pass AbortSignal through so callers can cancel in-flight streaming requests.
-            const stream = await client.messages.create(params, { signal: normalizedOptions.signal } as any);
+            const stream = await client.messages.create(params, { signal: normalizedOptions.signal });
 
             for await (const event of stream as AsyncIterable<Anthropic.MessageStreamEvent>) {
                 switch (event.type) {
