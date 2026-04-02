@@ -22,7 +22,7 @@ describe("lint-governance-audit", () => {
       },
       counts: {
         directEffects: 4,
-        exhaustiveDepsDisables: 1,
+        exhaustiveDepsDisables: 0,
         catchConsoleError: 1,
         rawConsoleCalls: 2,
         serverRuntimeRawConsoleCalls: 1,

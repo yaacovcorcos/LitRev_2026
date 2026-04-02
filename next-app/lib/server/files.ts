@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { ScopeInput } from "@/lib/server/scope";
@@ -44,6 +45,33 @@ export type GeneratedProjectFileInput = {
   version?: number;
   metadata?: Record<string, unknown> | null;
 };
+
+function toJsonMetadataInput(
+  metadata: Record<string, unknown> | null | undefined
+): Prisma.InputJsonValue | undefined {
+  return metadata == null ? undefined : (metadata as Prisma.InputJsonValue);
+}
+
+function normalizeStoragePathSegments(storagePath: string): string[] {
+  return storagePath
+    .trim()
+    .replace(/^\/+|\/+$/g, "")
+    .split("/")
+    .filter((segment) => segment.length > 0);
+}
+
+function isProjectScopedStoragePath(storagePath: string, projectId: string): boolean {
+  const segments = normalizeStoragePathSegments(storagePath);
+  if (segments.length < 3) return false;
+
+  const offset = segments[0] === STORAGE_BUCKET ? 1 : 0;
+  return (
+    segments[offset] === "projects"
+    && segments[offset + 1] === projectId
+    && typeof segments[offset + 2] === "string"
+    && segments[offset + 2].length > 0
+  );
+}
 
 function toFileAsset(record: {
   id: string;
@@ -123,9 +151,9 @@ export async function createFileAsset(
 ): Promise<FileAsset> {
   const scope = await assertProjectAccess(scopeInput, projectId);
 
-  // Validate that storagePath is scoped to this project to prevent
-  // cross-tenant file access via arbitrary path injection.
-  if (!input.storagePath.includes(`/${projectId}/`)) {
+  // Accept only canonical project-scoped object paths, optionally prefixed
+  // by the storage bucket name, to prevent cross-tenant path injection.
+  if (!isProjectScopedStoragePath(input.storagePath, projectId)) {
     throw new Error("Storage path must belong to the specified project.");
   }
 
@@ -143,7 +171,7 @@ export async function createFileAsset(
       storagePath: input.storagePath,
       publicUrl: input.publicUrl ?? undefined,
       version: input.version ?? undefined,
-      metadata: input.metadata as any,
+      metadata: toJsonMetadataInput(input.metadata),
     },
   });
   return toFileAsset(created);
@@ -295,7 +323,7 @@ export async function uploadGeneratedProjectFile(
       storagePath,
       publicUrl,
       version: input.version ?? undefined,
-      metadata: input.metadata as any,
+      metadata: toJsonMetadataInput(input.metadata),
     },
   });
 
@@ -442,7 +470,7 @@ export async function importStudyWithPdf(
 
   // 2. Create Study + FileAsset in a single DB transaction
   try {
-    const [studyRecord, fileRecord] = await prisma.$transaction(async (tx: any) => {
+    const [studyRecord, fileRecord] = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       let s;
       if (matchedDuplicate) {
         s = await tx.study.findFirst({

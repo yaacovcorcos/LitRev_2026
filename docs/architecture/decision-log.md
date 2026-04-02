@@ -16,6 +16,13 @@ Each entry should stay short and include:
 
 ## Entries
 
+### 2026-04-02 - External repo patterns and adapted skill packs remain reference inputs until rewritten into LitRev-local owners
+
+- Decision: Treat external repositories, vendor examples, and internally adapted skill packs as reference inputs only. They do not become LitRev policy until the repo rewrites them into local code, tests, runbooks, or owner-plan updates.
+- Why it was made: LitRev already has canonical owner docs and executable governance. Importing outside patterns directly would create split ownership, policy drift, and tone-heavy recommendations that look stronger than their evidence.
+- Constraints or assumptions: External ideas are still useful. We can adapt them as local rules, procedures, or advisory skills, but repeated findings must be promoted into normal LitRev engineering controls or docs.
+- What would invalidate it: A future governance system that intentionally centralizes external pattern adoption under a different canonical owner with equal or better local enforcement.
+
 ### 2026-04-02 - Study-processing cron ingress and internal dispatch stay on separate auth boundaries
 
 - Decision: Keep study-processing cron ingress on `GET /api/cron/study-processing` authenticated only by `CRON_SECRET`, and keep internal self-dispatch on `POST /api/internal/study-processing` authenticated only by `STUDY_PROCESSING_INTERNAL_TOKEN`.

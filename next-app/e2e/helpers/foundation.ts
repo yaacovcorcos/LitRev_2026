@@ -118,6 +118,15 @@ export async function waitForHomeReady(page: Page): Promise<"loading" | "zero_st
   return "loading";
 }
 
+async function waitForHomeHydration(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const perf = (window as Window & {
+      __litrevHomePerf?: { homeReadyMs?: number };
+    }).__litrevHomePerf;
+    return typeof perf?.homeReadyMs === "number";
+  }, { timeout: 15_000 });
+}
+
 export async function enterHomeWorkspace(page: Page): Promise<void> {
   let state = await waitForHomeReady(page);
   if (state === "loading") {
@@ -128,21 +137,16 @@ export async function enterHomeWorkspace(page: Page): Promise<void> {
     state = await waitForHomeReady(page);
   }
   if (state === "zero_state") {
+    await waitForHomeHydration(page);
     const enterWorkspace = page.getByRole("button", { name: /enter workspace/i });
     const createProject = page.getByRole("button", { name: /create new project/i });
+    if (await createProject.isVisible().catch(() => false)) {
+      return;
+    }
 
-    await expect
-      .poll(async () => {
-        if (await createProject.isVisible().catch(() => false)) return "workspace";
-
-        if (await enterWorkspace.isVisible().catch(() => false)) {
-          await enterWorkspace.click({ force: true });
-          return "transitioning";
-        }
-
-        return "pending";
-      }, { timeout: 30_000 })
-      .toBe("workspace");
+    await expect(enterWorkspace).toBeVisible({ timeout: 10_000 });
+    await enterWorkspace.click();
+    await expect(createProject).toBeVisible({ timeout: 30_000 });
   }
 }
 

@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? "3101");
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
+const quotedBaseURL = JSON.stringify(baseURL);
 
 export default defineConfig({
   testDir: "./e2e",
@@ -19,7 +20,7 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: `NEXT_PUBLIC_E2E_TEST_MODE=1 E2E_TEST_MODE=1 npm run dev -- --hostname 127.0.0.1 --port ${port}`,
+    command: `NEXT_PUBLIC_E2E_TEST_MODE=1 E2E_TEST_MODE=1 BETTER_AUTH_URL=${quotedBaseURL} NEXT_PUBLIC_BETTER_AUTH_URL=${quotedBaseURL} npm run dev -- --hostname 127.0.0.1 --port ${port}`,
     url: `${baseURL}/login`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
