@@ -1,5 +1,6 @@
 "use server";
 
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/server/prisma";
 import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
@@ -60,6 +61,10 @@ export type PaginatedMessages = {
 export type BranchedConversationResult = ConversationSummary & {
     sourceConversationId: string;
 };
+
+function toInputJsonValue(value: unknown): Prisma.InputJsonValue {
+    return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
 
 /**
  * List all conversations for a given context
@@ -345,7 +350,7 @@ export async function addMessage(params: {
                     role,
                     content,
                     attachments: attachments && attachments.length > 0
-                        ? (attachments as unknown as any)
+                        ? toInputJsonValue(attachments)
                         : undefined,
                 },
             });
@@ -540,9 +545,9 @@ export async function branchConversation(params: {
                             conversationId: conversation.id,
                             role: m.role,
                             content: m.content,
-                            toolCalls: m.toolCalls as any,
+                            toolCalls: m.toolCalls ? toInputJsonValue(m.toolCalls) : undefined,
                             toolResultId: m.toolResultId,
-                            attachments: m.attachments as any,
+                            attachments: m.attachments ? toInputJsonValue(m.attachments) : undefined,
                             createdAt: m.createdAt,
                         })),
                     });
