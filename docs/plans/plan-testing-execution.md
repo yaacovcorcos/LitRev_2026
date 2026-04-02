@@ -31,8 +31,7 @@ This plan does not own:
 - Required `check` in `.github/workflows/ci.yml` already provides a meaningful base lane:
   - Prisma migrate deploy + schema-drift check
   - `npx tsc --noEmit`
-  - `npm run lint` through `governance:ci-required`
-  - `npm run governance:ci-required`
+  - `npm run governance:ci-required` (now including raw `npm run lint`)
   - `npm run governance:ci-informational` as non-blocking reporting
   - chat stream architecture guard
   - full `npx vitest run`
