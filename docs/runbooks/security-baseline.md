@@ -24,6 +24,22 @@ Load these repo-local sources first:
    - agent/tool/runtime: [`docs/plans/plan-agentic.md`](../plans/plan-agentic.md), [`docs/plans/plan-memory.md`](../plans/plan-memory.md), [`docs/plans/plan-prompts.md`](../plans/plan-prompts.md)
    - repo workflow / CI / supply chain: [`docs/runbooks/github-flow.md`](github-flow.md)
 
+## LitRev Trust Model
+
+LitRev must be reviewed as a multi-tenant application with authenticated but mutually untrusted users.
+
+The system must prevent unauthorized cross-user and cross-project access across:
+
+- workspaces
+- projects
+- studies
+- files
+- AI conversations
+- memory
+- admin and control-plane surfaces
+
+A valid session is not enough to read or mutate any of those surfaces. Every boundary must be enforced server-side at the point of access.
+
 ## Core Security Invariants
 
 ### 1. Treat every route and server action as a public entry point
@@ -150,6 +166,48 @@ Repeated findings must become one of:
 Primary references:
 - [`docs/runbooks/internal-advisory-reviews.md`](internal-advisory-reviews.md)
 - [`docs/reports/security-review-2026-03-01.md`](../reports/security-review-2026-03-01.md)
+
+## Things That Are Not Authorization Boundaries
+
+Do not treat any of the following as proof of access:
+
+- `projectId`, `studyId`, `fileId`, or conversation IDs from the client
+- request metadata such as `Origin`, `Referer`, `Host`, `x-vercel-cron`, or user agent
+- route naming such as `/internal/**`
+- hidden UI controls
+- client-submitted storage paths or URLs
+- model-generated tool calls, prompt content, or AI-produced identifiers
+- possession of a URL without a corresponding server-side ownership check
+
+## Security Fix Regression Rule
+
+Every security-sensitive bug fix should add at least one adversarial regression test.
+
+Prefer tests that prove rejection of:
+
+- cross-tenant ID injection
+- client-authored privileged paths or URLs
+- metadata spoofing
+- admin or internal-route misuse by non-admin callers
+- local-only or dev-only bypasses outside local development
+- service-role-backed reads against poisoned or mismatched records
+
+If a fix cannot reasonably add a test in the same task, the PR should explain why and point to the next owner artifact that will carry the guarantee.
+
+## Review Priority For Security Work
+
+When triaging a security-sensitive change, ask these questions in order:
+
+1. What server-enforced boundary is supposed to protect this surface?
+2. Can the caller choose the scope identifier or privileged pointer?
+3. Does any service-role or privileged runtime bypass a lower layer of protection?
+4. Is the boundary tested with an adversarial case, not only a happy path?
+5. If this issue has repeated before, where is the durable promotion:
+   - test
+   - runbook
+   - plan
+   - decision log
+   - canonical finding
 
 ## LitRev Security Review Checklist
 

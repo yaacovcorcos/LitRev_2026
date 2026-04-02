@@ -27,6 +27,26 @@ Include as much of the following as you can:
 - relevant logs or request samples with secrets and personal data removed
 - any proposed mitigation or containment idea
 
+## Report Acceptance Gate
+
+For fastest triage, include all of the following:
+
+- exact file, function, route, workflow, or config path involved
+- tested branch, commit SHA, and deployment target if relevant
+- reproducible steps against current `main` or the exact deployed target
+- the specific boundary crossed:
+  - authentication
+  - workspace / project / study / file / memory authorization
+  - platform-admin access
+  - internal job or cron ingress
+  - service-role-backed database or storage access
+  - AI tool or agent runtime scope
+  - CI or supply-chain surface
+- demonstrated impact and likely blast radius
+- whether authentication was required
+- whether real user, workspace, project, study, or file data was accessed
+- whether the issue depends on local-only config, unsupported branch state, or transfer artifacts rather than current `main` or a deployed environment
+
 ## Testing Expectations
 
 Please keep testing non-destructive and tightly scoped.
@@ -60,6 +80,34 @@ In-scope repository surfaces include:
 - background jobs, internal routes, and cron ingress
 - Prisma/database access patterns and raw SQL usage
 - GitHub Actions, secrets handling, and dependency/supply-chain exposure
+
+## Trust Model
+
+LitRev is a multi-user, multi-tenant web application.
+
+Authenticated users are not trusted operators. A valid session proves identity, not authorization.
+
+Primary security boundaries in this repository include:
+
+- user and session identity
+- workspace, project, study, file, and memory authorization
+- platform-admin access
+- cron ingress and internal background dispatch
+- service-role-backed database and storage reads
+- AI tool execution inside validated actor and project scope
+
+Important: route names, request headers, request origins, preview/prod hostnames, project IDs in URLs, file IDs, study IDs, conversation IDs, and model/tool outputs are not authorization boundaries by themselves.
+
+## Not A Security Bug By Itself
+
+The following are not security vulnerabilities on their own unless they cross a real server-enforced boundary:
+
+- prompt injection without a demonstrated authorization, tool-scope, tenancy, or internal-boundary bypass
+- client-side-only restrictions when the server still enforces authorization correctly
+- local-only development shortcuts that are not enabled in preview or production
+- findings that depend on trusted maintainer, infrastructure, or database access without showing an untrusted path to obtain that access
+- reports against unsupported local transfer artifacts, stale worktrees, or old feature branches rather than current `main` or the affected deployed environment
+- missing secrecy of identifiers alone (`projectId`, `studyId`, `fileId`, conversation IDs) when the server correctly enforces ownership checks
 
 ## Internal Security Baseline
 
