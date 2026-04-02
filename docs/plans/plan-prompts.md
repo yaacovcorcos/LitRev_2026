@@ -25,8 +25,8 @@ Do not use this file for:
 Those are owned by:
 
 - `docs/plans/plan-agentic.md`
-- `docs/plans/chatRuntime.md`
-- `docs/plans/transparencyUI.md`
+- `docs/plans/chat-runtime.md`
+- `docs/plans/transparency-ui.md`
 
 ## Current Architecture
 *How this domain works right now, based on actual committed code.*
