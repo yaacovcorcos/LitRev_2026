@@ -118,15 +118,25 @@ function ProjectShellInner({
         };
     }, [projectId]);
 
-    // Derive initial mode from route to avoid deep-link flicker.
-    const [focusMode, setFocusMode] = useState<FocusMode>(() => initialShellState.focusMode);
-    const [activeTab, setActiveTabState] = useState<ViewTab | null>(() => initialShellState.activeTab);
+    const shellStateIdentity = useMemo(
+        () => `${projectId}:${pathname}:${initialShellState.bootMode}:${initialShellState.focusMode}:${initialShellState.activeTab ?? "none"}`,
+        [initialShellState.activeTab, initialShellState.bootMode, initialShellState.focusMode, pathname, projectId],
+    );
+    const [shellState, setShellState] = useState<{
+        identity: string;
+        focusMode: FocusMode;
+        activeTab: ViewTab | null;
+    }>(() => ({
+        identity: shellStateIdentity,
+        focusMode: initialShellState.focusMode,
+        activeTab: initialShellState.activeTab,
+    }));
+    const focusMode = shellState.identity === shellStateIdentity ? shellState.focusMode : initialShellState.focusMode;
+    const activeTab = shellState.identity === shellStateIdentity ? shellState.activeTab : initialShellState.activeTab;
 
     // Sync shell mode from route and persisted mode bucket.
     // Route tabs always force workspace mode. Root route (/project/:id) restores the saved bucket synchronously.
     useEffect(() => {
-        setActiveTabState(initialShellState.activeTab);
-        setFocusMode(initialShellState.focusMode);
         const isRootProjectRoute = pathname === `/project/${projectId}`;
         if (projectEntryRestoreEnabled && initialShellState.bootMode !== "conversation" && !isRootProjectRoute) {
             setProjectModeBucket(projectId, "workspace");
@@ -283,8 +293,11 @@ function ProjectShellInner({
     }, [focusMode, mobileScrollLockV2Enabled, scrollOwnershipA1Enabled]);
 
     const setActiveTab = useCallback((tab: ViewTab) => {
-        setActiveTabState(tab);
-        setFocusMode("view");
+        setShellState({
+            identity: shellStateIdentity,
+            activeTab: tab,
+            focusMode: "view",
+        });
         if (projectEntryRestoreEnabled) {
             setProjectModeBucket(projectId, "workspace");
         }
@@ -309,20 +322,24 @@ function ProjectShellInner({
                 router.push(`/project/${projectId}/memory`);
                 break;
         }
-    }, [projectEntryRestoreEnabled, projectId, router]);
+    }, [projectEntryRestoreEnabled, projectId, router, shellStateIdentity]);
 
     const returnToConversation = useCallback(() => {
         void (async () => {
             const targetConversationId =
                 currentConversationId ?? await newConversation("overview" as CopilotPage);
             if (!targetConversationId) return;
-            setFocusMode("conversation");
+            setShellState({
+                identity: shellStateIdentity,
+                activeTab,
+                focusMode: "conversation",
+            });
             if (projectEntryRestoreEnabled) {
                 setProjectModeBucket(projectId, "conversation");
             }
             router.push(buildProjectConversationPath(projectId, targetConversationId));
         })();
-    }, [currentConversationId, newConversation, projectEntryRestoreEnabled, projectId, router]);
+    }, [activeTab, currentConversationId, newConversation, projectEntryRestoreEnabled, projectId, router, shellStateIdentity]);
 
     const handleTabClick = useCallback((tab: ViewTab) => {
         setActiveTab(tab);
@@ -374,10 +391,16 @@ function ProjectShellInner({
     const copilotPage = isStudyDetail ? "study" : (activeTab ?? "overview");
 
     // Fetch study title for the copilot context display
-    const [studyTitle, setStudyTitle] = useState<string | null>(null);
+    const [studyTitleState, setStudyTitleState] = useState<{
+        studyId: string | null;
+        title: string | null;
+    }>({
+        studyId: copilotStudyId ?? null,
+        title: null,
+    });
+    const studyTitle = studyTitleState.studyId === copilotStudyId ? studyTitleState.title : null;
     useEffect(() => {
         if (!copilotStudyId || !projectId) {
-            setStudyTitle(null);
             return;
         }
 
@@ -386,10 +409,16 @@ function ProjectShellInner({
             try {
                 const result = await getStudyAction(projectId, copilotStudyId);
                 if (!active) return;
-                setStudyTitle(result.success && result.data ? result.data.title : null);
+                setStudyTitleState({
+                    studyId: copilotStudyId,
+                    title: result.success && result.data ? result.data.title : null,
+                });
             } catch {
                 if (active) {
-                    setStudyTitle(null);
+                    setStudyTitleState({
+                        studyId: copilotStudyId,
+                        title: null,
+                    });
                 }
             }
         };
@@ -508,7 +537,6 @@ export default function ProjectLayout({ children }: ProjectLayoutProps) {
         projectId,
         projectEntryRestoreEnabled,
     }), [pathname, projectEntryRestoreEnabled, projectId]);
-
     useEffect(() => {
         if (!projectEntryRestoreEnabled) return;
         if (routeConversationId) return;
