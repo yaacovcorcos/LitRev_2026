@@ -172,6 +172,7 @@ describe("searchOpenAlex", () => {
     const response = await searchOpenAlex("sparse", { yearRange: "2020-2024" });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.totalResults).toBeUndefined();
     expect(response.returnedCount).toBe(1);
     expect(response.results[0].title).toBe("Sparse Metadata Paper");
     expect(response.results[0].authors).toBe("Lee Ann");
@@ -204,6 +205,7 @@ describe("searchOpenAlex", () => {
     const response = await searchOpenAlex("year filter", { yearRange: "2020-2024" });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(response.totalResults).toBeUndefined();
     expect(response.returnedCount).toBe(1);
     expect(response.results.map((result) => result.title)).toEqual(["Known Year Paper"]);
   });
@@ -240,6 +242,7 @@ describe("searchOpenAlex", () => {
     const response = await searchOpenAlex("recoverable", { yearRange: "2020-2024" });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.totalResults).toBeUndefined();
     expect(response.returnedCount).toBe(1);
     expect(response.results[0]?.year).toBe(2021);
     expect(response.results[0]?.metadata?.crossrefEnriched).toBe(true);

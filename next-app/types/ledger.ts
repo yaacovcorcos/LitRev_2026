@@ -48,7 +48,14 @@ export type StudyType =
   | "Systematic-Review"
   | "Other";
 
-export type StudySource = "manual" | "pdf-import" | "pubmed" | "semantic-scholar" | "copilot";
+export type StudySource =
+  | "manual"
+  | "pdf-import"
+  | "pubmed"
+  | "openalex"
+  | "semantic-scholar"
+  | "crossref"
+  | "copilot";
 export type ScreeningTier = "deterministic" | "ai" | "heuristic" | "default";
 export type RelevanceBand = "high" | "moderate" | "low";
 

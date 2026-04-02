@@ -17,7 +17,7 @@ const outputSchema = z.object({
     results: z.array(z.object({
         title: z.string(),
         authors: z.string(),
-        year: z.number(),
+        year: z.number().optional(),
     }).passthrough()),
 });
 

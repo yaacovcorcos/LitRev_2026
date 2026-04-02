@@ -279,11 +279,12 @@ export async function searchOpenAlex(
 
   const yearFilter = parseYearRange(options?.yearRange);
   const filtered = parsed.filter((result) => matchesYearRange(result.year, yearFilter));
+  const hasLocalYearFilter = yearFilter.start !== undefined || yearFilter.end !== undefined;
 
   return {
     query,
     source: "openalex",
-    totalResults: data.meta?.count ?? filtered.length,
+    totalResults: hasLocalYearFilter ? undefined : (data.meta?.count ?? filtered.length),
     returnedCount: filtered.length,
     results: filtered,
     nextCursor: data.meta?.next_cursor ?? undefined,

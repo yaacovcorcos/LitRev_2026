@@ -10,6 +10,12 @@ vi.mock("@/lib/server/search/openalex", () => ({
 
 vi.mock("@/lib/server/search/semantic-scholar", () => ({
     searchSemanticScholar: vi.fn(),
+    getRecommendations: vi.fn(),
+    buildS2PaperIds: vi.fn(),
+}));
+
+vi.mock("@/lib/server/ledger", () => ({
+    listStudies: vi.fn(),
 }));
 
 vi.mock("@/lib/server/logging", () => ({
@@ -19,7 +25,8 @@ vi.mock("@/lib/server/logging", () => ({
 import { executeTool } from "@/lib/server/ai/tools/base";
 import { searchPubMed } from "@/lib/server/search/pubmed";
 import { searchOpenAlex } from "@/lib/server/search/openalex";
-import { searchSemanticScholar } from "@/lib/server/search/semantic-scholar";
+import { buildS2PaperIds, getRecommendations, searchSemanticScholar } from "@/lib/server/search/semantic-scholar";
+import { listStudies } from "@/lib/server/ledger";
 import { logServerWarn } from "@/lib/server/logging";
 
 describe("search tool output contracts", () => {
@@ -113,6 +120,53 @@ describe("search tool output contracts", () => {
                 {
                     title: "Semantic Scholar Yearless Result",
                     authors: "Author C",
+                },
+            ],
+        });
+        expect((result.result as { results: Array<{ year?: number }> }).results[0]?.year).toBeUndefined();
+        expect(logServerWarn).not.toHaveBeenCalled();
+    });
+
+    it("accepts yearless recommendation results at the tool boundary", async () => {
+        vi.mocked(listStudies).mockResolvedValueOnce([
+            {
+                id: "study-1",
+                title: "Seed Study",
+                authors: "Author Seed",
+                year: 2024,
+                status: "pending",
+                quality: "-",
+                details: {
+                    triageDecision: "keep",
+                    doi: "10.1000/seed",
+                },
+            },
+        ]);
+        vi.mocked(buildS2PaperIds)
+            .mockReturnValueOnce(["DOI:10.1000/seed"])
+            .mockReturnValueOnce([]);
+        vi.mocked(getRecommendations).mockResolvedValueOnce([
+            {
+                title: "Yearless Recommendation",
+                authors: "Author D",
+                source: "semantic-scholar",
+            },
+        ]);
+
+        const result = await executeTool(
+            "recommend_studies",
+            { limit: 1 },
+            "call-4",
+            { projectId: "project-1" },
+        );
+
+        expect(result.error).toBeUndefined();
+        expect(result.result).toMatchObject({
+            returnedCount: 1,
+            results: [
+                {
+                    title: "Yearless Recommendation",
+                    authors: "Author D",
                 },
             ],
         });

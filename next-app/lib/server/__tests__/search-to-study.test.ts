@@ -111,4 +111,21 @@ describe("searchResultToStudyInput", () => {
     expect(hasConcreteSearchResultYear(nanYear)).toBe(false);
     expect(hasConcreteSearchResultYear(infinityYear)).toBe(false);
   });
+
+  it("preserves OpenAlex provenance when converting a search result to a ledger study", () => {
+    const result: SearchResult = {
+      title: "OpenAlex Study",
+      authors: "Researcher A",
+      year: 2024,
+      source: "openalex",
+      sourceUrl: "https://openalex.org/W123",
+    };
+
+    expect(hasConcreteSearchResultYear(result)).toBe(true);
+    if (!hasConcreteSearchResultYear(result)) throw new Error("Expected year");
+    const input = searchResultToStudyInput(result);
+
+    expect(input.details?.source).toBe("openalex");
+    expect(input.details?.sourceUrl).toBe("https://openalex.org/W123");
+  });
 });

@@ -550,7 +550,7 @@ describe("citation-metadata utilities", () => {
                         title: ["DOI classified success"],
                         author: [{ family: "Doe", given: "Jane" }],
                         "container-title": ["Crossref Journal"],
-                        created: { "date-parts": [[2024]] },
+                        issued: { "date-parts": [[2024]] },
                         "is-referenced-by-count": 23,
                     },
                 }),
@@ -580,7 +580,7 @@ describe("citation-metadata utilities", () => {
                         title: ["Cached DOI no-count"],
                         author: [{ family: "Smith", given: "Alex" }],
                         "container-title": ["Stable Journal"],
-                        created: { "date-parts": [[2025]] },
+                        issued: { "date-parts": [[2025]] },
                     },
                 }),
             );
@@ -704,7 +704,7 @@ describe("citation-metadata utilities", () => {
                         title: ["Cached DOI no-count"],
                         author: [{ family: "Smith", given: "Alex" }],
                         "container-title": ["Stable Journal"],
-                        created: { "date-parts": [[2025]] },
+                        issued: { "date-parts": [[2025]] },
                     },
                 }),
             );
@@ -881,6 +881,44 @@ describe("citation-metadata utilities", () => {
             expect(result?.citationCount).toBe(345);
             expect(result?.citationCountSource).toBe("crossref");
             expect(typeof result?.citationCountFetchedAt).toBe("string");
+        });
+
+        it("does not treat Crossref created timestamps as publication year", async () => {
+            const fetchMock = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    message: {
+                        title: ["Created-only record"],
+                        author: [{ family: "Smith", given: "Jane" }],
+                        "container-title": ["Journal of Testing"],
+                        created: { "date-parts": [[2025, 1, 2]] },
+                    },
+                }),
+            } as Response);
+            vi.stubGlobal("fetch", fetchMock);
+
+            const result = await fetchCrossrefMetadata("10.1000/created-only");
+            expect(result).not.toBeNull();
+            expect(result?.year).toBeUndefined();
+        });
+
+        it("uses issued when Crossref provides a publication year but no online or print date", async () => {
+            const fetchMock = vi.fn().mockResolvedValue({
+                ok: true,
+                json: async () => ({
+                    message: {
+                        title: ["Issued record"],
+                        author: [{ family: "Smith", given: "Jane" }],
+                        "container-title": ["Journal of Testing"],
+                        issued: { "date-parts": [[2023]] },
+                    },
+                }),
+            } as Response);
+            vi.stubGlobal("fetch", fetchMock);
+
+            const result = await fetchCrossrefMetadata("10.1000/issued-only");
+            expect(result).not.toBeNull();
+            expect(result?.year).toBe(2023);
         });
     });
 });
