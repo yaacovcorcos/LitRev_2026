@@ -109,4 +109,25 @@ describe("ProjectPageLayout", () => {
       expect(screen.getByTestId("project-page-layout-grid").getAttribute("data-viewport-class")).toBe("phone");
     });
   });
+
+  it("keeps the viewport class unknown outside phone-only collapse mode", () => {
+    setViewportWidth(390);
+    mockUseProjectShell.mockReturnValue({ isEmbeddedInProjectShell: false });
+    mockUseProjectCopilot.mockReturnValue({ isCollapsed: false, panelWidth: 360, setPanelWidth: vi.fn() });
+
+    render(
+      <ProjectPageLayout
+        copilot={{
+          page: "protocol",
+          contextDisplay: "Protocol",
+          inputPlaceholder: "Ask about your protocol…",
+          emptyState: { icon: "assignment", title: "Title", description: "Desc", suggestions: [] },
+        }}
+      >
+        <div>Protocol child</div>
+      </ProjectPageLayout>,
+    );
+
+    expect(screen.getByTestId("project-page-layout-grid").getAttribute("data-viewport-class")).toBe("unknown");
+  });
 });

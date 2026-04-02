@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { isDemoProject } from "@/lib/demo/constants";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { useHydrated } from "@/hooks/useHydrated";
 import styles from "./DemoGuideCard.module.css";
 
 type DemoGuideCardProps = {
@@ -12,27 +13,29 @@ type DemoGuideCardProps = {
   className?: string;
 };
 
-export function DemoGuideCard({ projectId, guideId, text, className }: DemoGuideCardProps) {
-  const { getProjectById } = useProjects();
-  const project = getProjectById(projectId);
-  const [hasMounted, setHasMounted] = useState(false);
+function readDismissed(storageKey: string): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(storageKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
+type DemoGuideCardBodyProps = {
+  storageKey: string;
+  text: string;
+  className?: string;
+};
+
+function DemoGuideCardBody({ storageKey, text, className }: DemoGuideCardBodyProps) {
   const [dismissed, setDismissed] = useState(false);
-  const storageKey = useMemo(
-    () => `litrev:demo-guide-dismissed:${projectId}:${guideId}`,
-    [projectId, guideId]
-  );
+  const [initiallyDismissed] = useState(() => readDismissed(storageKey));
 
-  useEffect(() => {
-    setHasMounted(true);
-    if (!isDemoProject(project)) return;
-    try {
-      setDismissed(window.localStorage.getItem(storageKey) === "1");
-    } catch {
-      setDismissed(false);
-    }
-  }, [project, storageKey]);
-
-  if (!hasMounted || dismissed || !isDemoProject(project)) {
+  if (dismissed || initiallyDismissed) {
     return null;
   }
 
@@ -58,5 +61,25 @@ export function DemoGuideCard({ projectId, guideId, text, className }: DemoGuide
         </span>
       </button>
     </aside>
+  );
+}
+
+export function DemoGuideCard({ projectId, guideId, text, className }: DemoGuideCardProps) {
+  const hydrated = useHydrated();
+  const { getProjectById } = useProjects();
+  const project = getProjectById(projectId);
+  const storageKey = `litrev:demo-guide-dismissed:${projectId}:${guideId}`;
+
+  if (!hydrated || !isDemoProject(project)) {
+    return null;
+  }
+
+  return (
+    <DemoGuideCardBody
+      key={storageKey}
+      storageKey={storageKey}
+      text={text}
+      className={className}
+    />
   );
 }
