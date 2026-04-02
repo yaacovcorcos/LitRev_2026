@@ -419,6 +419,42 @@ describe("shared stream reducer", () => {
     expect(doneIntent.summary).toBe("Found 3 of 11 Semantic Scholar results.");
   });
 
+  it("uses returned-only wording when a search receipt omits total results", () => {
+    const reduced = reduceSharedStreamChunk(
+      createInitialSharedStreamState(),
+      {
+        type: "tool_result",
+        toolName: "search_openalex",
+        toolResult: {
+          callId: "openalex-returned-only",
+          result: {
+            source: "openalex",
+            returnedCount: 5,
+            results: [
+              {
+                doi: "10.1000/openalex-1",
+                metadata: { openAlexId: "https://openalex.org/W999" },
+              },
+            ],
+          },
+        },
+      },
+      meta,
+    );
+
+    const doneIntent = reduced.intents.find((intent) => intent.type === "tool_activity_upsert" && intent.status === "done");
+    expect(doneIntent && doneIntent.type === "tool_activity_upsert").toBe(true);
+    if (!doneIntent || doneIntent.type !== "tool_activity_upsert") return;
+    expect(doneIntent.outcomeSummary).toBe("Returned 5 OpenAlex results.");
+    expect(doneIntent.detailItems).toEqual([
+      "Returned 5 results",
+      "DOI 10.1000/openalex-1",
+    ]);
+    expect(doneIntent.returnedCount).toBe(5);
+    expect(doneIntent.totalResults).toBeUndefined();
+    expect(doneIntent.summary).toBe("Returned 5 OpenAlex results.");
+  });
+
   it("keeps user input context from reducer meta", () => {
     const reduced = reduceSharedStreamChunk(
       createInitialSharedStreamState(),

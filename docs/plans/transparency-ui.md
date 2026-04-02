@@ -83,7 +83,7 @@ Until those failures are corrected, `U1.6` burn-in in [chat-runtime.md](./chat-r
 - Repeated adjacent PubMed searches are grouped in the renderer into one compact in-chat search sequence card; the canonical runtime record remains atomic.
 - Shared reducer semantics now derive PubMed-specific live progress (`Searching`, `Refining`, `Reviewing`) plus selective grounded checkpoints from runtime search facts alone; provider reasoning remains unnecessary for understanding the workflow.
 - Executable search evals now exercise the live chat/runtime orchestration path for direct, delegated, zero-result, and failed search scenarios instead of relying only on catalog-shape validation.
-- The shared search receipt path now extends beyond PubMed: OpenAlex and Semantic Scholar preserve source label, query preview, result counts, and compact identifiers through the reducer, renderer, and project message bridge on the main timeline surfaces.
+- The shared search receipt path now extends beyond PubMed: OpenAlex and Semantic Scholar preserve source label, query preview, result counts, and compact identifiers through the reducer, renderer, and project message bridge on the main timeline surfaces. When totals are unknown because the runtime only knows the current page or locally filtered subset, receipts use explicit `returned` wording instead of implying a truthful global `found` total.
 - The shared receipt path on the main timeline surfaces now uses additive semantic fields (`displayLabel`, `inputPreview`, `outcomeSummary`, `sourceBadge`, `detailItems`) derived once in the shared reducer/runtime path for:
   - search tools
   - read/inspection tools

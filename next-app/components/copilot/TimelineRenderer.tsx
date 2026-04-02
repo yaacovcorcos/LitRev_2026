@@ -206,7 +206,7 @@ function getSearchResultCountText(item: TimelineToolActivityItem): string | null
         return `${item.returnedCount} of ${item.totalResults} results`;
     }
     if (typeof item.returnedCount === "number") {
-        return `${item.returnedCount} results`;
+        return `Returned ${item.returnedCount} results`;
     }
     if (typeof item.totalResults === "number") {
         return `${item.totalResults} results`;

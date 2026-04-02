@@ -91,6 +91,31 @@ describe("TimelineRenderer tool activity cards", () => {
     expect(screen.getAllByText("Found 5 of 18 OpenAlex results.").length).toBeGreaterThanOrEqual(1);
   });
 
+  it("uses returned-only wording when total results are unknown", () => {
+    renderTimeline([
+      {
+        type: "tool_activity",
+        id: "tool-returned-only",
+        callId: "call-returned-only",
+        toolName: "search_openalex",
+        status: "done",
+        summary: "Returned 5 OpenAlex results.",
+        queryPreview: "\"retrospective cohort\" AND disposition decision",
+        returnedCount: 5,
+        resultIdentifiers: ["DOI 10.1000/example", "OpenAlex W123"],
+        startedAt: "2026-03-02T12:00:00.000Z",
+        updatedAt: "2026-03-02T12:00:02.000Z",
+        completedAt: "2026-03-02T12:00:02.000Z",
+        createdAt: "2026-03-02T12:00:00.000Z",
+      },
+    ]);
+
+    expect(screen.getByText("OpenAlex")).not.toBeNull();
+    expect(screen.getByText("Returned 5 results")).not.toBeNull();
+    expect(screen.getByText("DOI 10.1000/example · OpenAlex W123")).not.toBeNull();
+    expect(screen.getAllByText("Returned 5 OpenAlex results.").length).toBeGreaterThanOrEqual(1);
+  });
+
   it("shows in-progress timing for running tools", () => {
     renderTimeline([
       {

@@ -38,17 +38,13 @@ function formatCountText(returnedCount?: number, totalResults?: number): string 
   if (typeof returnedCount === "number" && typeof totalResults === "number") {
     return `${returnedCount} of ${totalResults} results`;
   }
-  if (typeof returnedCount === "number") return `${returnedCount} results`;
+  if (typeof returnedCount === "number") return `Returned ${returnedCount} results`;
   if (typeof totalResults === "number") return `${totalResults} results`;
   return null;
 }
 
 function isSearchToolName(toolName: string | undefined): toolName is SearchToolName {
   return typeof toolName === "string" && toolName in SEARCH_TOOL_LABELS;
-}
-
-function getSearchToolLabel(toolName: string | undefined): string | null {
-  return isSearchToolName(toolName) ? SEARCH_TOOL_LABELS[toolName] : null;
 }
 
 function formatSearchResultIdentifier(toolName: SearchToolName, value: Record<string, unknown>): string | null {
@@ -108,7 +104,7 @@ function buildSearchSummary(toolName: SearchToolName, returnedCount?: number, to
     if (typeof returnedCount === "number" && typeof totalResults === "number") {
       return `Found ${returnedCount} of ${totalResults} PubMed results.`;
     }
-    if (typeof returnedCount === "number") return `Found ${returnedCount} PubMed results.`;
+    if (typeof returnedCount === "number") return `Returned ${returnedCount} PubMed results.`;
     if (typeof totalResults === "number") return `Found ${totalResults} PubMed results.`;
     return undefined;
   }
@@ -116,7 +112,7 @@ function buildSearchSummary(toolName: SearchToolName, returnedCount?: number, to
   if (typeof returnedCount === "number" && typeof totalResults === "number") {
     return `Found ${returnedCount} of ${totalResults} ${label} results.`;
   }
-  if (typeof returnedCount === "number") return `Found ${returnedCount} ${label} results.`;
+  if (typeof returnedCount === "number") return `Returned ${returnedCount} ${label} results.`;
   if (typeof totalResults === "number") return `Found ${totalResults} ${label} results.`;
   return undefined;
 }

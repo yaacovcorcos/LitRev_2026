@@ -151,12 +151,13 @@ export async function searchSemanticScholar(
 
     const yearFilter = parseYearRange(options?.yearRange);
     const results = papers.map(parseS2Paper).filter((paper) => matchesYearRange(paper.year, yearFilter));
+    const hasLocalYearFilter = yearFilter.start !== undefined || yearFilter.end !== undefined;
     const nextOffset = offset + limit;
 
     return {
         query,
         source: "semantic-scholar",
-        totalResults: total,
+        totalResults: hasLocalYearFilter ? undefined : total,
         returnedCount: results.length,
         results,
         nextCursor: nextOffset < total && nextOffset < 1000 ? String(nextOffset) : undefined,

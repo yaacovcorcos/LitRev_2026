@@ -204,6 +204,7 @@ describe("searchSemanticScholar", () => {
         const response = await searchSemanticScholar("range", { yearRange: "2020-2024" });
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(response.totalResults).toBeUndefined();
         expect(response.returnedCount).toBe(1);
         expect(response.results.map((result) => result.title)).toEqual(["Known Year"]);
     });
