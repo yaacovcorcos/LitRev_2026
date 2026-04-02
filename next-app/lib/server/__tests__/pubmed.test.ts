@@ -184,6 +184,97 @@ const COLLECTIVE_AUTHOR_XML = `<?xml version="1.0" ?>
   </PubmedArticle>
 </PubmedArticleSet>`;
 
+const MISSING_PUBDATE_XML = `<?xml version="1.0" ?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID Version="1">44444444</PMID>
+      <Article>
+        <Journal>
+          <JournalIssue></JournalIssue>
+        </Journal>
+        <ArticleTitle>Missing PubDate paper</ArticleTitle>
+        <AuthorList>
+          <Author>
+            <LastName>Jordan</LastName>
+            <Initials>P</Initials>
+          </Author>
+        </AuthorList>
+      </Article>
+      <MedlineJournalInfo>
+        <MedlineTA>J Missing Data</MedlineTA>
+      </MedlineJournalInfo>
+    </MedlineCitation>
+    <PubmedData>
+      <ArticleIdList>
+        <ArticleId IdType="pubmed">44444444</ArticleId>
+      </ArticleIdList>
+    </PubmedData>
+  </PubmedArticle>
+</PubmedArticleSet>`;
+
+const MALFORMED_YEAR_XML = `<?xml version="1.0" ?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID Version="1">55555555</PMID>
+      <Article>
+        <Journal>
+          <JournalIssue>
+            <PubDate><Year>20XX</Year></PubDate>
+          </JournalIssue>
+        </Journal>
+        <ArticleTitle>Malformed Year paper</ArticleTitle>
+        <AuthorList>
+          <Author>
+            <LastName>Ng</LastName>
+            <Initials>A</Initials>
+          </Author>
+        </AuthorList>
+      </Article>
+      <MedlineJournalInfo>
+        <MedlineTA>J Parsing</MedlineTA>
+      </MedlineJournalInfo>
+    </MedlineCitation>
+    <PubmedData>
+      <ArticleIdList>
+        <ArticleId IdType="pubmed">55555555</ArticleId>
+      </ArticleIdList>
+    </PubmedData>
+  </PubmedArticle>
+</PubmedArticleSet>`;
+
+const MALFORMED_MEDLINE_DATE_XML = `<?xml version="1.0" ?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID Version="1">66666666</PMID>
+      <Article>
+        <Journal>
+          <JournalIssue>
+            <PubDate><MedlineDate>Spring edition</MedlineDate></PubDate>
+          </JournalIssue>
+        </Journal>
+        <ArticleTitle>Malformed MedlineDate paper</ArticleTitle>
+        <AuthorList>
+          <Author>
+            <LastName>Patel</LastName>
+            <Initials>R</Initials>
+          </Author>
+        </AuthorList>
+      </Article>
+      <MedlineJournalInfo>
+        <MedlineTA>J Edge Cases</MedlineTA>
+      </MedlineJournalInfo>
+    </MedlineCitation>
+    <PubmedData>
+      <ArticleIdList>
+        <ArticleId IdType="pubmed">66666666</ArticleId>
+      </ArticleIdList>
+    </PubmedData>
+  </PubmedArticle>
+</PubmedArticleSet>`;
+
 describe("parsePubMedXml", () => {
   it("parses multi-author article with all fields", () => {
     const results = parsePubMedXml(MULTI_AUTHOR_XML);
@@ -231,6 +322,21 @@ describe("parsePubMedXml", () => {
   it("parses MedlineDate fallback for year", () => {
     const results = parsePubMedXml(MISSING_ABSTRACT_XML);
     expect(results[0].year).toBe(2022);
+  });
+
+  it("leaves year undefined when PubDate is missing", () => {
+    const results = parsePubMedXml(MISSING_PUBDATE_XML);
+    expect(results[0].year).toBeUndefined();
+  });
+
+  it("leaves year undefined when Year is malformed", () => {
+    const results = parsePubMedXml(MALFORMED_YEAR_XML);
+    expect(results[0].year).toBeUndefined();
+  });
+
+  it("leaves year undefined when MedlineDate is malformed", () => {
+    const results = parsePubMedXml(MALFORMED_MEDLINE_DATE_XML);
+    expect(results[0].year).toBeUndefined();
   });
 
   it("parses structured abstract with labels", () => {

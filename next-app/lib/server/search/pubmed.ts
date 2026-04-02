@@ -43,6 +43,12 @@ const xmlParser = new XMLParser({
     ["Author", "MeshHeading", "ArticleId", "AbstractText"].includes(name),
 });
 
+type XmlRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): XmlRecord | undefined {
+  return typeof value === "object" && value !== null ? (value as XmlRecord) : undefined;
+}
+
 /**
  * Search PubMed with a query string. Returns parsed results.
  */
@@ -131,50 +137,55 @@ export async function fetchPubMedArticles(
  * Parse PubMed XML response into SearchResult[].
  */
 export function parsePubMedXml(xml: string): SearchResult[] {
-  const parsed = xmlParser.parse(xml);
-  const articleSet = parsed?.PubmedArticleSet?.PubmedArticle;
+  const parsed = asRecord(xmlParser.parse(xml));
+  const articleSet = asRecord(parsed?.PubmedArticleSet)?.PubmedArticle;
 
   if (!articleSet) return [];
 
   const articles = Array.isArray(articleSet) ? articleSet : [articleSet];
 
-  return articles.map((article: any): SearchResult => {
-    const medlineCitation = article.MedlineCitation;
-    const articleData = medlineCitation?.Article;
+  return articles.map((article): SearchResult => {
+    const articleRecord = asRecord(article);
+    const medlineCitation = asRecord(articleRecord?.MedlineCitation);
+    const articleData = asRecord(medlineCitation?.Article);
 
     // Title
     const title = articleData?.ArticleTitle ?? "Untitled";
 
     // Authors
-    const authorList = articleData?.AuthorList?.Author;
+    const authorList = asRecord(articleData?.AuthorList)?.Author;
     const authors = formatAuthors(authorList);
 
     // Year
-    const pubDate = articleData?.Journal?.JournalIssue?.PubDate;
+    const pubDate = asRecord(asRecord(articleData?.Journal)?.JournalIssue)?.PubDate;
     const year = parseYear(pubDate);
 
     // Abstract
-    const abstractTexts = articleData?.Abstract?.AbstractText;
+    const abstractTexts = asRecord(articleData?.Abstract)?.AbstractText;
     const abstract = formatAbstract(abstractTexts);
 
     // DOI
-    const articleIds = article.PubmedData?.ArticleIdList?.ArticleId;
+    const articleIds = asRecord(asRecord(articleRecord?.PubmedData)?.ArticleIdList)?.ArticleId;
     const doi = extractArticleId(articleIds, "doi");
 
     // PMID
-    const pmid = String(medlineCitation?.PMID?.["#text"] ?? medlineCitation?.PMID ?? "");
+    const pmidNode = medlineCitation?.PMID;
+    const pmidRecord = asRecord(pmidNode);
+    const pmid = String(pmidRecord?.["#text"] ?? pmidNode ?? "");
 
     // Journal
-    const journal = medlineCitation?.MedlineJournalInfo?.MedlineTA ?? "";
+    const journalNode = asRecord(medlineCitation?.MedlineJournalInfo)?.MedlineTA;
+    const journal = typeof journalNode === "string" ? journalNode : "";
 
     // Volume, Issue, Pages (coerce to string — parser may return numbers)
-    const journalIssue = articleData?.Journal?.JournalIssue;
+    const journalIssue = asRecord(asRecord(articleData?.Journal)?.JournalIssue);
+    const pagination = asRecord(articleData?.Pagination);
     const volume = journalIssue?.Volume != null ? String(journalIssue.Volume) : undefined;
     const issue = journalIssue?.Issue != null ? String(journalIssue.Issue) : undefined;
-    const pages = articleData?.Pagination?.MedlinePgn != null ? String(articleData.Pagination.MedlinePgn) : undefined;
+    const pages = pagination?.MedlinePgn != null ? String(pagination.MedlinePgn) : undefined;
 
     // MeSH terms
-    const meshHeadings = medlineCitation?.MeshHeadingList?.MeshHeading;
+    const meshHeadings = asRecord(medlineCitation?.MeshHeadingList)?.MeshHeading;
     const keywords = extractMeshTerms(meshHeadings);
 
     return {
@@ -195,16 +206,17 @@ export function parsePubMedXml(xml: string): SearchResult[] {
   });
 }
 
-function formatAuthors(authorList: any[] | undefined): string {
-  if (!authorList || !Array.isArray(authorList)) return "Unknown";
+function formatAuthors(authorList: unknown): string {
+  if (!Array.isArray(authorList)) return "Unknown";
 
   const names = authorList
-    .map((author: any) => {
-      const last = author.LastName;
-      const initials = author.Initials;
+    .map((author) => {
+      const authorRecord = asRecord(author);
+      const last = authorRecord?.LastName;
+      const initials = authorRecord?.Initials;
       if (last && initials) return `${last} ${initials}`;
       if (last) return last;
-      if (author.CollectiveName) return author.CollectiveName;
+      if (authorRecord?.CollectiveName) return authorRecord.CollectiveName;
       return null;
     })
     .filter(Boolean);
@@ -212,31 +224,36 @@ function formatAuthors(authorList: any[] | undefined): string {
   return names.length > 0 ? names.join(", ") : "Unknown";
 }
 
-function parseYear(pubDate: any): number {
-  if (!pubDate) return new Date().getFullYear();
+function parseYear(pubDate: unknown): number | undefined {
+  const pubDateRecord = asRecord(pubDate);
+  if (!pubDateRecord) return undefined;
 
-  if (pubDate.Year) {
-    const y = parseInt(String(pubDate.Year), 10);
-    if (Number.isFinite(y)) return y;
+  if (pubDateRecord.Year) {
+    const rawYear = String(pubDateRecord.Year).trim();
+    if (/^\d{4}$/.test(rawYear)) {
+      const y = parseInt(rawYear, 10);
+      if (Number.isFinite(y)) return y;
+    }
   }
 
   // MedlineDate fallback (e.g. "2023 Jan-Feb")
-  if (pubDate.MedlineDate) {
-    const match = String(pubDate.MedlineDate).match(/(\d{4})/);
+  if (pubDateRecord.MedlineDate) {
+    const match = String(pubDateRecord.MedlineDate).match(/(\d{4})/);
     if (match) return parseInt(match[1], 10);
   }
 
-  return new Date().getFullYear();
+  return undefined;
 }
 
-function formatAbstract(abstractTexts: any): string {
+function formatAbstract(abstractTexts: unknown): string {
   if (!abstractTexts) return "";
 
   if (Array.isArray(abstractTexts)) {
     return abstractTexts
-      .map((section: any) => {
-        const label = section?.Label;
-        const text = typeof section === "string" ? section : (section?.["#text"] ?? "");
+      .map((section) => {
+        const sectionRecord = asRecord(section);
+        const label = sectionRecord?.Label;
+        const text = typeof section === "string" ? section : (sectionRecord?.["#text"] ?? "");
         if (label && text) return `${label}: ${text}`;
         return text;
       })
@@ -245,25 +262,27 @@ function formatAbstract(abstractTexts: any): string {
   }
 
   if (typeof abstractTexts === "string") return abstractTexts;
-  return abstractTexts?.["#text"] ?? "";
+  const abstractRecord = asRecord(abstractTexts);
+  return abstractRecord?.["#text"] != null ? String(abstractRecord["#text"]) : "";
 }
 
 function extractArticleId(
-  articleIds: any[] | undefined,
+  articleIds: unknown,
   idType: string
 ): string | undefined {
-  if (!articleIds || !Array.isArray(articleIds)) return undefined;
-  const match = articleIds.find((id: any) => id?.IdType === idType);
-  return match?.["#text"] ?? undefined;
+  if (!Array.isArray(articleIds)) return undefined;
+  const match = articleIds.find((id) => asRecord(id)?.IdType === idType);
+  const matchRecord = asRecord(match);
+  return matchRecord?.["#text"] != null ? String(matchRecord["#text"]) : undefined;
 }
 
-function extractMeshTerms(meshHeadings: any[] | undefined): string[] {
-  if (!meshHeadings || !Array.isArray(meshHeadings)) return [];
+function extractMeshTerms(meshHeadings: unknown): string[] {
+  if (!Array.isArray(meshHeadings)) return [];
   return meshHeadings
-    .map((heading: any) => {
-      const descriptor = heading?.DescriptorName;
+    .map((heading) => {
+      const descriptor = asRecord(heading)?.DescriptorName;
       if (typeof descriptor === "string") return descriptor;
-      return descriptor?.["#text"] ?? null;
+      return asRecord(descriptor)?.["#text"] ?? null;
     })
-    .filter(Boolean) as string[];
+    .filter((term): term is string => typeof term === "string" && term.length > 0);
 }

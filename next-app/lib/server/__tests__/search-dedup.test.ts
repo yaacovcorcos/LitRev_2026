@@ -159,6 +159,42 @@ describe("findDuplicates", () => {
     expect(unique).toHaveLength(1);
   });
 
+  it("does not treat missing-year results as title+year duplicates", () => {
+    const existing = [
+      makeStudy({
+        id: "s1",
+        title: "Vitamin D and Sleep Outcomes",
+        authors: "Smith J, Doe A",
+        year: 2022,
+      }),
+    ];
+    const results = [
+      makeResult({
+        title: "Vitamin D and Sleep Outcomes",
+        authors: "Smith J, Doe A",
+        year: undefined,
+      }),
+    ];
+
+    const { unique, duplicates } = findDuplicates(existing, results);
+    expect(duplicates).toHaveLength(0);
+    expect(unique).toHaveLength(1);
+  });
+
+  it("still detects identifier duplicates when year is missing", () => {
+    const existing = [
+      makeStudy({ id: "s1", details: { pmid: "12345678" } }),
+    ];
+    const results = [
+      makeResult({ pmid: "12345678", year: undefined, title: "Duplicate Without Year" }),
+    ];
+
+    const { unique, duplicates } = findDuplicates(existing, results);
+    expect(unique).toHaveLength(0);
+    expect(duplicates).toHaveLength(1);
+    expect(duplicates[0].matchedBy).toBe("pmid");
+  });
+
   it("deduplicates repeated items within the same incoming batch", () => {
     const results = [
       makeResult({

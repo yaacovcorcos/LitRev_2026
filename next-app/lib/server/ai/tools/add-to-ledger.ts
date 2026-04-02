@@ -1,7 +1,10 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import type { SearchResult } from "@/types/search";
-import { searchResultToStudyInput } from "@/lib/server/search/to-study";
+import {
+    hasConcreteSearchResultYear,
+    searchResultToStudyInput,
+} from "@/lib/server/search/to-study";
 import { findDuplicates } from "@/lib/server/search/dedup";
 import { listStudies, upsertStudy } from "@/lib/server/ledger";
 
@@ -9,13 +12,14 @@ const inputSchema = z.object({
     results: z.array(z.object({
         title: z.string(),
         authors: z.string(),
-        year: z.number(),
+        year: z.number().optional(),
     }).passthrough()).min(1, "results must not be empty"),
 });
 
 const outputSchema = z.object({
     added: z.number(),
     duplicatesSkipped: z.number(),
+    missingYearSkipped: z.number(),
     titles: z.array(z.string()),
     duplicateDetails: z.array(z.object({
         title: z.string(),
@@ -23,6 +27,7 @@ const outputSchema = z.object({
         matchedValue: z.string(),
         existingTitle: z.string(),
     })).optional(),
+    missingYearTitles: z.array(z.string()).optional(),
 });
 
 export const addToLedgerTool: AITool = {
@@ -53,7 +58,7 @@ export const addToLedgerTool: AITool = {
                             source: { type: "string" },
                             sourceUrl: { type: "string" },
                         },
-                        required: ["title", "authors", "year"],
+                        required: ["title", "authors"],
                     },
                 },
             },
@@ -84,10 +89,12 @@ export const addToLedgerTool: AITool = {
             // Load existing studies for dedup
             const existingStudies = await listStudies(undefined, projectId);
             const { unique, duplicates } = findDuplicates(existingStudies, results);
+            const yearless = unique.filter((result) => !hasConcreteSearchResultYear(result));
+            const ledgerEligible = unique.filter(hasConcreteSearchResultYear);
 
-            // Upsert unique studies
+            // Upsert only results with a trustworthy numeric year.
             const addedTitles: string[] = [];
-            for (const result of unique) {
+            for (const result of ledgerEligible) {
                 const studyInput = searchResultToStudyInput(result);
                 await upsertStudy(undefined, projectId, studyInput);
                 addedTitles.push(result.title);
@@ -96,8 +103,9 @@ export const addToLedgerTool: AITool = {
             return {
                 callId: "",
                 result: {
-                    added: unique.length,
+                    added: ledgerEligible.length,
                     duplicatesSkipped: duplicates.length,
+                    missingYearSkipped: yearless.length,
                     titles: addedTitles,
                     duplicateDetails: duplicates.map((d) => ({
                         title: d.result.title,
@@ -105,6 +113,9 @@ export const addToLedgerTool: AITool = {
                         matchedValue: d.matchedValue,
                         existingTitle: d.existingTitle,
                     })),
+                    missingYearTitles: yearless.length > 0
+                        ? yearless.map((result) => result.title)
+                        : undefined,
                 },
             };
         } catch (error) {

@@ -85,9 +85,12 @@ function parseYearRange(yearRange?: string): YearRange {
   return { start, end };
 }
 
-function matchesYearRange(year: number, yearRange: YearRange): boolean {
-  if (yearRange.start !== undefined && year < yearRange.start) return false;
-  if (yearRange.end !== undefined && year > yearRange.end) return false;
+function matchesYearRange(year: number | undefined, yearRange: YearRange): boolean {
+  if (yearRange.start === undefined && yearRange.end === undefined) return true;
+  if (!Number.isFinite(year)) return false;
+  const resolvedYear = year as number;
+  if (yearRange.start !== undefined && resolvedYear < yearRange.start) return false;
+  if (yearRange.end !== undefined && resolvedYear > yearRange.end) return false;
   return true;
 }
 
