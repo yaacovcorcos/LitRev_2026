@@ -9,8 +9,20 @@ vi.mock("@/lib/server/prisma", () => ({
 }));
 
 const { prisma } = await import("@/lib/server/prisma");
+
+type StudyFindManyResult = Awaited<ReturnType<typeof prisma.study.findMany>>;
+type MemoryFindManyResult = Awaited<ReturnType<typeof prisma.projectMemory.findMany>>;
+
 const mockStudyFindMany = vi.mocked(prisma.study.findMany);
 const mockMemoryFindMany = vi.mocked(prisma.projectMemory.findMany);
+
+function asStudyFindManyResult(rows: unknown): StudyFindManyResult {
+    return rows as StudyFindManyResult;
+}
+
+function asMemoryFindManyResult(rows: unknown): MemoryFindManyResult {
+    return rows as MemoryFindManyResult;
+}
 
 beforeEach(() => {
     vi.clearAllMocks();
@@ -32,14 +44,14 @@ describe("getPRISMAStats", () => {
     });
 
     it("correctly counts studies by triageDecision", async () => {
-        mockStudyFindMany.mockResolvedValue([
+        mockStudyFindMany.mockResolvedValue(asStudyFindManyResult([
             { details: { triageDecision: "keep" } },
             { details: { triageDecision: "keep" } },
             { details: { triageDecision: "exclude" } },
             { details: { triageDecision: "maybe" } },
             { details: null },
             { details: {} },
-        ] as any);
+        ]));
 
         const stats = await getPRISMAStats("proj-1");
 
@@ -52,16 +64,16 @@ describe("getPRISMAStats", () => {
     });
 
     it("groups exclusion reasons from ProjectMemory", async () => {
-        mockStudyFindMany.mockResolvedValue([
+        mockStudyFindMany.mockResolvedValue(asStudyFindManyResult([
             { details: { triageDecision: "exclude" } },
             { details: { triageDecision: "exclude" } },
             { details: { triageDecision: "exclude" } },
-        ] as any);
-        mockMemoryFindMany.mockResolvedValue([
+        ]));
+        mockMemoryFindMany.mockResolvedValue(asMemoryFindManyResult([
             { rationale: "Wrong population" },
             { rationale: "Case study design" },
             { rationale: "Wrong population" },
-        ] as any);
+        ]));
 
         const stats = await getPRISMAStats("proj-1");
 
@@ -77,9 +89,9 @@ describe("getPRISMAStats", () => {
     });
 
     it("returns empty exclusionReasons when no exclusion memories exist", async () => {
-        mockStudyFindMany.mockResolvedValue([
+        mockStudyFindMany.mockResolvedValue(asStudyFindManyResult([
             { details: { triageDecision: "keep" } },
-        ] as any);
+        ]));
 
         const stats = await getPRISMAStats("proj-1");
 
@@ -87,10 +99,10 @@ describe("getPRISMAStats", () => {
     });
 
     it("handles projects with only included studies", async () => {
-        mockStudyFindMany.mockResolvedValue([
+        mockStudyFindMany.mockResolvedValue(asStudyFindManyResult([
             { details: { triageDecision: "keep" } },
             { details: { triageDecision: "keep" } },
-        ] as any);
+        ]));
 
         const stats = await getPRISMAStats("proj-1");
 

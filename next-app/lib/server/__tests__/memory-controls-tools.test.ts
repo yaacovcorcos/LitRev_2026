@@ -19,10 +19,31 @@ const { getUserMemories } = await import("@/lib/server/memory/user-memory");
 const { getProjectMemories } = await import("@/lib/server/memory/project-memory");
 const { getStudyMemories, getProjectStudyMemories } = await import("@/lib/server/memory/study-memory");
 
+type UserMemoriesResult = Awaited<ReturnType<typeof getUserMemories>>;
+type ProjectMemoriesResult = Awaited<ReturnType<typeof getProjectMemories>>;
+type StudyMemoriesResult = Awaited<ReturnType<typeof getStudyMemories>>;
+type ProjectStudyMemoriesResult = Awaited<ReturnType<typeof getProjectStudyMemories>>;
+
 const mockGetUserMemories = vi.mocked(getUserMemories);
 const mockGetProjectMemories = vi.mocked(getProjectMemories);
 const mockGetStudyMemories = vi.mocked(getStudyMemories);
 const mockGetProjectStudyMemories = vi.mocked(getProjectStudyMemories);
+
+function asUserMemoriesResult(rows: unknown): UserMemoriesResult {
+    return rows as UserMemoriesResult;
+}
+
+function asProjectMemoriesResult(rows: unknown): ProjectMemoriesResult {
+    return rows as ProjectMemoriesResult;
+}
+
+function asStudyMemoriesResult(rows: unknown): StudyMemoriesResult {
+    return rows as StudyMemoriesResult;
+}
+
+function asProjectStudyMemoriesResult(rows: unknown): ProjectStudyMemoriesResult {
+    return rows as ProjectStudyMemoriesResult;
+}
 
 describe("memory control tools", () => {
     beforeEach(() => {
@@ -30,11 +51,11 @@ describe("memory control tools", () => {
         mockGetUserMemories.mockResolvedValue([]);
         mockGetProjectMemories.mockResolvedValue([]);
         mockGetStudyMemories.mockResolvedValue([]);
-        mockGetProjectStudyMemories.mockResolvedValue([]);
+        mockGetProjectStudyMemories.mockResolvedValue(asProjectStudyMemoriesResult([]));
     });
 
     it("forget_memory returns archive proposal for user memory key", async () => {
-        mockGetUserMemories.mockResolvedValue([
+        mockGetUserMemories.mockResolvedValue(asUserMemoriesResult([
             {
                 id: "u1",
                 userId: "user-1",
@@ -56,7 +77,7 @@ describe("memory control tools", () => {
                 updatedAt: new Date(),
                 archivedAt: null,
             },
-        ] as any);
+        ]));
 
         const result = await forgetMemoryTool.execute(
             { memoryType: "user", key: "citation format" },
@@ -84,7 +105,7 @@ describe("memory control tools", () => {
     });
 
     it("inspect_memory lists active user/project/study memories", async () => {
-        mockGetUserMemories.mockResolvedValue([
+        mockGetUserMemories.mockResolvedValue(asUserMemoriesResult([
             {
                 id: "u1",
                 key: "citation_format",
@@ -93,22 +114,22 @@ describe("memory control tools", () => {
                 tags: [],
                 rationale: null,
             },
-        ] as any);
-        mockGetProjectMemories.mockResolvedValue([
+        ]));
+        mockGetProjectMemories.mockResolvedValue(asProjectMemoriesResult([
             {
                 id: "p1",
                 statement: "Exclude case studies",
                 type: "decision",
                 tags: ["memory-key:exclusion_rule"],
             },
-        ] as any);
-        mockGetStudyMemories.mockResolvedValue([
+        ]));
+        mockGetStudyMemories.mockResolvedValue(asStudyMemoriesResult([
             {
                 id: "s1",
                 type: "summary",
                 content: "This trial showed improved outcomes",
             },
-        ] as any);
+        ]));
 
         const result = await inspectMemoryTool.execute(
             { memoryType: "all", limit: 10 },
@@ -119,4 +140,3 @@ describe("memory control tools", () => {
         expect((result.result as { memories: unknown[] }).memories).toHaveLength(3);
     });
 });
-

@@ -17,10 +17,16 @@ const {
     archiveProjectMemory,
 } = await import("@/lib/server/memory/project-memory");
 
+type ProjectMemoriesResult = Awaited<ReturnType<typeof getProjectMemories>>;
+
 const mockCreate = vi.mocked(createProjectMemory);
 const mockGet = vi.mocked(getProjectMemories);
 const mockUpdate = vi.mocked(updateProjectMemory);
 const mockArchive = vi.mocked(archiveProjectMemory);
+
+function asProjectMemoriesResult(rows: unknown): ProjectMemoriesResult {
+    return rows as ProjectMemoriesResult;
+}
 
 function makeProtocol(overrides?: Partial<ProtocolData>): ProtocolData {
     return {
@@ -192,7 +198,7 @@ describe("syncProtocolToMemory", () => {
     });
 
     it("revises memory when PICO field text changes", async () => {
-        mockGet.mockResolvedValue([
+        mockGet.mockResolvedValue(asProjectMemoriesResult([
             {
                 id: "mem-pop",
                 statement: "Old population text",
@@ -201,7 +207,7 @@ describe("syncProtocolToMemory", () => {
                 category: "population",
                 status: "active",
             },
-        ] as any);
+        ]));
 
         const protocol = makeProtocol({
             pico: { population: "New population text", intervention: "", comparison: "", outcome: "" },
@@ -215,7 +221,7 @@ describe("syncProtocolToMemory", () => {
     });
 
     it("archives memory when a criterion is removed from protocol", async () => {
-        mockGet.mockResolvedValue([
+        mockGet.mockResolvedValue(asProjectMemoriesResult([
             {
                 id: "mem-inc-0",
                 statement: "RCTs only",
@@ -230,7 +236,7 @@ describe("syncProtocolToMemory", () => {
                 type: "criterion",
                 status: "active",
             },
-        ] as any);
+        ]));
 
         // Only keep first inclusion criterion, remove second
         const protocol = makeProtocol({
@@ -245,9 +251,9 @@ describe("syncProtocolToMemory", () => {
     });
 
     it("is idempotent: second call with same data creates nothing", async () => {
-        mockGet.mockResolvedValue([
+        mockGet.mockResolvedValue(asProjectMemoriesResult([
             { id: "m1", statement: "Adults", tags: ["protocol-sync:pico-population"], type: "definition", status: "active" },
-        ] as any);
+        ]));
 
         const protocol = makeProtocol({
             pico: { population: "Adults", intervention: "", comparison: "", outcome: "" },

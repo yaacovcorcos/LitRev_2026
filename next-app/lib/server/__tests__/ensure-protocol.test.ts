@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Prisma } from "@prisma/client";
 import { createDefaultProtocolData } from "@/types/protocol";
 
 vi.mock("@/lib/server/prisma", () => ({
@@ -49,7 +50,7 @@ describe("ensureProtocol", () => {
     expect(result).toEqual(defaults);
     expect(mockUpsert).toHaveBeenCalledWith({
       where: { projectId: "proj-2" },
-      create: { projectId: "proj-2", data: defaults as any },
+      create: { projectId: "proj-2", data: defaults as unknown as Prisma.InputJsonValue },
       update: {},
     });
   });
