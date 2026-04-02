@@ -2,7 +2,7 @@ import { isHotspotEffectFile, isTestFile } from "../../shared.mjs";
 
 const EXHAUSTIVE_DEPS_RE = /react-hooks\/exhaustive-deps/;
 
-export default {
+const defaultExport = {
   meta: {
     type: "problem",
     docs: {
@@ -31,3 +31,5 @@ export default {
     };
   },
 };
+
+export default defaultExport;

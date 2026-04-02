@@ -24,7 +24,7 @@ function callbackHasUiSideEffects(callback) {
   return hasSideEffect;
 }
 
-export default {
+const defaultExport = {
   meta: {
     type: "suggestion",
     docs: {
@@ -55,3 +55,5 @@ export default {
     };
   },
 };
+
+export default defaultExport;

@@ -7,4 +7,6 @@ import tests from "./tests.mjs";
 
 export { base, phase1, ui, runtime, server, tests };
 
-export default [base, ...phase1, ui, ...runtime, server, tests];
+const defaultExport = [base, ...phase1, ui, ...runtime, server, tests];
+
+export default defaultExport;

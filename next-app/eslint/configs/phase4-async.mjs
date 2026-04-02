@@ -35,4 +35,6 @@ export function createPhase4AsyncConfigs({
   ];
 }
 
-export default createPhase4AsyncConfigs();
+const defaultExport = createPhase4AsyncConfigs();
+
+export default defaultExport;

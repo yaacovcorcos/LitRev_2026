@@ -1,4 +1,4 @@
-export default {
+const defaultExport = {
   name: "litrev/ui",
   files: [
     "app/**/*.{ts,tsx}",
@@ -18,3 +18,5 @@ export default {
     "litrev/no-window-location-navigation": "error",
   },
 };
+
+export default defaultExport;

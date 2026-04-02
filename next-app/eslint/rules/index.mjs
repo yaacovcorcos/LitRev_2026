@@ -13,7 +13,7 @@ import requireTestsForRuntimeFiles from "./require-tests-for-runtime-files/index
 import preferColocatedTestsInSelectedDomains from "./prefer-colocated-tests-in-selected-domains/index.mjs";
 import noServerRuntimeConsole from "./no-server-runtime-console/index.mjs";
 
-export default {
+const defaultExport = {
   "no-default-export-except-framework": noDefaultExportExceptFramework,
   "no-catch-console-error": noCatchConsoleError,
   "no-log-and-throw-same-block": noLogAndThrowSameBlock,
@@ -29,3 +29,5 @@ export default {
   "prefer-colocated-tests-in-selected-domains": preferColocatedTestsInSelectedDomains,
   "no-server-runtime-console": noServerRuntimeConsole,
 };
+
+export default defaultExport;

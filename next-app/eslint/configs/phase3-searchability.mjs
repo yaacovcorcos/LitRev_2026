@@ -34,4 +34,6 @@ export function createPhase3SearchabilityConfigs({
   ];
 }
 
-export default createPhase3SearchabilityConfigs();
+const defaultExport = createPhase3SearchabilityConfigs();
+
+export default defaultExport;

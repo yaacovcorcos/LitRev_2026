@@ -41,4 +41,6 @@ export function createPhase4TestConfigs({
   ];
 }
 
-export default createPhase4TestConfigs();
+const defaultExport = createPhase4TestConfigs();
+
+export default defaultExport;

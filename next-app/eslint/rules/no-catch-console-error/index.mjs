@@ -8,7 +8,7 @@ function isConsoleError(node) {
     && node.property.name === "error";
 }
 
-export default {
+const defaultExport = {
   meta: {
     type: "problem",
     docs: {
@@ -36,3 +36,5 @@ export default {
     };
   },
 };
+
+export default defaultExport;
