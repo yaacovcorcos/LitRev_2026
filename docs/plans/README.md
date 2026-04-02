@@ -20,12 +20,20 @@ This file is the active plan registry and the canonical owner for plan-maintenan
   - [**Reliability A0 brief**](reliability-a0-brief.md): Deterministic repro + baseline threshold contract for Track A blocker reliability work.
   - [**Mobile plan**](mobile-plan.md): Canonical app-wide responsive foundation tracker, including mobile/chat follow-up waves.
   - [**Mobile layout contract**](mobile-layout-contract.md): Operational contract for shared phone/compact height, safe-area, and scroll-ownership rules.
-  - [**Transparency UI**](transparencyUI.md): Canonical supporting plan for truthful process visibility across chat surfaces: live phase, semantic tool receipts, grounded checkpoints, optional reasoning visibility, and visible-message boundaries.
-  - [**Chat Runtime**](chatRuntime.md): Canonical supporting plan for shared runtime parity across `/ai`, project copilot, and popup while keeping `/ai` project-optional; later-stage U1.6 burn-in remains a validation gate, not the substitute for baseline product rescue.
+  - [**Transparency UI**](transparency-ui.md): Canonical supporting plan for truthful process visibility across chat surfaces: live phase, semantic tool receipts, grounded checkpoints, optional reasoning visibility, and visible-message boundaries.
+  - [**Chat Runtime**](chat-runtime.md): Canonical supporting plan for shared runtime parity across `/ai`, project copilot, and popup while keeping `/ai` project-optional; later-stage U1.6 burn-in remains a validation gate, not the substitute for baseline product rescue.
 - [**Guided Setup V2**](plan-guided-setup.md): Dedicated onboarding activation plan for visual redesign, AI-enhanced step flow, personalization, and setup-mode agent behavior.
 - [**Settings**](plan-settings.md): Canonical tracker for user-configurable behavior defaults and future Settings UI controls.
 - [**Speed and Performance**](plan-speed-performance.md): Canonical tracker for Web Vitals budgets, cache/preload policy, route performance, and smooth interaction delivery.
 - [**System Prompts & LLM Extraction**](plan-prompts.md): The text of prompts, JSON schemas, extraction rules, model parameters.
+
+## Plan Filename Policy
+
+- `docs/plans/` already conveys the artifact type, so plan filenames should emphasize the durable domain subject.
+- Top-level canonical plans keep the repo's current `plan-*` naming convention unless a later governance task intentionally changes that policy repo-wide.
+- Supporting plans that live inside a scoped subdirectory should use lowercase kebab-case subject names without adding extra process labels unless the parent directory needs that distinction.
+- Avoid camelCase, transient status labels, and version markers in plan filenames unless the concept is truly canonical.
+- When a plan filename changes, update every in-repo reference in the same task so routing docs, runbooks, and supporting plans stay grep-clean.
 
 ## External References
 - [**PRD**](../../PRD.md): Product vision and high-level behavioral constraints.

@@ -22,6 +22,18 @@ Tier 1 owns routing and repo-wide rules, Tier 2 specialists refine matched-domai
 - Env files live in `next-app/`: `.env`, `.env.local`.
 - Required secrets are in `secrets.local.md` at repo root. Never invent credentials.
 
+## Filename and Artifact Naming
+
+- Prefer stable subject names over process-history names. Directories should convey artifact type; filenames should convey the durable subject.
+- Default new docs, scripts, helpers, and non-component modules to lowercase kebab-case unless a framework or established local convention requires something else.
+- Preserve established exceptions where they carry meaning:
+  - React components: PascalCase
+  - hooks: `useX`
+  - framework-required files such as `page.tsx`, `layout.tsx`, `route.ts`
+- Do not repeat the artifact type in the filename when the directory already conveys it unless that prefix is already the canonical local convention.
+- Avoid transient labels such as `new`, `old`, `final`, `misc`, `temp`, and `v2` unless the concept is truly canonical.
+- If a file's scope drifts enough that the filename becomes misleading, rename it and update every reference atomically in the same task.
+
 ## Stack
 
 Next.js 16, React 19, TypeScript, Prisma 7.3 (PostgreSQL), Vitest, Vercel

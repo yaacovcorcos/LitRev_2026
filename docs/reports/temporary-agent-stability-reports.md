@@ -5,8 +5,8 @@ This file is synthesis material only. It is not a canonical plan tracker.
 Canonical ownership remains in:
 
 - `docs/plans/plan-agentic.md` for active fix status, ordering, and roadmap truth
-- `docs/plans/chatRuntime.md` for shared runtime contract truth
-- `docs/plans/transparencyUI.md` for transparency/message-boundary truth
+- `docs/plans/chat-runtime.md` for shared runtime contract truth
+- `docs/plans/transparency-ui.md` for transparency/message-boundary truth
 - `docs/plans/plan-prompts.md` for prompt-side hygiene rules
 - `docs/plans/agent-runtime-remediation/plan-fix-012-baseline-stability.md` for `FIX-012` execution detail
 
@@ -281,8 +281,8 @@ Stop treating burn-in as the current rescue. Make baseline product rescue the ex
 
 1. Keep [plan-agentic.md](/Users/yaacovcorcos/LitRev_2026/docs/plans/plan-agentic.md) as the canonical owner of the active rescue program.
 2. Keep `FIX-012` as the main baseline stability program and treat `FIX-011b` as later-stage convergence closeout.
-3. Keep [chatRuntime.md](/Users/yaacovcorcos/LitRev_2026/docs/plans/chatRuntime.md) explicit that `U1.6` burn-in remains downstream of baseline rescue.
-4. Keep [transparencyUI.md](/Users/yaacovcorcos/LitRev_2026/docs/plans/transparencyUI.md) explicit that process trace is primary and provider reasoning is secondary.
+3. Keep [chat-runtime.md](/Users/yaacovcorcos/LitRev_2026/docs/plans/chat-runtime.md) explicit that `U1.6` burn-in remains downstream of baseline rescue.
+4. Keep [transparency-ui.md](/Users/yaacovcorcos/LitRev_2026/docs/plans/transparency-ui.md) explicit that process trace is primary and provider reasoning is secondary.
 5. Keep [plan-prompts.md](/Users/yaacovcorcos/LitRev_2026/docs/plans/plan-prompts.md) explicit that runtime scaffolding must never be echoed into visible output.
 6. Treat this file only as synthesis material for the final direction; do not create a second plan tracker from it.
 

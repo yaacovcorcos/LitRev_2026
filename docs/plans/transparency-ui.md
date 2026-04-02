@@ -74,7 +74,7 @@ The urgent problem is not a lack of decorative transparency. The urgent problem 
 - provider/process narration can be noisier than the structured trace
 - recovery can fail in ways that collapse trust before the user even reaches a burn-in-quality scenario
 
-Until those failures are corrected, `U1.6` burn-in in [chatRuntime.md](./chatRuntime.md) should be treated as downstream validation rather than the current rescue task.
+Until those failures are corrected, `U1.6` burn-in in [chat-runtime.md](./chat-runtime.md) should be treated as downstream validation rather than the current rescue task.
 
 ## Current Implementation Status
 - Project copilot now treats live progress as ephemeral process state instead of rendering it as assistant transcript text.
