@@ -29,6 +29,11 @@ export type S2Paper = {
     publicationDate?: string | null;
 };
 
+type YearRange = {
+    start?: number;
+    end?: number;
+};
+
 // ── Throttle ─────────────────────────────────────────────────────────────────
 
 let lastRequestTime = 0;
@@ -85,6 +90,28 @@ async function fetchWithRetry(url: string, init?: RequestInit): Promise<Response
     return lastResponse!;
 }
 
+function parseYearRange(yearRange?: string): YearRange {
+    if (!yearRange) return {};
+    const trimmed = yearRange.trim();
+    if (!trimmed) return {};
+
+    const match = trimmed.match(/^(\d{4})?\s*-\s*(\d{4})?$/);
+    if (!match) return {};
+
+    const start = match[1] ? parseInt(match[1], 10) : undefined;
+    const end = match[2] ? parseInt(match[2], 10) : undefined;
+    return { start, end };
+}
+
+function matchesYearRange(year: number | undefined, yearRange: YearRange): boolean {
+    if (yearRange.start === undefined && yearRange.end === undefined) return true;
+    if (!Number.isFinite(year)) return false;
+    const resolvedYear = year as number;
+    if (yearRange.start !== undefined && resolvedYear < yearRange.start) return false;
+    if (yearRange.end !== undefined && resolvedYear > yearRange.end) return false;
+    return true;
+}
+
 // ── Search ───────────────────────────────────────────────────────────────────
 
 /**
@@ -121,7 +148,8 @@ export async function searchSemanticScholar(
     const papers: S2Paper[] = data.data ?? [];
     const total: number = data.total ?? 0;
 
-    const results = papers.map(parseS2Paper);
+    const yearFilter = parseYearRange(options?.yearRange);
+    const results = papers.map(parseS2Paper).filter((paper) => matchesYearRange(paper.year, yearFilter));
     const nextOffset = offset + limit;
 
     return {
@@ -188,9 +216,8 @@ export function parseS2Paper(paper: S2Paper): SearchResult {
         ? paper.authors.map((a) => a.name).join(", ")
         : "Unknown";
 
-    // Year resolution: prefer explicit year, fallback to publicationDate, then current year
+    // Year resolution: prefer explicit year, fallback to publicationDate.
     let year: number | null = null;
-    let yearEstimated = false;
 
     if (paper.year != null) {
         year = paper.year;
@@ -199,27 +226,19 @@ export function parseS2Paper(paper: S2Paper): SearchResult {
         if (Number.isFinite(parsed)) year = parsed;
     }
 
-    if (year == null || !Number.isFinite(year)) {
-        year = new Date().getFullYear();
-        yearEstimated = true;
-    }
-
     const metadata: Record<string, unknown> = {
         s2PaperId: paper.paperId,
         citationCount: paper.citationCount,
         influentialCitationCount: paper.influentialCitationCount,
         isOpenAccess: paper.isOpenAccess,
     };
-    if (yearEstimated) {
-        metadata.yearEstimated = true;
-    }
 
     return {
         pmid: pmid || undefined,
         doi: doi || undefined,
         title: paper.title ?? "Untitled",
         authors,
-        year,
+        year: Number.isFinite(year) ? year ?? undefined : undefined,
         journal: paper.venue || undefined,
         abstract: paper.abstract || undefined,
         keywords: paper.fieldsOfStudy?.length ? paper.fieldsOfStudy : undefined,

@@ -16,7 +16,7 @@ const outputSchema = z.object({
     results: z.array(z.object({
         title: z.string(),
         authors: z.string(),
-        year: z.number(),
+        year: z.number().optional(),
     }).passthrough()),
     nextCursor: z.string().optional(),
 });
@@ -25,7 +25,7 @@ export const semanticScholarSearchTool: AITool = {
     definition: {
         name: "search_semantic_scholar",
         description:
-            "Search Semantic Scholar for academic papers across all disciplines (215M+ papers). Supports keyword search with optional year filtering. Not first-line for biomedical reviews: default to PubMed first. Use this tool when the user explicitly requests Semantic Scholar, when the topic is cross-disciplinary/non-biomedical (for example CS, psychology, engineering), or when PubMed recall remains insufficient after refinement. Returns titles, authors, abstracts, DOIs, citation counts, and Semantic Scholar paper IDs.",
+            "Search Semantic Scholar for academic papers across all disciplines (215M+ papers). Supports keyword search with optional year filtering. Not first-line for biomedical reviews: default to PubMed first. Use this tool when the user explicitly requests Semantic Scholar, when the topic is cross-disciplinary/non-biomedical (for example CS, psychology, engineering), or when PubMed recall remains insufficient after refinement. Returns titles, authors, publication years when available, abstracts, DOIs, citation counts, and Semantic Scholar paper IDs.",
         parameters: {
             type: "object",
             properties: {

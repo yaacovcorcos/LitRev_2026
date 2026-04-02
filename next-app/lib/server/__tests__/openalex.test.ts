@@ -55,6 +55,19 @@ describe("parseOpenAlexWork", () => {
     expect(result.keywords).toContain("Machine Learning");
     expect(result.metadata?.openAlexId).toBe("https://openalex.org/W123");
   });
+
+  it("preserves an unknown year when OpenAlex does not provide one", () => {
+    const result = parseOpenAlexWork({
+      id: "https://openalex.org/W999",
+      display_name: "Yearless OpenAlex Paper",
+      publication_year: null,
+      publication_date: null,
+      authorships: [{ author: { display_name: "Alice Example" } }],
+    });
+
+    expect(result.year).toBeUndefined();
+    expect(result.metadata?.yearEstimated).toBeUndefined();
+  });
 });
 
 describe("searchOpenAlex", () => {
@@ -145,5 +158,70 @@ describe("searchOpenAlex", () => {
     expect(response.results[0].journal).toBe("Recovered Journal");
     expect(response.results[0].metadata?.crossrefEnriched).toBe(true);
   });
-});
 
+  it("excludes unknown-year results when a year range is requested", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      mockJsonResponse({
+        meta: { count: 2, next_cursor: null },
+        results: [
+          {
+            id: "https://openalex.org/W20",
+            display_name: "Unknown Year Paper",
+            publication_year: null,
+            publication_date: null,
+            authorships: [{ author: { display_name: "Unknown Author" } }],
+          },
+          {
+            id: "https://openalex.org/W21",
+            display_name: "Known Year Paper",
+            publication_year: 2023,
+            authorships: [{ author: { display_name: "Known Author" } }],
+          },
+        ],
+      })
+    );
+
+    const response = await searchOpenAlex("year filter", { yearRange: "2020-2024" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(response.returnedCount).toBe(1);
+    expect(response.results.map((result) => result.title)).toEqual(["Known Year Paper"]);
+  });
+
+  it("can recover a missing year from Crossref before year-range filtering", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          meta: { count: 1, next_cursor: null },
+          results: [
+            {
+              id: "https://openalex.org/W30",
+              display_name: "Recoverable Year Paper",
+              publication_year: null,
+              publication_date: null,
+              ids: { doi: "https://doi.org/10.3333/recoverable" },
+              authorships: [],
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          message: {
+            title: ["Recovered Title"],
+            author: [{ family: "Smith", given: "Jo" }],
+            "container-title": ["Recovered Journal"],
+            "published-online": { "date-parts": [[2021, 1, 1]] },
+          },
+        })
+      );
+
+    const response = await searchOpenAlex("recoverable", { yearRange: "2020-2024" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.returnedCount).toBe(1);
+    expect(response.results[0]?.year).toBe(2021);
+    expect(response.results[0]?.metadata?.crossrefEnriched).toBe(true);
+  });
+});
