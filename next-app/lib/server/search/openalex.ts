@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SearchResult, SearchResponse } from "@/types/search";
 import { fetchCrossrefMetadata, normalizeDoi } from "@/lib/server/citation-metadata";
+import { parsePublicationYearPrefix } from "@/lib/server/search/publication-year";
 
 const OPENALEX_BASE = "https://api.openalex.org/works";
 const MAX_RESULTS = 100;
@@ -155,8 +156,8 @@ export function parseOpenAlexWork(work: OpenAlexWork): SearchResult {
 
   let year = work.publication_year ?? null;
   if (year == null || !Number.isFinite(year)) {
-    const parsed = work.publication_date ? parseInt(work.publication_date.slice(0, 4), 10) : NaN;
-    if (Number.isFinite(parsed)) {
+    const parsed = parsePublicationYearPrefix(work.publication_date);
+    if (parsed !== undefined) {
       year = parsed;
     } else {
       year = null;

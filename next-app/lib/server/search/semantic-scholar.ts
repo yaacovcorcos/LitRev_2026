@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SearchResult, SearchResponse } from "@/types/search";
 import type { Study } from "@/types/ledger";
+import { parsePublicationYearPrefix } from "@/lib/server/search/publication-year";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -222,8 +223,8 @@ export function parseS2Paper(paper: S2Paper): SearchResult {
     if (paper.year != null) {
         year = paper.year;
     } else if (paper.publicationDate) {
-        const parsed = parseInt(paper.publicationDate.slice(0, 4), 10);
-        if (Number.isFinite(parsed)) year = parsed;
+        const parsed = parsePublicationYearPrefix(paper.publicationDate);
+        if (parsed !== undefined) year = parsed;
     }
 
     const metadata: Record<string, unknown> = {
