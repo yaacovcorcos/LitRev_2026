@@ -6,7 +6,7 @@
 import OpenAI from "openai";
 import type { AIMessage, AIModel, AIResponse, ChatOptions, AIStreamChunk, ToolCall } from "@/types/ai";
 import { BaseAIProvider } from "./base";
-import { AI_CONFIG, AVAILABLE_MODELS } from "@/lib/ai/config";
+import { AVAILABLE_MODELS } from "@/lib/ai/config";
 import { parseToolArgs } from "../json-repair";
 import { AIErrorWithEnvelope, buildStreamErrorChunk } from "@/lib/ai/error-envelope";
 import { extractProviderErrorMetadata } from "./error-metadata";
@@ -14,6 +14,7 @@ import { normalizeProviderMessages } from "./message-normalization";
 import { extractReasoningTextsFromDelta } from "./reasoning-delta";
 import { normalizeChatOptionsForModel } from "../request-policy";
 import { toAIErrorEnvelope } from "../error-classification";
+import { getToolCallDeltas } from "./tool-call-delta";
 
 export class XAIProvider extends BaseAIProvider {
     readonly id = "xai";
@@ -132,20 +133,16 @@ export class XAIProvider extends BaseAIProvider {
                         };
                     }
 
-                    const toolCallDeltas = (choice.delta as any)?.tool_calls;
-                    if (toolCallDeltas) {
-                        for (const tc of toolCallDeltas) {
-                            const idx = tc.index;
-                            if (!pendingToolCalls.has(idx)) {
-                                pendingToolCalls.set(idx, { id: tc.id || "", name: "", arguments: "" });
-                            }
-                            const pending = pendingToolCalls.get(idx)!;
-                            if (tc.id) pending.id = tc.id;
-                            if (tc.function?.name) pending.name += tc.function.name;
-                            if (tc.function?.arguments) pending.arguments += tc.function.arguments;
+                    for (const tc of getToolCallDeltas(choice.delta)) {
+                        const idx = tc.index;
+                        if (!pendingToolCalls.has(idx)) {
+                            pendingToolCalls.set(idx, { id: tc.id || "", name: "", arguments: "" });
                         }
+                        const pending = pendingToolCalls.get(idx)!;
+                        if (tc.id) pending.id = tc.id;
+                        if (tc.function?.name) pending.name += tc.function.name;
+                        if (tc.function?.arguments) pending.arguments += tc.function.arguments;
                     }
-
                     if (choice.finish_reason === "tool_calls") {
                         if (activeReasoningId) {
                             yield { type: "reasoning_end", reasoningId: activeReasoningId };
