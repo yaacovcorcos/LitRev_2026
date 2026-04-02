@@ -16,6 +16,13 @@ Each entry should stay short and include:
 
 ## Entries
 
+### 2026-04-02 - Security ownership uses a layered repo-local baseline instead of chat-only memory
+
+- Decision: Keep repository-level security process in `SECURITY.md` and a LitRev-specific operating baseline in `docs/runbooks/security-baseline.md`, with subsystem owner docs remaining authoritative for their own boundaries.
+- Why it was made: LitRev has enough security-sensitive surfaces across auth, storage, AI tools, background jobs, and CI that ad hoc security guidance in reviews or chat is too fragile. A layered local baseline makes future security work faster, more consistent, and easier to audit without creating a second source of truth for subsystem behavior.
+- Constraints or assumptions: The security baseline complements owner docs; it does not replace `plan-backend.md`, `admin-access.md`, `plan-agentic.md`, tests, or tracked findings in `docs/reports/security-review-2026-03-01.md`.
+- What would invalidate it: A future governance model that centralizes security policy in a stronger canonical owner with equal or better discoverability, maintenance discipline, and enforcement.
+
 ### 2026-04-02 - External repo patterns and adapted skill packs remain reference inputs until rewritten into LitRev-local owners
 
 - Decision: Treat external repositories, vendor examples, and internally adapted skill packs as reference inputs only. They do not become LitRev policy until the repo rewrites them into local code, tests, runbooks, or owner-plan updates.

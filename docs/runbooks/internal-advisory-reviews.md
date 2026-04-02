@@ -27,6 +27,7 @@ Use for backend trust boundaries:
 - backend-owned validation and auditability
 
 Primary owner docs:
+- `docs/runbooks/security-baseline.md`
 - `docs/plans/plan-backend.md`
 - `docs/runbooks/admin-access.md`
 
