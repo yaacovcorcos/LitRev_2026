@@ -67,14 +67,14 @@ Additionally, each tool that directly queries Prisma should validate project own
 
 | Field | Value |
 |-------|-------|
-| **Status** | `FIXED` — 2026-04-02 — `485489dcb5ffadafd618dda52a3edd14eba1d0c0` |
+| **Status** | `FIXED` — 2026-04-02 — `e879b954f91b7dd4c909b8eb3a2d589c85521c3d` |
 | **Severity** | HIGH |
 | **Confidence** | 8/10 |
 | **Category** | IDOR / Path Injection |
 | **Primary file** | `next-app/app/actions/files.ts` (lines 39-44) |
 | **Also affects** | `next-app/lib/server/files.ts` (lines 105-129), `next-app/lib/server/pdf-extraction.ts` (lines 68-97) |
 
-> **Evidence correction:** This finding was previously marked `FIXED` on 2026-03-01, but current `main` still contained the vulnerable client-authored `storagePath` surface and raw privileged file-read path when this review was re-checked on 2026-04-02. The status was corrected back to `OPEN`, then closed again only after commit `485489dcb5ffadafd618dda52a3edd14eba1d0c0` removed the dead client-authored API, enforced validated file-asset reads, and stopped exposing raw storage pointers to the client.
+> **Evidence correction:** This finding was previously marked `FIXED` on 2026-03-01, but current `main` still contained the vulnerable client-authored `storagePath` surface and raw privileged file-read path when this review was re-checked on 2026-04-02. The status was corrected back to `OPEN`, then closed again only after commit `e879b954f91b7dd4c909b8eb3a2d589c85521c3d` removed the dead client-authored API, enforced validated file-asset reads, and stopped exposing raw storage pointers to the client.
 
 ### Description
 
