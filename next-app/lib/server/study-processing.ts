@@ -1,9 +1,9 @@
 import "server-only";
 
-import { headers } from "next/headers";
 import type { Study as PrismaStudy, StudyProcessingJob as PrismaStudyProcessingJob } from "@prisma/client";
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
+import { STUDY_PROCESSING_INTERNAL_PATH } from "@/lib/server/study-processing-dispatch-auth";
 import type { ScopeInput } from "@/lib/server/scope";
 import { mergeDetails } from "@/lib/utils/merge";
 import { extractStudyFromPdf, deepAnalyzeStudyFromPdf } from "@/lib/server/pdf-extraction";
@@ -33,7 +33,6 @@ type StudyProcessingRow = PrismaStudyProcessingJob;
 
 const PROCESSING_LEASE_MS = 2 * 60 * 1000;
 const PROCESSING_LEASE_RENEW_MS = 15 * 1000;
-const DISPATCHER_PATH = "/api/internal/study-processing";
 
 function emptyPhaseSnapshot(phase: StudyProcessingPhase): StudyProcessingPhaseSnapshot {
   return {
@@ -733,11 +732,26 @@ export async function processOneStudyProcessingJob() {
   }
 }
 
-function getDispatcherBaseUrl() {
-  if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL;
-  if (process.env.NEXT_PUBLIC_BETTER_AUTH_URL) return process.env.NEXT_PUBLIC_BETTER_AUTH_URL;
-  if (process.env.VERCEL_URL?.startsWith("http")) return process.env.VERCEL_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+function getDispatcherBaseUrl(): URL | null {
+  const candidates = [
+    process.env.BETTER_AUTH_URL,
+    process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
+    process.env.VERCEL_URL?.startsWith("http")
+      ? process.env.VERCEL_URL
+      : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : null,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      return new URL(candidate);
+    } catch {
+      continue;
+    }
+  }
+
   return null;
 }
 
@@ -747,19 +761,10 @@ export async function kickStudyProcessingDispatcher() {
   if (!token || !baseUrl || process.env.NODE_ENV === "test") {
     return false;
   }
-
-  let refererOrigin: string | null = null;
-  try {
-    const headerStore = await headers();
-    refererOrigin = headerStore.get("origin");
-  } catch {
-    refererOrigin = null;
-  }
-
-  const targetBase = refererOrigin ?? baseUrl;
+  const dispatcherUrl = new URL(STUDY_PROCESSING_INTERNAL_PATH, baseUrl).toString();
 
   try {
-    const response = await fetch(`${targetBase}${DISPATCHER_PATH}`, {
+    const response = await fetch(dispatcherUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
