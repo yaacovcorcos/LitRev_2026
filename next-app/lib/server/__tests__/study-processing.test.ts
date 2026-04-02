@@ -320,6 +320,50 @@ describe("study-processing", () => {
     );
   });
 
+  it("prefers the trusted configured base URL order over untrusted fallback values", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    process.env.STUDY_PROCESSING_INTERNAL_TOKEN = "internal-secret";
+    process.env.BETTER_AUTH_URL = "https://primary.example.com/app";
+    process.env.NEXT_PUBLIC_BETTER_AUTH_URL = "https://public.example.com";
+    process.env.VERCEL_URL = "preview.vercel.app";
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await kickStudyProcessingDispatcher();
+
+    expect(result).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://primary.example.com/api/internal/study-processing",
+      expect.any(Object),
+    );
+  });
+
+  it("returns false when the internal dispatcher rejects the request", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    process.env.STUDY_PROCESSING_INTERNAL_TOKEN = "internal-secret";
+    process.env.BETTER_AUTH_URL = "https://litrev.example.com";
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 401 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await kickStudyProcessingDispatcher();
+
+    expect(result).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns false when kicking the internal dispatcher throws", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    process.env.STUDY_PROCESSING_INTERNAL_TOKEN = "internal-secret";
+    process.env.BETTER_AUTH_URL = "https://litrev.example.com";
+    const fetchMock = vi.fn().mockRejectedValue(new Error("network down"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await kickStudyProcessingDispatcher();
+
+    expect(result).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("returns false when dispatcher config is missing or test mode is active", async () => {
     vi.stubEnv("NODE_ENV", "test");
     process.env.STUDY_PROCESSING_INTERNAL_TOKEN = "internal-secret";
