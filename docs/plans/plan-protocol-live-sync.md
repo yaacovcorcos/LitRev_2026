@@ -55,7 +55,7 @@ The intended end state is a single project-scoped protocol client state that upd
 - The protocol page is wrapped in `ProtocolProvider` and seeded from cached project data only through `initialData` in `next-app/app/project/[id]/protocol/page.tsx`.
 - `ProtocolProvider` owns its own local protocol state and schedules a debounced backend save after `500ms` in `next-app/contexts/ProtocolContext.tsx`.
 - On cleanup, `ProtocolProvider` clears the pending timer rather than flushing it, so refresh/route exit can drop edits in `next-app/contexts/ProtocolContext.tsx`.
-- A local protocol storage helper already exists in `next-app/lib/protocolStorage.ts` but is not used by the current protocol page runtime.
+- A local protocol storage helper already exists in `next-app/lib/protocol-storage.ts` but is not used by the current protocol page runtime.
 - `next-app/hooks/useProjectState.ts` fetches protocol directly via `getProtocolAction()` because `ProtocolProvider` is page-scoped, so copilot/conversation readers currently bypass any shared client protocol slice.
 - Accepted copilot protocol artifacts dispatch project-data invalidation through `next-app/hooks/useCopilotStreamActions.ts`.
 - `ProjectDataContext` responds to those events by refetching protocol from the server in `next-app/contexts/ProjectDataContext.tsx`.
@@ -65,7 +65,7 @@ The intended end state is a single project-scoped protocol client state that upd
 ## Current Architecture
 - `ProjectDataContext` now owns the canonical in-browser protocol slice, including local durability metadata, save state, pending external patch state, and immediate client-side artifact patch application.
 - `ProtocolProvider` is now a page adapter over that shared slice rather than a separate protocol source of truth, so protocol page edits and accepted copilot protocol artifacts update the same client state immediately.
-- `protocolStorage.ts` now supports a versioned metadata envelope with backward-compatible reads for legacy raw payloads, allowing refresh-safe protocol recovery without breaking migration helpers.
+- `protocol-storage.ts` now supports a versioned metadata envelope with backward-compatible reads for legacy raw payloads, allowing refresh-safe protocol recovery without breaking migration helpers.
 - `useProjectState()` now consumes shared protocol state instead of fetching protocol directly, so copilot/conversation protocol-dependent reads stay aligned with accepted protocol updates.
 
 ## Documentation Impact
@@ -81,7 +81,7 @@ The smallest reversible approach is to keep the existing protocol page mutation 
 That means:
 - reuse `ProtocolContext` for page component ergonomics
 - reuse `ProjectDataContext` as the project-scoped cache owner
-- reuse `protocolStorage.ts` for local durability
+- reuse `protocol-storage.ts` for local durability
 - reuse server-side protocol writes and artifact apply logic
 - add a thin live protocol patch/reconciliation layer rather than inventing a new global store framework
 
@@ -94,7 +94,7 @@ This avoids a broad rewrite while still fixing the two actual product failures:
 ### Reuse
 - `next-app/contexts/ProtocolContext.tsx` remains the page-facing protocol editing API.
 - `next-app/contexts/ProjectDataContext.tsx` remains the project-domain cache owner.
-- `next-app/lib/protocolStorage.ts` is reused for local protocol durability.
+- `next-app/lib/protocol-storage.ts` is reused for local protocol durability.
 - `next-app/lib/project-data-events.ts` remains the invalidation/reconciliation transport.
 - `next-app/lib/server/agent/artifacts.ts` remains the server source of truth for applied protocol proposals.
 
@@ -143,7 +143,7 @@ Behavioral rules:
 - `saveState=error` is for unrecoverable protocol load corruption, not normal transient save issues.
 
 ### Local Storage Contract
-`protocolStorage.ts` cannot remain raw `ProtocolData` if restore precedence depends on sync metadata.
+`protocol-storage.ts` cannot remain raw `ProtocolData` if restore precedence depends on sync metadata.
 
 V1 storage envelope:
 - `version: 3`
@@ -164,14 +164,14 @@ Compatibility rules:
 - `hasProtocolData()` and migration callers must continue to work with both shapes
 
 Impacted consumers:
-- `next-app/lib/protocolStorage.ts`
-- `next-app/lib/migrateLocalStorage.ts`
+- `next-app/lib/protocol-storage.ts`
+- `next-app/lib/migrate-local-storage.ts`
 - any seeding/migration utilities that assume `loadProtocolData()` returns only raw protocol content
 
 ### Manual Edit Flow
 On every protocol edit:
 1. Apply the change to the shared protocol slice immediately.
-2. Persist the same value to `protocolStorage.ts` immediately.
+2. Persist the same value to `protocol-storage.ts` immediately.
 3. Mark `saveState` as `saving`.
 4. Debounce backend save.
 5. On backend success:
@@ -319,7 +319,7 @@ Rollback:
 ### Tradeoffs
 - Keeping both shared slice state and backend reconciliation adds complexity compared to pure refetch, but it directly solves the UX problem.
 - Conflict banners add UI complexity, but they are safer than silent overwrite and much smaller than full collaborative merge tooling.
-- Adding a versioned storage envelope creates migration surface in `protocolStorage.ts`, but it is necessary to make restore precedence and debugging coherent.
+- Adding a versioned storage envelope creates migration surface in `protocol-storage.ts`, but it is necessary to make restore precedence and debugging coherent.
 
 ## Execution Slicing
 
@@ -328,7 +328,7 @@ Goal:
 - make manual protocol edits refresh-safe and visibly stateful
 
 Changes:
-- wire `protocolStorage.ts` into protocol runtime
+- wire `protocol-storage.ts` into protocol runtime
 - add protocol save-state model
 - flush pending saves on exit/blur where feasible
 
@@ -489,7 +489,7 @@ Rollback:
 
 ### First Triage Steps
 - Check whether the shared protocol slice changed in `ProjectDataContext`.
-- Check whether local backup wrote to `protocolStorage.ts`.
+- Check whether local backup wrote to `protocol-storage.ts`.
 - Check whether backend save returned success.
 - Check whether artifact acceptance emitted immediate client patch or only refetch.
 - Check whether the affected field was marked dirty/focused and the patch was queued as pending.
@@ -505,7 +505,7 @@ Rollback:
 ## Assumptions and Defaults
 - Protocol remains single-user in active editing behavior for now; multi-user concurrency is out of scope.
 - Proposal acceptance remains explicit; protocol changes are not auto-applied from model output.
-- `protocolStorage.ts` is acceptable as a local durability layer for this domain.
+- `protocol-storage.ts` is acceptable as a local durability layer for this domain.
 - Last-write-wins is acceptable for non-conflicting field updates; conflicting focused-field overwrites require a visible choice.
 - The first implementation slice should optimize for safety and visible correctness over reducing every network request.
 - V1 live-sync scope includes the protocol page, ledger consumers, and `useProjectState()` readers; any remaining direct protocol fetchers discovered during implementation must either migrate in-slice or be explicitly deferred back into this plan.
@@ -520,5 +520,5 @@ Rollback:
 - `PLS-005` Added immediate client-side patching for accepted `protocol_suggestion` and `criteria_card` artifacts and migrated `useProjectState()` onto shared protocol reads.
 - `PLS-004` Reworked `ProtocolProvider` into a page adapter over shared protocol state with local durability and blur-triggered flushes.
 - `PLS-003` Added shared live protocol slice ownership to `ProjectDataContext`, including save-state metadata, pending external patch handling, and deployment-scoped live-sync gating.
-- `PLS-002` Added a versioned `protocolStorage.ts` envelope with backward-compatible reads so legacy local protocol payloads still load correctly.
+- `PLS-002` Added a versioned `protocol-storage.ts` envelope with backward-compatible reads so legacy local protocol payloads still load correctly.
 - `PLS-001` Defined the live `ProtocolProvider` contract with field-path dirty/focus tracking, pending external patch semantics, and shared save-state exposure.

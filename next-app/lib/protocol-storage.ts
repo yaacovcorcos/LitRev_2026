@@ -1,7 +1,6 @@
 /**
  * Storage utility for protocol data.
- * Follows the same pattern as other storage modules (projectCopilotStorage, ledgerStorage).
- * Each project has its own protocol data stored in localStorage.
+ * Keeps one protocol snapshot per project in localStorage, using the same defensive read/write style as the other local persistence helpers.
  */
 
 import {

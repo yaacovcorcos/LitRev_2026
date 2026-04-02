@@ -582,7 +582,7 @@ next-app/lib/__tests__/project-entry-boot-mode.test.ts
 next-app/lib/__tests__/project-entry-restore.test.ts
 next-app/lib/__tests__/protocol-fields.test.ts
 next-app/lib/__tests__/protocol-populated.test.ts
-next-app/lib/__tests__/protocolStorage.test.ts
+next-app/lib/__tests__/protocol-storage.test.ts
 next-app/lib/__tests__/route-params.test.ts
 next-app/lib/__tests__/sample-card.test.ts
 next-app/lib/action-client.ts
@@ -707,10 +707,10 @@ next-app/lib/durable-route-state.ts
 next-app/lib/feature-flags.ts
 next-app/lib/file-validation.ts
 next-app/lib/guided-setup-availability.ts
-next-app/lib/ledgerStorage.ts
+next-app/lib/ledger-storage.ts
 next-app/lib/manuscript/schema.ts
 next-app/lib/manuscript/workspace.ts
-next-app/lib/migrateLocalStorage.ts
+next-app/lib/migrate-local-storage.ts
 next-app/lib/mobile/__tests__/feature-flags.test.ts
 next-app/lib/mobile/__tests__/foundation-reliability.test.tsx
 next-app/lib/mobile/__tests__/scroll-lock-policy.test.ts
@@ -735,7 +735,7 @@ next-app/lib/projectCopilotStorage.ts
 next-app/lib/protocol-fields.ts
 next-app/lib/protocol-live-sync-feature-flags.ts
 next-app/lib/protocol-live-sync.ts
-next-app/lib/protocolStorage.ts
+next-app/lib/protocol-storage.ts
 next-app/lib/route-params.ts
 next-app/lib/schemas/__tests__/ledger-schema.test.ts
 next-app/lib/schemas/agent.ts

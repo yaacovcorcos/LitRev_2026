@@ -13,7 +13,7 @@ import {
   getLocalStorageMigrationStatus,
   migrateLocalStorageToBackend,
   type MigrationStatus,
-} from "@/lib/migrateLocalStorage";
+} from "@/lib/migrate-local-storage";
 import { HOME_PROJECT_STALE_MS } from "@/lib/project-data-policy";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";

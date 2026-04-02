@@ -31,7 +31,7 @@ import {
     loadProtocolStorageEntry,
     saveProtocolStorageEntry,
     type ProtocolStorageSource,
-} from "@/lib/protocolStorage";
+} from "@/lib/protocol-storage";
 import { isProtocolLiveSyncV1Enabled } from "@/lib/protocol-live-sync-feature-flags";
 import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
 import type { Study } from "@/types/ledger";
