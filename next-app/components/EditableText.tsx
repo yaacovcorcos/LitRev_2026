@@ -44,13 +44,6 @@ export function EditableText({
     const [localValue, setLocalValue] = useState(value);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-    // Sync local value when prop changes (and not editing)
-    useEffect(() => {
-        if (!isEditing) {
-            setLocalValue(value);
-        }
-    }, [value, isEditing]);
-
     // Auto-resize textarea to fit content
     const autoResize = useCallback(() => {
         const textarea = textareaRef.current;
@@ -78,9 +71,10 @@ export function EditableText({
     }, [localValue, isEditing, autoResize]);
 
     const handleClick = useCallback(() => {
+        setLocalValue(value);
         setIsEditing(true);
         onFocus?.();
-    }, [onFocus]);
+    }, [onFocus, value]);
 
     const handleBlur = useCallback(() => {
         setIsEditing(false);
