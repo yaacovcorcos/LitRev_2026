@@ -1,5 +1,5 @@
 import { processOneStudyProcessingJob } from "@/lib/server/study-processing";
-import { isAuthorizedStudyProcessingInternalRequest } from "@/lib/server/study-processing-dispatch-auth";
+import { isAuthorizedStudyProcessingCronRequest } from "@/lib/server/study-processing-dispatch-auth";
 
 function unauthorizedResponse() {
   return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -15,12 +15,8 @@ function methodNotAllowedResponse(allow: string) {
   );
 }
 
-export async function GET() {
-  return methodNotAllowedResponse("POST");
-}
-
-export async function POST(request: Request) {
-  if (!isAuthorizedStudyProcessingInternalRequest(request)) {
+export async function GET(request: Request) {
+  if (!isAuthorizedStudyProcessingCronRequest(request)) {
     return unauthorizedResponse();
   }
 
@@ -31,4 +27,8 @@ export async function POST(request: Request) {
       "Cache-Control": "no-store",
     },
   });
+}
+
+export async function POST() {
+  return methodNotAllowedResponse("GET");
 }

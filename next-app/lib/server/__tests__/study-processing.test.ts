@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   assertProjectAccess: vi.fn(),
@@ -66,10 +66,16 @@ vi.mock("@/lib/server/logging", () => ({
 import {
   buildStudyProcessingSnapshotFromJobs,
   enqueueStudyProcessingJob,
+  kickStudyProcessingDispatcher,
   processOneStudyProcessingJob,
 } from "@/lib/server/study-processing";
 
 describe("study-processing", () => {
+  const previousInternalToken = process.env.STUDY_PROCESSING_INTERNAL_TOKEN;
+  const previousBetterAuthUrl = process.env.BETTER_AUTH_URL;
+  const previousPublicBetterAuthUrl = process.env.NEXT_PUBLIC_BETTER_AUTH_URL;
+  const previousVercelUrl = process.env.VERCEL_URL;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.assertProjectAccess.mockResolvedValue({ ownerId: "user-1", workspaceId: "ws-1" });
@@ -92,6 +98,15 @@ describe("study-processing", () => {
       };
       return handler(tx);
     });
+  });
+
+  afterEach(() => {
+    process.env.STUDY_PROCESSING_INTERNAL_TOKEN = previousInternalToken;
+    process.env.BETTER_AUTH_URL = previousBetterAuthUrl;
+    process.env.NEXT_PUBLIC_BETTER_AUTH_URL = previousPublicBetterAuthUrl;
+    process.env.VERCEL_URL = previousVercelUrl;
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it("treats already extracted legacy studies as ready for analysis without explicit quick-extract jobs", () => {
@@ -280,5 +295,41 @@ describe("study-processing", () => {
         status: "extracted",
       }),
     });
+  });
+
+  it("kicks the internal dispatcher with the trusted base URL only", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    process.env.STUDY_PROCESSING_INTERNAL_TOKEN = "internal-secret";
+    process.env.BETTER_AUTH_URL = "https://litrev.example.com";
+    delete process.env.NEXT_PUBLIC_BETTER_AUTH_URL;
+    delete process.env.VERCEL_URL;
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await kickStudyProcessingDispatcher();
+
+    expect(result).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://litrev.example.com/api/internal/study-processing",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          Authorization: "Bearer internal-secret",
+        },
+      }),
+    );
+  });
+
+  it("returns false when dispatcher config is missing or test mode is active", async () => {
+    vi.stubEnv("NODE_ENV", "test");
+    process.env.STUDY_PROCESSING_INTERNAL_TOKEN = "internal-secret";
+    process.env.BETTER_AUTH_URL = "https://litrev.example.com";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await kickStudyProcessingDispatcher();
+
+    expect(result).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
