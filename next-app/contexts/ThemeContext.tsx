@@ -64,7 +64,7 @@ function applyToDOM(resolved: ResolvedTheme) {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<ThemePreference>(readStored);
-  const [resolved, setResolved] = useState<ResolvedTheme>(() => resolve(readStored()));
+  const resolved = resolve(theme);
 
   const setTheme = useCallback((next: ThemePreference) => {
     setThemeState(next);
@@ -73,17 +73,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch {
       // Keep runtime theme update even if persistence is unavailable.
     }
-    const r = resolve(next);
-    setResolved(r);
-    applyToDOM(r);
   }, []);
 
   /* Sync on mount (handles SSR → client handoff) */
   useEffect(() => {
-    const r = resolve(theme);
-    setResolved(r);
-    applyToDOM(r);
-  }, [theme]);
+    applyToDOM(resolved);
+  }, [resolved]);
 
   return (
     <ThemeContext.Provider value={{ theme, resolved, setTheme }}>
