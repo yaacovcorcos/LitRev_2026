@@ -63,7 +63,7 @@ const PROJECT_ID = "project-1";
 describe("ledger dedupe v2", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockTransaction.mockImplementation(async (callback: (tx: any) => unknown) =>
+    mockTransaction.mockImplementation(async (callback) =>
       callback({
         study: {
           findMany: mockStudyFindMany,
@@ -78,7 +78,7 @@ describe("ledger dedupe v2", () => {
         note: { updateMany: mockNoteUpdateMany },
         aIConversation: { updateMany: mockConversationUpdateMany },
         draft: { findUnique: mockDraftFindUnique, update: mockDraftUpdate },
-      }),
+      } as never),
     );
   });
 

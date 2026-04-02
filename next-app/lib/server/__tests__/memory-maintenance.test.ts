@@ -19,22 +19,39 @@ vi.mock("@/lib/server/prisma", () => ({
 }));
 
 const { prisma } = await import("@/lib/server/prisma");
+
+type UserFindManyResult = Awaited<ReturnType<typeof prisma.userMemory.findMany>>;
+type ProjectFindManyResult = Awaited<ReturnType<typeof prisma.projectMemory.findMany>>;
+type StudyFindManyResult = Awaited<ReturnType<typeof prisma.studyMemory.findMany>>;
+
 const mockUserFindMany = vi.mocked(prisma.userMemory.findMany);
 const mockProjectFindMany = vi.mocked(prisma.projectMemory.findMany);
 const mockStudyFindMany = vi.mocked(prisma.studyMemory.findMany);
 const mockUserUpdateMany = vi.mocked(prisma.userMemory.updateMany);
 const mockProjectUpdateMany = vi.mocked(prisma.projectMemory.updateMany);
 
+function asUserFindManyResult(rows: unknown): UserFindManyResult {
+    return rows as UserFindManyResult;
+}
+
+function asProjectFindManyResult(rows: unknown): ProjectFindManyResult {
+    return rows as ProjectFindManyResult;
+}
+
+function asStudyFindManyResult(rows: unknown): StudyFindManyResult {
+    return rows as StudyFindManyResult;
+}
+
 describe("memory maintenance", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockUserFindMany.mockResolvedValue([]);
         mockProjectFindMany.mockResolvedValue([]);
-        mockStudyFindMany.mockResolvedValue([]);
+        mockStudyFindMany.mockResolvedValue(asStudyFindManyResult([]));
     });
 
     it("archives only low-utility memories", async () => {
-        mockProjectFindMany.mockResolvedValue([
+        mockProjectFindMany.mockResolvedValue(asProjectFindManyResult([
             {
                 id: "p-low",
                 retrievalCount: 4,
@@ -53,7 +70,7 @@ describe("memory maintenance", () => {
                 contradictionCount: 0,
                 pinned: false,
             },
-        ] as any);
+        ]));
 
         const result = await runMemoryMaintenance({ projectId: "proj-1", dryRun: false });
 
@@ -64,7 +81,7 @@ describe("memory maintenance", () => {
     });
 
     it("supports dry-run without mutating memory rows", async () => {
-        mockUserFindMany.mockResolvedValue([
+        mockUserFindMany.mockResolvedValue(asUserFindManyResult([
             {
                 id: "u-low",
                 retrievalCount: 2,
@@ -74,7 +91,7 @@ describe("memory maintenance", () => {
                 contradictionCount: 0,
                 pinned: false,
             },
-        ] as any);
+        ]));
 
         const result = await runMemoryMaintenance({ userId: "user-1", dryRun: true });
 

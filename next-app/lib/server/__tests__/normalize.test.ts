@@ -3,6 +3,7 @@ import { normalizeStudy } from '../../utils/normalize'
 
 describe('normalizeStudy', () => {
   const currentYear = new Date().getFullYear()
+  const asStudyInput = (input: unknown) => input as Parameters<typeof normalizeStudy>[0]
 
   it('passes through valid data unchanged', () => {
     const input = {
@@ -14,7 +15,7 @@ describe('normalizeStudy', () => {
       details: { abstract: 'Test abstract' },
     }
 
-    const result = normalizeStudy(input)
+    const result = normalizeStudy(asStudyInput(input))
 
     expect(result).toEqual({
       id: undefined,
@@ -36,7 +37,7 @@ describe('normalizeStudy', () => {
       quality: '-' as const,
     }
 
-    const result = normalizeStudy(input)
+    const result = normalizeStudy(asStudyInput(input))
 
     expect(result.title).toBe('Padded Title')
   })
@@ -50,7 +51,7 @@ describe('normalizeStudy', () => {
       quality: '-' as const,
     }
 
-    const result = normalizeStudy(input)
+    const result = normalizeStudy(asStudyInput(input))
 
     expect(result.authors).toBe('John Doe, Jane Smith')
   })
@@ -64,7 +65,7 @@ describe('normalizeStudy', () => {
       quality: '-' as const,
     }
 
-    const result = normalizeStudy(input)
+    const result = normalizeStudy(asStudyInput(input))
 
     expect(result.title).toBe('Untitled Study')
   })
@@ -78,7 +79,7 @@ describe('normalizeStudy', () => {
       quality: '-' as const,
     }
 
-    const result = normalizeStudy(input)
+    const result = normalizeStudy(asStudyInput(input))
 
     expect(result.title).toBe('Untitled Study')
   })
@@ -92,7 +93,7 @@ describe('normalizeStudy', () => {
       quality: '-' as const,
     }
 
-    const result = normalizeStudy(input)
+    const result = normalizeStudy(asStudyInput(input))
 
     expect(result.authors).toBe('Unknown')
   })
@@ -106,7 +107,7 @@ describe('normalizeStudy', () => {
       quality: '-' as const,
     }
 
-    const result = normalizeStudy(input)
+    const result = normalizeStudy(asStudyInput(input))
 
     expect(result.authors).toBe('Unknown')
   })
@@ -115,12 +116,12 @@ describe('normalizeStudy', () => {
     const input = {
       title: 'Title',
       authors: 'Author',
-      year: 'invalid' as any,
+      year: 'invalid' as unknown as number,
       status: 'pending' as const,
       quality: '-' as const,
     }
 
-    const result = normalizeStudy(input)
+    const result = normalizeStudy(asStudyInput(input))
 
     expect(result.year).toBe(currentYear)
   })
@@ -134,7 +135,7 @@ describe('normalizeStudy', () => {
       quality: '-' as const,
     }
 
-    const result = normalizeStudy(input)
+    const result = normalizeStudy(asStudyInput(input))
 
     expect(result.year).toBe(currentYear)
   })
@@ -148,7 +149,7 @@ describe('normalizeStudy', () => {
       quality: '-' as const,
     }
 
-    const result = normalizeStudy(input)
+    const result = normalizeStudy(asStudyInput(input))
 
     expect(result.year).toBe(currentYear)
   })
@@ -162,7 +163,7 @@ describe('normalizeStudy', () => {
       quality: '-' as const,
     }
 
-    const result = normalizeStudy(input)
+    const result = normalizeStudy(asStudyInput(input))
 
     expect(result.year).toBe(1999)
   })
@@ -172,11 +173,11 @@ describe('normalizeStudy', () => {
       title: 'Title',
       authors: 'Author',
       year: 2020,
-      status: '' as any,
+      status: '' as unknown as string,
       quality: '-' as const,
     }
 
-    const result = normalizeStudy(input)
+    const result = normalizeStudy(asStudyInput(input))
 
     expect(result.status).toBe('pending')
   })
@@ -187,10 +188,10 @@ describe('normalizeStudy', () => {
       authors: 'Author',
       year: 2020,
       status: 'pending' as const,
-      quality: '' as any,
+      quality: '' as unknown as string,
     }
 
-    const result = normalizeStudy(input)
+    const result = normalizeStudy(asStudyInput(input))
 
     expect(result.quality).toBe('-')
   })
@@ -263,7 +264,7 @@ describe('normalizeStudy', () => {
 
   it('handles null-ish title gracefully', () => {
     const input = {
-      title: null as any,
+      title: null as unknown as string,
       authors: 'Author',
       year: 2020,
       status: 'pending' as const,
@@ -277,7 +278,7 @@ describe('normalizeStudy', () => {
 
   it('handles undefined title gracefully', () => {
     const input = {
-      title: undefined as any,
+      title: undefined as unknown as string,
       authors: 'Author',
       year: 2020,
       status: 'pending' as const,
