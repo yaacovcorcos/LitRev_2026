@@ -6,6 +6,65 @@ import type { SearchResult, SearchResponse } from "@/types/search";
 const EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 const PMID_BATCH_SIZE = 200;
 
+type PubMedTextValue = string | number | { "#text"?: string | number };
+
+type PubMedAuthor = {
+  LastName?: string;
+  Initials?: string;
+  CollectiveName?: string;
+};
+
+type PubMedPubDate = {
+  Year?: string | number;
+  MedlineDate?: string;
+};
+
+type PubMedAbstractSection =
+  | string
+  | {
+      Label?: string;
+      "#text"?: string;
+    };
+
+type PubMedArticleId = {
+  IdType?: string;
+  "#text"?: string;
+};
+
+type PubMedMeshHeading = {
+  DescriptorName?: string | { "#text"?: string };
+};
+
+type PubMedArticle = {
+  MedlineCitation?: {
+    PMID?: PubMedTextValue;
+    Article?: {
+      ArticleTitle?: PubMedTextValue;
+      AuthorList?: { Author?: PubMedAuthor[] };
+      Journal?: {
+        JournalIssue?: {
+          PubDate?: PubMedPubDate;
+          Volume?: string | number;
+          Issue?: string | number;
+        };
+      };
+      Abstract?: { AbstractText?: PubMedAbstractSection[] | PubMedAbstractSection };
+      Pagination?: { MedlinePgn?: string | number };
+    };
+    MedlineJournalInfo?: { MedlineTA?: string };
+    MeshHeadingList?: { MeshHeading?: PubMedMeshHeading[] };
+  };
+  PubmedData?: {
+    ArticleIdList?: { ArticleId?: PubMedArticleId[] };
+  };
+};
+
+type ParsedPubMedXml = {
+  PubmedArticleSet?: {
+    PubmedArticle?: PubMedArticle | PubMedArticle[];
+  };
+};
+
 // Module-level throttle
 let lastRequestTime = 0;
 
@@ -131,19 +190,19 @@ export async function fetchPubMedArticles(
  * Parse PubMed XML response into SearchResult[].
  */
 export function parsePubMedXml(xml: string): SearchResult[] {
-  const parsed = xmlParser.parse(xml);
+  const parsed = xmlParser.parse(xml) as ParsedPubMedXml;
   const articleSet = parsed?.PubmedArticleSet?.PubmedArticle;
 
   if (!articleSet) return [];
 
   const articles = Array.isArray(articleSet) ? articleSet : [articleSet];
 
-  return articles.map((article: any): SearchResult => {
+  return articles.map((article): SearchResult => {
     const medlineCitation = article.MedlineCitation;
     const articleData = medlineCitation?.Article;
 
     // Title
-    const title = articleData?.ArticleTitle ?? "Untitled";
+    const title = extractText(articleData?.ArticleTitle) || "Untitled";
 
     // Authors
     const authorList = articleData?.AuthorList?.Author;
@@ -162,7 +221,7 @@ export function parsePubMedXml(xml: string): SearchResult[] {
     const doi = extractArticleId(articleIds, "doi");
 
     // PMID
-    const pmid = String(medlineCitation?.PMID?.["#text"] ?? medlineCitation?.PMID ?? "");
+    const pmid = extractText(medlineCitation?.PMID);
 
     // Journal
     const journal = medlineCitation?.MedlineJournalInfo?.MedlineTA ?? "";
@@ -180,7 +239,7 @@ export function parsePubMedXml(xml: string): SearchResult[] {
     return {
       pmid: pmid || undefined,
       doi: doi || undefined,
-      title: typeof title === "string" ? title : String(title),
+      title,
       authors,
       year,
       journal: journal || undefined,
@@ -195,11 +254,18 @@ export function parsePubMedXml(xml: string): SearchResult[] {
   });
 }
 
-function formatAuthors(authorList: any[] | undefined): string {
+function extractText(value: PubMedTextValue | undefined): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  if (value && value["#text"] != null) return String(value["#text"]);
+  return "";
+}
+
+function formatAuthors(authorList: PubMedAuthor[] | undefined): string {
   if (!authorList || !Array.isArray(authorList)) return "Unknown";
 
   const names = authorList
-    .map((author: any) => {
+    .map((author) => {
       const last = author.LastName;
       const initials = author.Initials;
       if (last && initials) return `${last} ${initials}`;
@@ -212,7 +278,7 @@ function formatAuthors(authorList: any[] | undefined): string {
   return names.length > 0 ? names.join(", ") : "Unknown";
 }
 
-function parseYear(pubDate: any): number {
+function parseYear(pubDate: PubMedPubDate | undefined): number {
   if (!pubDate) return new Date().getFullYear();
 
   if (pubDate.Year) {
@@ -229,14 +295,19 @@ function parseYear(pubDate: any): number {
   return new Date().getFullYear();
 }
 
-function formatAbstract(abstractTexts: any): string {
+function formatAbstract(
+  abstractTexts: PubMedAbstractSection[] | PubMedAbstractSection | undefined
+): string {
   if (!abstractTexts) return "";
 
   if (Array.isArray(abstractTexts)) {
     return abstractTexts
-      .map((section: any) => {
-        const label = section?.Label;
-        const text = typeof section === "string" ? section : (section?.["#text"] ?? "");
+      .map((section) => {
+        if (typeof section === "string") {
+          return section;
+        }
+        const label = section.Label;
+        const text = section["#text"] ?? "";
         if (label && text) return `${label}: ${text}`;
         return text;
       })
@@ -249,18 +320,18 @@ function formatAbstract(abstractTexts: any): string {
 }
 
 function extractArticleId(
-  articleIds: any[] | undefined,
+  articleIds: PubMedArticleId[] | undefined,
   idType: string
 ): string | undefined {
   if (!articleIds || !Array.isArray(articleIds)) return undefined;
-  const match = articleIds.find((id: any) => id?.IdType === idType);
+  const match = articleIds.find((id) => id?.IdType === idType);
   return match?.["#text"] ?? undefined;
 }
 
-function extractMeshTerms(meshHeadings: any[] | undefined): string[] {
+function extractMeshTerms(meshHeadings: PubMedMeshHeading[] | undefined): string[] {
   if (!meshHeadings || !Array.isArray(meshHeadings)) return [];
   return meshHeadings
-    .map((heading: any) => {
+    .map((heading) => {
       const descriptor = heading?.DescriptorName;
       if (typeof descriptor === "string") return descriptor;
       return descriptor?.["#text"] ?? null;
