@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { searchResultToStudyInput } from "@/lib/server/search/to-study";
+import {
+  hasConcreteSearchResultYear,
+  searchResultToStudyInput,
+} from "@/lib/server/search/to-study";
 import type { SearchResult } from "@/types/search";
 
 describe("searchResultToStudyInput", () => {
@@ -20,6 +23,8 @@ describe("searchResultToStudyInput", () => {
       sourceUrl: "https://pubmed.ncbi.nlm.nih.gov/12345678/",
     };
 
+    expect(hasConcreteSearchResultYear(result)).toBe(true);
+    if (!hasConcreteSearchResultYear(result)) throw new Error("Expected year");
     const input = searchResultToStudyInput(result);
 
     expect(input.title).toBe("Test Study Title");
@@ -48,6 +53,8 @@ describe("searchResultToStudyInput", () => {
       source: "pubmed",
     };
 
+    expect(hasConcreteSearchResultYear(result)).toBe(true);
+    if (!hasConcreteSearchResultYear(result)) throw new Error("Expected year");
     const input = searchResultToStudyInput(result);
 
     expect(input.title).toBe("Minimal Study");
@@ -71,7 +78,19 @@ describe("searchResultToStudyInput", () => {
       keywords: [],
     };
 
+    expect(hasConcreteSearchResultYear(result)).toBe(true);
+    if (!hasConcreteSearchResultYear(result)) throw new Error("Expected year");
     const input = searchResultToStudyInput(result);
     expect(input.details?.keywords).toBeUndefined();
+  });
+
+  it("returns false from the year guard when year is missing", () => {
+    const result: SearchResult = {
+      title: "Unknown Year Study",
+      authors: "Test A",
+      source: "pubmed",
+    };
+
+    expect(hasConcreteSearchResultYear(result)).toBe(false);
   });
 });

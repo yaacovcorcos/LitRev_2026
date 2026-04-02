@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { parseS2Paper, buildS2PaperIds, type S2Paper } from "@/lib/server/search/semantic-scholar";
-import { searchResultToStudyInput } from "@/lib/server/search/to-study";
+import {
+    hasConcreteSearchResultYear,
+    searchResultToStudyInput,
+} from "@/lib/server/search/to-study";
 import { findDuplicates } from "@/lib/server/search/dedup";
 import type { Study } from "@/types/ledger";
 
@@ -170,6 +173,8 @@ describe("dedup e2e with S2 results", () => {
         const searchResult = parseS2Paper(FULL_PAPER);
 
         // Step 2: Convert to study input
+        expect(hasConcreteSearchResultYear(searchResult)).toBe(true);
+        if (!hasConcreteSearchResultYear(searchResult)) throw new Error("Expected year");
         const studyInput = searchResultToStudyInput(searchResult);
         expect(studyInput.details?.s2PaperId).toBe("abc123def456");
         expect(studyInput.details?.source).toBe("semantic-scholar");
