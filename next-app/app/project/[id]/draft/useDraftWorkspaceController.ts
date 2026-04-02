@@ -39,7 +39,7 @@ import {
   resolveSectionModeActiveSection,
 } from "@/lib/draftStateContracts";
 import { useDraftExport } from "./useDraftExport";
-import { getDraftCitationIssues, synchronizeDraftState } from "./draft-workspace-state";
+import { synchronizeDraftState } from "./draft-workspace-state";
 import {
   BASE_SECTION_MAP,
   EMPTY_IDS,
@@ -139,7 +139,15 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   const queryMode = searchParams.get("mode");
   const querySection = searchParams.get("section");
 
-  const [draft, setDraft] = useState<DraftState>(createDefaultDraftState);
+  const [draftState, setDraftState] = useState<{
+    identity: string;
+    data: DraftState;
+    dirty: boolean;
+  }>(() => ({
+    identity: projectId,
+    data: createDefaultDraftState(),
+    dirty: false,
+  }));
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "error">("saved");
   const [isAddEvidenceOpen, setAddEvidenceOpen] = useState(false);
   const [isFormatOpen, setFormatOpen] = useState(false);
@@ -156,19 +164,14 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   const [dragOverPosition, setDragOverPosition] = useState<"before" | "after" | null>(null);
 
   const activeEditorRef = useRef<Editor | null>(null);
-  const draftRef = useRef(draft);
+  const draftRef = useRef(createDefaultDraftState());
   const editorBySectionRef = useRef<Record<DraftSectionId, Editor | null>>({ [UNSECTIONED_DRAFT_ID]: null } as Record<DraftSectionId, Editor | null>);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const appliedCachedRef = useRef(false);
   const sectionTabRefs = useRef<Record<DraftSectionId, HTMLButtonElement | null>>({} as Record<DraftSectionId, HTMLButtonElement | null>);
   const addSectionRef = useRef<HTMLDivElement | null>(null);
   const addSectionInputRef = useRef<HTMLInputElement | null>(null);
   const formatRef = useRef<HTMLDivElement | null>(null);
   const pendingFocusRef = useRef<{ sectionId: DraftSectionId; blockId?: string } | null>(null);
-
-  useEffect(() => {
-    draftRef.current = draft;
-  }, [draft]);
 
   const normalizeForEditor = useCallback(
     (state: DraftState) => synchronizeDraftState({ state, studies, includeNumberInNodes: true }),
@@ -194,9 +197,30 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
       activeSection:
         mode === "section"
           ? resolveSectionModeActiveSection(activeSection, loaded.sectionOrder)
-          : resolveFullDraftActiveSection(activeSection, loaded.sectionOrder),
+        : resolveFullDraftActiveSection(activeSection, loaded.sectionOrder),
     };
   }, [queryMode, querySection]);
+
+  const draftIdentity = useMemo(
+    () => `${projectId}:${queryMode ?? ""}:${querySection ?? ""}`,
+    [projectId, queryMode, querySection],
+  );
+  const baseDraft = useMemo(() => {
+    const sourceDraft = cachedDraft.state === "ready" && cachedDraft.data
+      ? cachedDraft.data
+      : loadDraftState(projectId);
+    return normalizeForEditor(applyDraftFromQuery(sourceDraft));
+  }, [applyDraftFromQuery, cachedDraft.data, cachedDraft.state, normalizeForEditor, projectId]);
+  const draft = useMemo(() => {
+    if (draftState.identity !== draftIdentity || !draftState.dirty) {
+      return baseDraft;
+    }
+    return normalizeForEditor(draftState.data);
+  }, [baseDraft, draftIdentity, draftState.data, draftState.dirty, draftState.identity, normalizeForEditor]);
+
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
 
   const scheduleSave = useCallback(
     (next: DraftState) => {
@@ -220,51 +244,43 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   );
 
   const setDraftLocal = useCallback((updater: (prev: DraftState) => DraftState) => {
-    setDraft((prev) => {
-      const next = updater(prev);
+    setDraftState((prev) => {
+      const current = prev.identity === draftIdentity && prev.dirty
+        ? normalizeForEditor(prev.data)
+        : baseDraft;
+      const next = updater(current);
       draftRef.current = next;
       saveDraftState(projectId, next);
-      return next;
+      return {
+        identity: draftIdentity,
+        data: next,
+        dirty: true,
+      };
     });
-  }, [projectId]);
+  }, [baseDraft, draftIdentity, normalizeForEditor, projectId]);
 
   const commitDraft = useCallback((updater: (prev: DraftState) => DraftState) => {
-    setDraft((prev) => {
-      const next = updater(prev);
-      if (next === prev) return prev;
+    setDraftState((prev) => {
+      const current = prev.identity === draftIdentity && prev.dirty
+        ? normalizeForEditor(prev.data)
+        : baseDraft;
+      const next = updater(current);
+      if (next === current && prev.identity === draftIdentity && prev.dirty) return prev;
       draftRef.current = next;
       scheduleSave(next);
-      return next;
+      return {
+        identity: draftIdentity,
+        data: next,
+        dirty: true,
+      };
     });
-  }, [scheduleSave]);
+  }, [baseDraft, draftIdentity, normalizeForEditor, scheduleSave]);
 
   useEffect(() => {
-    const local = loadDraftState(projectId);
-    const nextDraft = normalizeForEditor(applyDraftFromQuery(local));
-    setDraft(nextDraft);
-    draftRef.current = nextDraft;
-    appliedCachedRef.current = false;
-  }, [applyDraftFromQuery, normalizeForEditor, projectId]);
-
-  useEffect(() => {
-    if (appliedCachedRef.current) return;
-    if (cachedDraft.state === "ready" && cachedDraft.data) {
-      const nextDraft = normalizeForEditor(applyDraftFromQuery(cachedDraft.data));
-      setDraft(nextDraft);
-      draftRef.current = nextDraft;
-      appliedCachedRef.current = true;
-    } else if (cachedDraft.state === "idle") {
+    if (cachedDraft.state === "idle") {
       warmDomain("draft");
     }
-  }, [applyDraftFromQuery, cachedDraft, normalizeForEditor, warmDomain]);
-
-  useEffect(() => {
-    setDraft((prev) => {
-      const next = normalizeForEditor(prev);
-      draftRef.current = next;
-      return next;
-    });
-  }, [normalizeForEditor]);
+  }, [cachedDraft.state, warmDomain]);
 
   useEffect(() => {
     return () => {
@@ -404,14 +420,7 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     () => studies.filter((study) => usedEvidenceIds.includes(study.id)),
     [studies, usedEvidenceIds],
   );
-  const citationIssues = useMemo(() => getDraftCitationIssues(draft, studies), [draft, studies]);
   const referencesText = useMemo(() => jsonToText(draft.contentBySection.references), [draft.contentBySection.references]);
-  const hasDraftContent = useMemo(() => {
-    if (shouldRenderWholeDraft && docHasContent(draft.contentBySection[UNSECTIONED_DRAFT_ID])) {
-      return true;
-    }
-    return orderedSections.some((section) => docHasContent(draft.contentBySection[section.id]));
-  }, [draft.contentBySection, orderedSections, shouldRenderWholeDraft]);
 
   const syncEditorSignals = useCallback((editor: Editor | null) => {
     if (!editor) return;
@@ -442,8 +451,8 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   const handleSectionFocus = useCallback((sectionId: DraftSectionId, editor: Editor) => {
     syncEditorSignals(editor);
     const nextActiveSection = sectionId === UNSECTIONED_DRAFT_ID ? null : sectionId;
-    setDraft((prev) => (prev.activeSection === nextActiveSection ? prev : { ...prev, activeSection: nextActiveSection }));
-  }, [syncEditorSignals]);
+    setDraftLocal((prev) => (prev.activeSection === nextActiveSection ? prev : { ...prev, activeSection: nextActiveSection }));
+  }, [setDraftLocal, syncEditorSignals]);
 
   const handleSectionSelectionChange = useCallback((_sectionId: DraftSectionId, editor: Editor) => {
     syncEditorSignals(editor);
