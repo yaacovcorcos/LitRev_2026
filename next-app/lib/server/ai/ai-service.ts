@@ -136,21 +136,19 @@ const RETRY_JITTER = 0.15;
 
 const PUSH_PROTOCOL_CONTEXT_MODES = new Set<AgentMode>(["protocol", "screening", "drafting"]);
 const PUSH_LEDGER_CONTEXT_MODES = new Set<AgentMode>(["screening", "search"]);
-const CONTEXT_BRANCH_NAMES = [
-    "conversation",
-    "plan_execution",
-    "run_availability",
-    "autonomy_config",
-    "memories",
-    "protocol",
-    "ledger",
-    "study",
-    "project",
-] as const;
 const CONTEXT_DEGRADED_DATABASE_LABEL = "Continuing with reduced context due to a temporary database issue.";
 const CONTEXT_DEGRADED_GENERIC_LABEL = "Continuing with reduced context due to a temporary context-loading issue.";
 
-type ContextBranchName = typeof CONTEXT_BRANCH_NAMES[number];
+type ContextBranchName =
+    | "conversation"
+    | "plan_execution"
+    | "run_availability"
+    | "autonomy_config"
+    | "memories"
+    | "protocol"
+    | "ledger"
+    | "study"
+    | "project";
 type ContextFailureClass =
     | "database_connection_timeout"
     | "database_connection_failed"
