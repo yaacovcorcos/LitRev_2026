@@ -25,5 +25,5 @@ export function useDocumentEvent<K extends keyof DocumentEventMap>(
         return () => {
             document.removeEventListener(type, handleEvent as EventListener, options);
         };
-    }, [enabled, onEvent, options, type]);
+    }, [enabled, options, type]);
 }
