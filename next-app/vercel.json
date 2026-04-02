@@ -1,4 +1,11 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/study-processing",
+      "schedule": "* * * * *"
+    }
+  ],
   "functions": {
     "app/**/*.ts": {
       "maxDuration": 30

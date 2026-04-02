@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   extractStudyFromPdf: vi.fn(),
   deepAnalyzeStudyFromPdf: vi.fn(),
   createMemoriesFromDeepAnalysis: vi.fn(),
+  logServerWarn: vi.fn(),
 }));
 
 vi.mock("@/lib/server/access", () => ({
@@ -60,7 +61,7 @@ vi.mock("@/lib/server/memory/study-memory", () => ({
 
 vi.mock("@/lib/server/logging", () => ({
   logServerError: vi.fn(),
-  logServerWarn: vi.fn(),
+  logServerWarn: (...args: unknown[]) => mocks.logServerWarn(...args),
 }));
 
 import {
@@ -99,6 +100,77 @@ describe("study-processing", () => {
       return handler(tx);
     });
   });
+
+  function mockSuccessfulQuickExtractJob() {
+    const startedAt = new Date("2026-03-01T00:01:00Z");
+    mocks.jobUpdateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValue({ count: 1 });
+    mocks.jobFindFirst.mockResolvedValue({
+      id: "job-1",
+      studyId: "study-1",
+      projectId: "project-1",
+      workspaceId: "ws-1",
+      fileAssetId: "file-1",
+      phase: "quick_extract",
+      state: "queued",
+      priority: "foreground",
+      requestSource: "manual_extract",
+      attemptCount: 0,
+      requestedAt: new Date("2026-03-01T00:00:00Z"),
+      startedAt: null,
+      leaseExpiresAt: null,
+      completedAt: null,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+      createdAt: new Date("2026-03-01T00:00:00Z"),
+      updatedAt: new Date("2026-03-01T00:00:00Z"),
+    });
+    mocks.jobFindUnique.mockResolvedValue({
+      id: "job-1",
+      studyId: "study-1",
+      projectId: "project-1",
+      workspaceId: "ws-1",
+      fileAssetId: "file-1",
+      phase: "quick_extract",
+      state: "running",
+      priority: "foreground",
+      requestSource: "manual_extract",
+      attemptCount: 0,
+      requestedAt: new Date("2026-03-01T00:00:00Z"),
+      startedAt,
+      leaseExpiresAt: new Date("2026-03-01T00:03:00Z"),
+      completedAt: null,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+      createdAt: new Date("2026-03-01T00:00:00Z"),
+      updatedAt: new Date("2026-03-01T00:01:00Z"),
+    });
+    mocks.studyFindUnique.mockResolvedValue({
+      id: "study-1",
+      title: "Study",
+      authors: "Unknown",
+      year: 2026,
+      status: "pending",
+      quality: "-",
+      details: { source: "pdf-import" },
+    });
+    mocks.fileFindUnique.mockResolvedValue({
+      id: "file-1",
+      storagePath: "bucket/study.pdf",
+    });
+    mocks.extractStudyFromPdf.mockResolvedValue({
+      success: true,
+      title: "Extracted title",
+      authors: "Doe",
+      year: 2024,
+      details: { abstract: "Abstract" },
+      confidence: {},
+      missingFields: [],
+    });
+    mocks.studyUpdate.mockResolvedValue({});
+  }
 
   afterEach(() => {
     process.env.STUDY_PROCESSING_INTERNAL_TOKEN = previousInternalToken;
@@ -210,74 +282,7 @@ describe("study-processing", () => {
   });
 
   it("processes one claimed quick-extract job and marks it succeeded", async () => {
-    const startedAt = new Date("2026-03-01T00:01:00Z");
-    mocks.jobUpdateMany
-      .mockResolvedValueOnce({ count: 0 })
-      .mockResolvedValueOnce({ count: 1 })
-      .mockResolvedValue({ count: 1 });
-    mocks.jobFindFirst.mockResolvedValue({
-      id: "job-1",
-      studyId: "study-1",
-      projectId: "project-1",
-      workspaceId: "ws-1",
-      fileAssetId: "file-1",
-      phase: "quick_extract",
-      state: "queued",
-      priority: "foreground",
-      requestSource: "manual_extract",
-      attemptCount: 0,
-      requestedAt: new Date("2026-03-01T00:00:00Z"),
-      startedAt: null,
-      leaseExpiresAt: null,
-      completedAt: null,
-      lastErrorCode: null,
-      lastErrorMessage: null,
-      createdAt: new Date("2026-03-01T00:00:00Z"),
-      updatedAt: new Date("2026-03-01T00:00:00Z"),
-    });
-    mocks.jobFindUnique.mockResolvedValue({
-      id: "job-1",
-      studyId: "study-1",
-      projectId: "project-1",
-      workspaceId: "ws-1",
-      fileAssetId: "file-1",
-      phase: "quick_extract",
-      state: "running",
-      priority: "foreground",
-      requestSource: "manual_extract",
-      attemptCount: 0,
-      requestedAt: new Date("2026-03-01T00:00:00Z"),
-      startedAt,
-      leaseExpiresAt: new Date("2026-03-01T00:03:00Z"),
-      completedAt: null,
-      lastErrorCode: null,
-      lastErrorMessage: null,
-      createdAt: new Date("2026-03-01T00:00:00Z"),
-      updatedAt: new Date("2026-03-01T00:01:00Z"),
-    });
-    mocks.studyFindUnique.mockResolvedValue({
-      id: "study-1",
-      title: "Study",
-      authors: "Unknown",
-      year: 2026,
-      status: "pending",
-      quality: "-",
-      details: { source: "pdf-import" },
-    });
-    mocks.fileFindUnique.mockResolvedValue({
-      id: "file-1",
-      storagePath: "bucket/study.pdf",
-    });
-    mocks.extractStudyFromPdf.mockResolvedValue({
-      success: true,
-      title: "Extracted title",
-      authors: "Doe",
-      year: 2024,
-      details: { abstract: "Abstract" },
-      confidence: {},
-      missingFields: [],
-    });
-    mocks.studyUpdate.mockResolvedValue({});
+    mockSuccessfulQuickExtractJob();
 
     const result = await processOneStudyProcessingJob();
 
@@ -295,6 +300,44 @@ describe("study-processing", () => {
         status: "extracted",
       }),
     });
+  });
+
+  it("falls back to direct local processing when the internal token is missing in development", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    delete process.env.STUDY_PROCESSING_INTERNAL_TOKEN;
+    process.env.BETTER_AUTH_URL = "http://localhost:3000";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    mockSuccessfulQuickExtractJob();
+
+    const result = await kickStudyProcessingDispatcher();
+
+    expect(result).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(mocks.studyUpdate).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.logServerWarn).not.toHaveBeenCalled();
+  });
+
+  it("falls back to direct local processing when the trusted base URL is missing in development", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    process.env.STUDY_PROCESSING_INTERNAL_TOKEN = "internal-secret";
+    delete process.env.BETTER_AUTH_URL;
+    delete process.env.NEXT_PUBLIC_BETTER_AUTH_URL;
+    delete process.env.VERCEL_URL;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    mockSuccessfulQuickExtractJob();
+
+    const result = await kickStudyProcessingDispatcher();
+
+    expect(result).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(mocks.studyUpdate).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.logServerWarn).not.toHaveBeenCalled();
   });
 
   it("kicks the internal dispatcher with the trusted base URL only", async () => {
@@ -364,7 +407,7 @@ describe("study-processing", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("returns false when dispatcher config is missing or test mode is active", async () => {
+  it("returns false without side effects when test mode is active", async () => {
     vi.stubEnv("NODE_ENV", "test");
     process.env.STUDY_PROCESSING_INTERNAL_TOKEN = "internal-secret";
     process.env.BETTER_AUTH_URL = "https://litrev.example.com";
@@ -375,5 +418,28 @@ describe("study-processing", () => {
 
     expect(result).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.logServerWarn).not.toHaveBeenCalled();
+  });
+
+  it("returns false and logs a warning when deployed dispatcher config is missing", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    delete process.env.STUDY_PROCESSING_INTERNAL_TOKEN;
+    process.env.BETTER_AUTH_URL = "https://litrev.example.com";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await kickStudyProcessingDispatcher();
+
+    expect(result).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.logServerWarn).toHaveBeenCalledWith(
+      "study-processing",
+      "best-effort dispatcher kick unavailable in deployed environment",
+      expect.objectContaining({
+        hasInternalToken: false,
+        hasBaseUrl: true,
+        nodeEnv: "production",
+      }),
+    );
   });
 });
