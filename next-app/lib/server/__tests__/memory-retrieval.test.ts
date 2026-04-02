@@ -43,6 +43,15 @@ const { searchSemanticMemories } = await import("@/lib/server/memory/semantic-me
 const { recordRunEvent } = await import("@/lib/server/agent/run-event-recorder");
 const { prisma } = await import("@/lib/server/prisma");
 
+type UserMemoriesResult = Awaited<ReturnType<typeof getUserMemories>>;
+type ProjectMemoriesResult = Awaited<ReturnType<typeof getProjectMemories>>;
+type ProjectMemorySearchResult = Awaited<ReturnType<typeof searchProjectMemories>>;
+type StudyMemoriesResult = Awaited<ReturnType<typeof getStudyMemories>>;
+type StudyMemorySearchResult = Awaited<ReturnType<typeof searchStudyMemories>>;
+type SemanticSearchResult = Awaited<ReturnType<typeof searchSemanticMemories>>;
+type ProjectMemoryOptions = Parameters<typeof getProjectMemories>[1];
+type MemoryRetrievalCreateArgs = Parameters<typeof prisma.memoryRetrieval.create>[0];
+
 const mockGetUserMemories = vi.mocked(getUserMemories);
 const mockGetProjectMemories = vi.mocked(getProjectMemories);
 const mockSearchProjectMemories = vi.mocked(searchProjectMemories);
@@ -54,6 +63,30 @@ const mockMemoryRetrievalCreate = vi.mocked(prisma.memoryRetrieval.create);
 const mockExecuteRaw = vi.mocked(prisma.$executeRaw);
 const originalAdvancedRerankFlag = process.env.ENABLE_MEMORY_ADVANCED_RERANKING;
 
+function asUserMemoriesResult(rows: unknown): UserMemoriesResult {
+    return rows as UserMemoriesResult;
+}
+
+function asProjectMemoriesResult(rows: unknown): ProjectMemoriesResult {
+    return rows as ProjectMemoriesResult;
+}
+
+function asProjectMemorySearchResult(rows: unknown): ProjectMemorySearchResult {
+    return rows as ProjectMemorySearchResult;
+}
+
+function asStudyMemoriesResult(rows: unknown): StudyMemoriesResult {
+    return rows as StudyMemoriesResult;
+}
+
+function asStudyMemorySearchResult(rows: unknown): StudyMemorySearchResult {
+    return rows as StudyMemorySearchResult;
+}
+
+function asSemanticSearchResult(rows: unknown): SemanticSearchResult {
+    return rows as SemanticSearchResult;
+}
+
 beforeEach(() => {
     vi.clearAllMocks();
     mockGetUserMemories.mockResolvedValue([]);
@@ -62,7 +95,7 @@ beforeEach(() => {
     mockGetStudyMemories.mockResolvedValue([]);
     mockSearchStudyMemories.mockResolvedValue([]);
     mockSearchSemanticMemories.mockResolvedValue([]);
-    mockExecuteRaw.mockResolvedValue(1 as any);
+    mockExecuteRaw.mockResolvedValue(1);
     delete process.env.ENABLE_MEMORY_ADVANCED_RERANKING;
 });
 
@@ -77,10 +110,10 @@ afterAll(() => {
 describe("retrieveMemories — deterministic scope rules", () => {
     it("always includes critical ProjectMemory regardless of query", async () => {
         mockGetProjectMemories.mockImplementation(async (_pid, opts) => {
-            if ((opts as any)?.importance === "critical") {
-                return [
+            if (opts?.importance === "critical") {
+                return asProjectMemoriesResult([
                     { id: "crit-1", type: "definition", category: "population", statement: "Adults", rationale: null, importance: "critical", tags: [], status: "active" },
-                ] as any;
+                ]);
             }
             return [];
         });
@@ -95,14 +128,12 @@ describe("retrieveMemories — deterministic scope rules", () => {
     });
 
     it("in screening mode: always includes all criteria", async () => {
-        const calls: any[] = [];
-        mockGetProjectMemories.mockImplementation(async (_pid, opts) => {
-            calls.push(opts);
-            if ((opts as any)?.type === "criterion") {
-                return [
+        mockGetProjectMemories.mockImplementation(async (_pid, opts: ProjectMemoryOptions) => {
+            if (opts?.type === "criterion") {
+                return asProjectMemoriesResult([
                     { id: "cr-1", type: "criterion", category: "inclusion", statement: "RCTs only", rationale: null, importance: "normal", tags: [], status: "active" },
                     { id: "cr-2", type: "criterion", category: "exclusion", statement: "No animal studies", rationale: null, importance: "normal", tags: [], status: "active" },
-                ] as any;
+                ]);
             }
             return [];
         });
@@ -118,9 +149,9 @@ describe("retrieveMemories — deterministic scope rules", () => {
     });
 
     it("in drafting mode with citedStudyIds: includes StudyMemories", async () => {
-        mockGetStudyMemories.mockResolvedValue([
+        mockGetStudyMemories.mockResolvedValue(asStudyMemoriesResult([
             { id: "sm-1", studyId: "study-A", projectId: "p1", type: "summary", category: null, content: "Study findings...", source: "ai_generated", confidence: 0.9, tags: [], status: "active" },
-        ] as any);
+        ]));
 
         const result = await retrieveMemories({
             userId: "u1",
@@ -134,9 +165,9 @@ describe("retrieveMemories — deterministic scope rules", () => {
     });
 
     it("filters study memories that do not belong to the active project", async () => {
-        mockGetStudyMemories.mockResolvedValue([
+        mockGetStudyMemories.mockResolvedValue(asStudyMemoriesResult([
             { id: "sm-other", studyId: "study-A", projectId: "p-other", type: "summary", category: null, content: "Other project summary", source: "ai_generated", confidence: 0.9, tags: [], status: "active" },
-        ] as any);
+        ]));
 
         const result = await retrieveMemories({
             userId: "u1",
@@ -150,10 +181,10 @@ describe("retrieveMemories — deterministic scope rules", () => {
 
     it("in qa mode: includes exclusion decisions", async () => {
         mockGetProjectMemories.mockImplementation(async (_pid, opts) => {
-            if ((opts as any)?.type === "decision" && (opts as any)?.category === "exclusion") {
-                return [
+            if (opts?.type === "decision" && opts.category === "exclusion") {
+                return asProjectMemoriesResult([
                     { id: "exc-1", type: "decision", category: "exclusion", statement: 'Excluded "Study X"', rationale: "Wrong population", importance: "normal", tags: [], status: "active" },
-                ] as any;
+                ]);
             }
             return [];
         });
@@ -168,9 +199,9 @@ describe("retrieveMemories — deterministic scope rules", () => {
     });
 
     it("always includes active UserMemory preferences", async () => {
-        mockGetUserMemories.mockResolvedValue([
+        mockGetUserMemories.mockResolvedValue(asUserMemoriesResult([
             { id: "um-1", type: "preference", key: "style", value: "APA format", rationale: null, tags: [], status: "active" },
-        ] as any);
+        ]));
 
         const result = await retrieveMemories({ userId: "u1" });
 
@@ -189,7 +220,7 @@ describe("retrieveMemories — deterministic scope rules", () => {
             tags: [],
             status: "active",
         }));
-        mockGetUserMemories.mockResolvedValue(manyPrefs as any);
+        mockGetUserMemories.mockResolvedValue(asUserMemoriesResult(manyPrefs));
 
         const result = await retrieveMemories(
             { userId: "u1" },
@@ -201,9 +232,9 @@ describe("retrieveMemories — deterministic scope rules", () => {
     });
 
     it("context_assembly event emitted when runId provided", async () => {
-        mockGetUserMemories.mockResolvedValue([
+        mockGetUserMemories.mockResolvedValue(asUserMemoriesResult([
             { id: "um-1", type: "preference", key: "k", value: "v", rationale: null, tags: [], status: "active" },
-        ] as any);
+        ]));
 
         await retrieveMemories({
             userId: "u1",
@@ -226,9 +257,9 @@ describe("retrieveMemories — deterministic scope rules", () => {
     });
 
     it("does not emit context_assembly when runId is not provided", async () => {
-        mockGetUserMemories.mockResolvedValue([
+        mockGetUserMemories.mockResolvedValue(asUserMemoriesResult([
             { id: "um-1", type: "preference", key: "k", value: "v", rationale: null, tags: [], status: "active" },
-        ] as any);
+        ]));
 
         await retrieveMemories({ userId: "u1" });
 
@@ -237,9 +268,9 @@ describe("retrieveMemories — deterministic scope rules", () => {
 
     it("does not fail retrieval when audit logging fails", async () => {
         const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-        mockGetUserMemories.mockResolvedValue([
+        mockGetUserMemories.mockResolvedValue(asUserMemoriesResult([
             { id: "um-1", type: "preference", key: "k", value: "v", rationale: null, tags: [], status: "active" },
-        ] as any);
+        ]));
         mockMemoryRetrievalCreate.mockRejectedValueOnce(new Error("Connection terminated due to connection timeout"));
 
         const result = await retrieveMemories({ userId: "u1" });
@@ -258,9 +289,9 @@ describe("retrieveMemories — deterministic scope rules", () => {
     });
 
     it("empty project returns only user preferences", async () => {
-        mockGetUserMemories.mockResolvedValue([
+        mockGetUserMemories.mockResolvedValue(asUserMemoriesResult([
             { id: "um-1", type: "preference", key: "style", value: "formal", rationale: null, tags: [], status: "active" },
-        ] as any);
+        ]));
 
         const result = await retrieveMemories({ userId: "u1" });
 
@@ -271,14 +302,14 @@ describe("retrieveMemories — deterministic scope rules", () => {
     it("deterministic memories appear before keyword memories", async () => {
         // Critical project memory (deterministic)
         mockGetProjectMemories.mockImplementation(async (_pid, opts) => {
-            if ((opts as any)?.importance === "critical") {
-                return [{ id: "crit-1", type: "definition", statement: "Critical info", rationale: null, importance: "critical", tags: [], status: "active", category: null }] as any;
+            if (opts?.importance === "critical") {
+                return asProjectMemoriesResult([{ id: "crit-1", type: "definition", statement: "Critical info", rationale: null, importance: "critical", tags: [], status: "active", category: null }]);
             }
-            if ((opts as any)?.status === "active") {
-                return [
+            if (opts?.status === "active") {
+                return asProjectMemoriesResult([
                     { id: "crit-1", type: "definition", statement: "Critical info", rationale: null, importance: "critical", tags: [], status: "active", category: null },
                     { id: "norm-1", type: "goal", statement: "Normal goal", rationale: null, importance: "normal", tags: [], status: "active", category: null },
-                ] as any;
+                ]);
             }
             return [];
         });
@@ -295,7 +326,7 @@ describe("retrieveMemories — deterministic scope rules", () => {
     });
 
     it("keyword ranking boosts exact identifier matches", async () => {
-        mockSearchProjectMemories.mockResolvedValue([
+        mockSearchProjectMemories.mockResolvedValue(asProjectMemorySearchResult([
             {
                 id: "pm-doi",
                 projectId: "p1",
@@ -330,7 +361,7 @@ describe("retrieveMemories — deterministic scope rules", () => {
                 updatedAt: new Date(),
                 archivedAt: null,
             },
-        ] as any);
+        ]));
 
         const result = await retrieveMemories(
             {
@@ -349,7 +380,7 @@ describe("retrieveMemories — deterministic scope rules", () => {
     });
 
     it("searches scoped study memories by query when project is present", async () => {
-        mockSearchStudyMemories.mockResolvedValue([
+        mockSearchStudyMemories.mockResolvedValue(asStudyMemorySearchResult([
             {
                 id: "sm-query",
                 studyId: "study-1",
@@ -364,7 +395,7 @@ describe("retrieveMemories — deterministic scope rules", () => {
                 createdAt: new Date(),
                 updatedAt: new Date(),
             },
-        ] as any);
+        ]));
 
         const result = await retrieveMemories(
             {
@@ -384,7 +415,7 @@ describe("retrieveMemories — deterministic scope rules", () => {
     });
 
     it("applies utility weighting so criteria/decisions rank above equally matched generic memories", async () => {
-        mockSearchProjectMemories.mockResolvedValue([
+        mockSearchProjectMemories.mockResolvedValue(asProjectMemorySearchResult([
             {
                 id: "pm-criterion",
                 projectId: "p1",
@@ -419,7 +450,7 @@ describe("retrieveMemories — deterministic scope rules", () => {
                 updatedAt: new Date(),
                 archivedAt: null,
             },
-        ] as any);
+        ]));
 
         const result = await retrieveMemories(
             {
@@ -442,9 +473,9 @@ describe("retrieveMemories — deterministic scope rules", () => {
     });
 
     it("logs retrieval with conversationId when provided", async () => {
-        mockGetUserMemories.mockResolvedValue([
+        mockGetUserMemories.mockResolvedValue(asUserMemoriesResult([
             { id: "um-1", type: "preference", key: "style", value: "formal", rationale: null, tags: [], status: "active" },
-        ] as any);
+        ]));
 
         await retrieveMemories({
             userId: "u1",
@@ -454,15 +485,13 @@ describe("retrieveMemories — deterministic scope rules", () => {
         });
 
         expect(mockMemoryRetrievalCreate).toHaveBeenCalled();
-        const firstCall = mockMemoryRetrievalCreate.mock.calls[0]?.[0] as {
-            data?: { conversationId?: string | null };
-        };
+        const firstCall = mockMemoryRetrievalCreate.mock.calls[0]?.[0] as MemoryRetrievalCreateArgs | undefined;
         expect(firstCall?.data?.conversationId).toBe("conv-123");
         expect(mockExecuteRaw).toHaveBeenCalled();
     });
 
     it("merges semantic layer results into retrieval output", async () => {
-        mockSearchSemanticMemories.mockResolvedValue([
+        mockSearchSemanticMemories.mockResolvedValue(asSemanticSearchResult([
             {
                 id: "pm-semantic",
                 type: "project",
@@ -471,7 +500,7 @@ describe("retrieveMemories — deterministic scope rules", () => {
                 relevance: 0.91,
                 tags: ["outcome"],
             },
-        ] as any);
+        ]));
 
         const result = await retrieveMemories(
             {
@@ -553,7 +582,7 @@ describe("memory retrieval reranking primitives", () => {
 
     it("flag off keeps default rank ordering with narrow candidate pool", async () => {
         process.env.ENABLE_MEMORY_ADVANCED_RERANKING = "0";
-        mockSearchSemanticMemories.mockResolvedValue([
+        mockSearchSemanticMemories.mockResolvedValue(asSemanticSearchResult([
             {
                 id: "sem-1",
                 type: "project",
@@ -578,7 +607,7 @@ describe("memory retrieval reranking primitives", () => {
                 relevance: 0.80,
                 updatedAt: new Date("2026-02-20T00:00:00.000Z").toISOString(),
             },
-        ] as any);
+        ]));
 
         const result = await retrieveMemories(
             {
@@ -594,7 +623,7 @@ describe("memory retrieval reranking primitives", () => {
 
     it("flag on applies expanded candidate pool + reranking", async () => {
         process.env.ENABLE_MEMORY_ADVANCED_RERANKING = "1";
-        mockSearchSemanticMemories.mockResolvedValue([
+        mockSearchSemanticMemories.mockResolvedValue(asSemanticSearchResult([
             {
                 id: "sem-1",
                 type: "project",
@@ -619,7 +648,7 @@ describe("memory retrieval reranking primitives", () => {
                 relevance: 0.80,
                 updatedAt: new Date("2026-02-20T00:00:00.000Z").toISOString(),
             },
-        ] as any);
+        ]));
 
         const result = await retrieveMemories(
             {

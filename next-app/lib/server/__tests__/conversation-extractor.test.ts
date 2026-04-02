@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { extractMemoriesFromConversation } from "../memory/conversation-extractor";
+import type { AIMessage } from "@/types/ai";
 
 vi.mock("@/lib/server/prisma", () => ({
     prisma: {
@@ -34,6 +35,9 @@ const { createProjectMemory } = await import("@/lib/server/memory/project-memory
 const { createArtifact } = await import("@/lib/server/agent/artifacts");
 const { getAIService } = await import("@/lib/server/ai");
 
+type ConversationMessagesResult = Awaited<ReturnType<typeof prisma.aIMessage.findMany>>;
+type ArtifactLookupResult = Awaited<ReturnType<typeof prisma.artifact.findFirst>>;
+
 const mockFindMany = vi.mocked(prisma.aIMessage.findMany);
 const mockMemoryFindFirst = vi.mocked(prisma.projectMemory.findFirst);
 const mockArtifactFindFirst = vi.mocked(prisma.artifact.findFirst);
@@ -47,6 +51,14 @@ function makeMessages(count: number) {
     }));
 }
 
+function asConversationMessagesResult(rows: unknown): ConversationMessagesResult {
+    return rows as ConversationMessagesResult;
+}
+
+function asArtifactLookupResult(row: unknown): ArtifactLookupResult {
+    return row as ArtifactLookupResult;
+}
+
 beforeEach(() => {
     vi.clearAllMocks();
     // Default: no prior extraction exists (dedup guard passes)
@@ -56,7 +68,7 @@ beforeEach(() => {
 
 describe("extractMemoriesFromConversation", () => {
     it("returns empty when conversation has < 5 substantive messages", async () => {
-        mockFindMany.mockResolvedValue(makeMessages(3) as any);
+        mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(3)));
 
         const result = await extractMemoriesFromConversation("conv-1", "proj-1");
 
@@ -65,7 +77,7 @@ describe("extractMemoriesFromConversation", () => {
     });
 
     it("calls AI with grok-4-1-fast model", async () => {
-        mockFindMany.mockResolvedValue(makeMessages(6) as any);
+        mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
 
         await extractMemoriesFromConversation("conv-1", "proj-1");
 
@@ -76,7 +88,7 @@ describe("extractMemoriesFromConversation", () => {
     });
 
     it("creates ProjectMemory for each extracted decision", async () => {
-        mockFindMany.mockResolvedValue(makeMessages(6) as any);
+        mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
 
         await extractMemoriesFromConversation("conv-1", "proj-1");
 
@@ -90,7 +102,7 @@ describe("extractMemoriesFromConversation", () => {
     });
 
     it("creates ProjectMemory (type: definition) for each fact", async () => {
-        mockFindMany.mockResolvedValue(makeMessages(6) as any);
+        mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
 
         await extractMemoriesFromConversation("conv-1", "proj-1");
 
@@ -102,7 +114,7 @@ describe("extractMemoriesFromConversation", () => {
     });
 
     it("creates memory_proposal artifact for preferences when runId provided", async () => {
-        mockFindMany.mockResolvedValue(makeMessages(6) as any);
+        mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
 
         await extractMemoriesFromConversation("conv-1", "proj-1", "run-1", "user-1");
 
@@ -120,8 +132,8 @@ describe("extractMemoriesFromConversation", () => {
 
     it("skips extraction when preference artifacts already exist for the conversation", async () => {
         mockMemoryFindFirst.mockResolvedValue(null);
-        mockArtifactFindFirst.mockResolvedValue({ id: "art-existing" } as any);
-        mockFindMany.mockResolvedValue(makeMessages(6) as any);
+        mockArtifactFindFirst.mockResolvedValue(asArtifactLookupResult({ id: "art-existing" }));
+        mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
 
         const result = await extractMemoriesFromConversation("conv-1", "proj-1", "run-1", "user-1");
 
@@ -132,7 +144,7 @@ describe("extractMemoriesFromConversation", () => {
     });
 
     it("handles AI returning invalid JSON gracefully", async () => {
-        mockFindMany.mockResolvedValue(makeMessages(6) as any);
+        mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
         mockChat.mockResolvedValueOnce({ content: "not valid json {{{" });
 
         const result = await extractMemoriesFromConversation("conv-1", "proj-1");
@@ -141,7 +153,7 @@ describe("extractMemoriesFromConversation", () => {
     });
 
     it("tags all created memories with conversation-extracted", async () => {
-        mockFindMany.mockResolvedValue(makeMessages(6) as any);
+        mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
 
         await extractMemoriesFromConversation("conv-1", "proj-1");
 
@@ -152,28 +164,29 @@ describe("extractMemoriesFromConversation", () => {
     });
 
     it("strips hidden scoping and mentioned-study metadata from assistant transcript before extraction", async () => {
-        mockFindMany.mockResolvedValue([
+        mockFindMany.mockResolvedValue(asConversationMessagesResult([
             {
                 role: "assistant",
                 content: `Landscape summary\n\n<!-- SCOPING_REPORT: {"topic":"x","searchesRun":[],"landscape":{"majorThemes":[],"evidenceGaps":[],"methodologicalPatterns":[],"evidenceDensity":"moderate"},"recommendedQuestions":[],"nextStep":"x"} -->\n<!-- MENTIONED_STUDIES: {"studies":[{"title":"Study","doi":"10.1000/x"}]} -->`,
             },
             ...makeMessages(5),
-        ] as any);
+        ]));
 
         await extractMemoriesFromConversation("conv-1", "proj-1");
 
         const lastCall = mockChat.mock.calls.at(-1);
-        const payload = lastCall?.[0] as Array<{ role: string; content: string }>;
+        expect(lastCall).toBeDefined();
+        const payload = (lastCall?.[0] ?? []) as AIMessage[];
         const transcriptMessage = payload.find((m) => m.role === "user")?.content || "";
         expect(transcriptMessage.includes("SCOPING_REPORT")).toBe(false);
         expect(transcriptMessage.includes("MENTIONED_STUDIES")).toBe(false);
     });
 
     it("applies scoping policy: keeps explicit decisions but drops transient scoping summaries/facts", async () => {
-        mockFindMany.mockResolvedValue([
+        mockFindMany.mockResolvedValue(asConversationMessagesResult([
             { role: "assistant", content: `Scoping narrative\n<scoping_report>{"topic":"x","searchesRun":[],"landscape":{"majorThemes":[],"evidenceGaps":[],"methodologicalPatterns":[],"evidenceDensity":"moderate"},"recommendedQuestions":[],"nextStep":"x"}</scoping_report>` },
             ...makeMessages(5),
-        ] as any);
+        ]));
         mockChat.mockResolvedValueOnce({
             content: JSON.stringify({
                 decisions: [
