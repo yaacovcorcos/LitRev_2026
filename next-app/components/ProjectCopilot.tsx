@@ -210,7 +210,10 @@ export function ProjectCopilot({
 
     const handleSaveToNotes = useCallback(async (content: string, messageId: string) => {
         if (!params?.id) return;
-        await createNoteAction(params.id, content, "conversation", currentConversationId ?? undefined, messageId);
+        const result = await createNoteAction(params.id, content, "conversation", currentConversationId ?? undefined, messageId);
+        if (!result.success) {
+            throw new Error(result.error || "Unable to save note.");
+        }
     }, [params?.id, currentConversationId]);
 
     const handleBranchFromMessage = useCallback(async (messageId: string, createdAt: string) => {

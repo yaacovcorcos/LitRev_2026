@@ -138,6 +138,7 @@ function useHarness() {
         state,
         artifacts,
         streamPhase,
+        setPendingAttachment,
     };
 }
 
@@ -232,5 +233,33 @@ describe("useCopilotStreamActions artifact review path", () => {
         expect(result.current.artifacts.get("artifact-1")?.status).toBe("proposed");
         expect(result.current.state.messages.find((message) => message.artifact?.id === "artifact-1")?.artifact?.status).toBe("proposed");
         expect(mockDispatchProjectDataChanged).not.toHaveBeenCalled();
+    });
+
+    it("refuses to send when the attached PDF could not be read for chat", async () => {
+        const { result } = renderHook(() => useHarness());
+
+        act(() => {
+            result.current.setPendingAttachment({
+                fileAssetId: "file-1",
+                filename: "broken.pdf",
+                size: 1024,
+                mimeType: "application/pdf",
+                isExisting: false,
+                extraction: {
+                    status: "failed",
+                    reason: "pdf_parse_failed",
+                    message: "LitRev uploaded the PDF, but could not read usable text from it. Remove it or attach a different PDF.",
+                },
+            });
+        });
+
+        await act(async () => {
+            await result.current.sendMessage("Please summarize this", "overview");
+        });
+
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            "Blocking send because the attached PDF could not be read for chat.",
+        );
+        expect(result.current.state.messages).toHaveLength(1);
     });
 });

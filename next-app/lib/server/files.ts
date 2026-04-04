@@ -7,6 +7,7 @@ import type { ScopeInput } from "@/lib/server/scope";
 import type { FileAsset } from "@/types/files";
 import type { Study } from "@/types/ledger";
 import type { SearchResult } from "@/types/search";
+import type { PendingAttachmentExtraction } from "@/types/copilot-context";
 import { findDuplicates } from "@/lib/server/search/dedup";
 import { listStudies } from "@/lib/server/ledger";
 import { randomUUID } from "crypto";
@@ -299,7 +300,7 @@ export async function uploadChatAttachment(
   scopeInput: ScopeInput,
   projectId: string,
   file: File
-): Promise<{ fileAsset: FileAsset; extractedText: string }> {
+): Promise<{ fileAsset: FileAsset; extraction: PendingAttachmentExtraction }> {
   const scope = await assertProjectAccess(scopeInput, projectId);
   validateFileServer(file);
 
@@ -314,12 +315,19 @@ export async function uploadChatAttachment(
 
   // Extract text from the uploaded PDF
   const { extractTextFromPdf } = await import("./pdf-extraction");
-  const buffer = Buffer.from(await file.arrayBuffer());
-  let extractedText: string;
+  let extraction: PendingAttachmentExtraction;
   try {
-    extractedText = await extractTextFromPdf(buffer);
+    const buffer = Buffer.from(await file.arrayBuffer());
+    extraction = {
+      status: "ready",
+      text: await extractTextFromPdf(buffer),
+    };
   } catch {
-    extractedText = "[PDF text extraction failed]";
+    extraction = {
+      status: "failed",
+      reason: "pdf_parse_failed",
+      message: "LitRev uploaded the PDF, but could not read usable text from it. Remove it or attach a different PDF.",
+    };
   }
 
   const created = await prisma.fileAsset.create({
@@ -333,11 +341,15 @@ export async function uploadChatAttachment(
       size: file.size,
       storagePath,
       publicUrl,
-      metadata: { extractedTextLength: extractedText.length },
+      metadata: {
+        extractionStatus: extraction.status,
+        extractionReason: extraction.status === "failed" ? extraction.reason : undefined,
+        extractedTextLength: extraction.status === "ready" ? extraction.text.length : 0,
+      },
     },
   });
 
-  return { fileAsset: toFileAsset(created), extractedText };
+  return { fileAsset: toFileAsset(created), extraction };
 }
 
 /**
@@ -347,7 +359,7 @@ export async function extractTextFromExistingFile(
   scopeInput: ScopeInput,
   projectId: string,
   fileAssetId: string
-): Promise<{ fileAsset: FileAsset; extractedText: string }> {
+): Promise<{ fileAsset: FileAsset; extraction: PendingAttachmentExtraction }> {
   await assertProjectAccess(scopeInput, projectId);
 
   const file = await prisma.fileAsset.findFirst({
@@ -361,10 +373,27 @@ export async function extractTextFromExistingFile(
   }
 
   const { extractTextFromPdf } = await import("./pdf-extraction");
-  const buffer = await fetchFileAssetBytes(file, { projectId, studyId: file.studyId });
-  const extractedText = await extractTextFromPdf(buffer);
+  let extraction: PendingAttachmentExtraction;
+  try {
+    const buffer = await fetchFileAssetBytes(file, { projectId, studyId: file.studyId });
+    extraction = {
+      status: "ready",
+      text: await extractTextFromPdf(buffer),
+    };
+  } catch (error) {
+    const reason = error instanceof Error && /supabase|storage|download|fetch/i.test(error.message)
+      ? "storage_fetch_failed"
+      : "pdf_parse_failed";
+    extraction = {
+      status: "failed",
+      reason,
+      message: reason === "storage_fetch_failed"
+        ? "LitRev found the PDF, but could not load it for chat. Remove it or try again."
+        : "LitRev found the PDF, but could not read usable text from it. Remove it or choose a different PDF.",
+    };
+  }
 
-  return { fileAsset: toFileAsset(file), extractedText };
+  return { fileAsset: toFileAsset(file), extraction };
 }
 
 function validateFileServer(file: File): void {

@@ -43,7 +43,11 @@ vi.mock("@/lib/server/logging", () => ({
   logServerError: (...args: unknown[]) => mocks.logServerError(...args),
 }));
 
-import { importStudyWithPdfAction } from "@/app/actions/files";
+import {
+  extractTextFromExistingFileAction,
+  importStudyWithPdfAction,
+  uploadChatAttachmentAction,
+} from "@/app/actions/files";
 
 const IMPORT_LOCAL_SCHEMA_DRIFT_MESSAGE =
   "PDF uploaded, but the app could not continue the follow-up processing flow because your local database schema is behind. Run npx prisma migrate dev from next-app/.";
@@ -209,5 +213,73 @@ describe("files actions", () => {
       expect(result.data.fileAsset.id).toBe("file-1");
     }
     expect(mocks.kickStudyProcessingDispatcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns structured extraction status for newly uploaded chat attachments", async () => {
+    mocks.uploadChatAttachment.mockResolvedValue({
+      fileAsset: {
+        id: "file-1",
+        filename: "study.pdf",
+        size: 123,
+        mimeType: "application/pdf",
+        publicUrl: "https://example.test/study.pdf",
+      },
+      extraction: {
+        status: "failed",
+        reason: "pdf_parse_failed",
+        message: "LitRev uploaded the PDF, but could not read usable text from it. Remove it or attach a different PDF.",
+      },
+    });
+
+    const result = await uploadChatAttachmentAction("project-1", createPdfFormData());
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        fileAssetId: "file-1",
+        filename: "study.pdf",
+        size: 123,
+        mimeType: "application/pdf",
+        extraction: {
+          status: "failed",
+          reason: "pdf_parse_failed",
+          message: "LitRev uploaded the PDF, but could not read usable text from it. Remove it or attach a different PDF.",
+        },
+        publicUrl: "https://example.test/study.pdf",
+      },
+    });
+  });
+
+  it("returns structured extraction status for existing PDF attachments", async () => {
+    mocks.extractTextFromExistingFile.mockResolvedValue({
+      fileAsset: {
+        id: "file-1",
+        filename: "study.pdf",
+        size: 123,
+        mimeType: "application/pdf",
+      },
+      extraction: {
+        status: "failed",
+        reason: "storage_fetch_failed",
+        message: "LitRev found the PDF, but could not load it for chat. Remove it or try again.",
+      },
+    });
+
+    const result = await extractTextFromExistingFileAction("project-1", "file-1");
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        fileAssetId: "file-1",
+        filename: "study.pdf",
+        size: 123,
+        mimeType: "application/pdf",
+        extraction: {
+          status: "failed",
+          reason: "storage_fetch_failed",
+          message: "LitRev found the PDF, but could not load it for chat. Remove it or try again.",
+        },
+      },
+    });
   });
 });

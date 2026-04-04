@@ -787,4 +787,44 @@ describe("TimelineRenderer action affordances", () => {
       expect((keepButton as HTMLButtonElement).disabled).toBe(false);
     });
   });
+
+  it("surfaces note save failures inline and allows retry on the same assistant row", async () => {
+    const onSaveToNotes = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Unable to save note."))
+      .mockResolvedValueOnce(undefined);
+    const items: TimelineItem[] = [
+      {
+        type: "assistant_message",
+        id: "assistant-1",
+        content: "Summarized answer",
+        createdAt: "2026-04-05T00:00:00.000Z",
+      },
+    ];
+
+    render(
+      <TimelineRenderer
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onSaveToNotes={onSaveToNotes}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /save to notes/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Save failed.")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /retry save to notes/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Saved!")).toBeTruthy();
+    });
+
+    expect(onSaveToNotes).toHaveBeenNthCalledWith(1, "Summarized answer", "assistant-1");
+    expect(onSaveToNotes).toHaveBeenNthCalledWith(2, "Summarized answer", "assistant-1");
+  });
 });

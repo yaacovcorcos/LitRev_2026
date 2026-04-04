@@ -486,6 +486,8 @@ type AssistantMessageRowProps = {
     isSaved: boolean;
     /** True while the save-to-notes request is in-flight (shows spinner) */
     isSaving: boolean;
+    /** Inline note-save failure message for this row, when present */
+    noteSaveError?: string | null;
     onCopy: (text: string) => void;
     onSaveToNotes?: (content: string, messageId: string) => void | Promise<void>;
     onInsert?: (text: string) => void;
@@ -519,6 +521,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
     isStreaming,
     isSaved,
     isSaving,
+    noteSaveError,
     onCopy,
     onSaveToNotes,
     onInsert,
@@ -668,7 +671,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                         </div>
                     </div>
                 )}
-                <div className={`${styles.chatActions} ${isSaved || isSaving ? styles.chatActionsVisible : ""}`}>
+                <div className={`${styles.chatActions} ${isSaved || isSaving || !!noteSaveError ? styles.chatActionsVisible : ""}`}>
                     <button
                         type="button"
                         className={styles.chatActionBtn}
@@ -684,6 +687,18 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
                         ) : isSaving ? (
                             <span className={styles.savingSpinner} aria-label="Saving…">
                                 <span className="material-icons-round">sync</span>
+                            </span>
+                        ) : noteSaveError ? (
+                            <span className={styles.noteSaveErrorInline} title={noteSaveError}>
+                                <span className={styles.noteSaveErrorLabel}>Save failed.</span>
+                                <button
+                                    type="button"
+                                    className={styles.noteSaveRetryBtn}
+                                    onClick={() => onSaveToNotes(displayContent, item.id)}
+                                    aria-label="Retry save to notes"
+                                >
+                                    Retry
+                                </button>
                             </span>
                         ) : (
                             <button
@@ -848,9 +863,11 @@ function TimelineRendererInner({
     const projectId = projectIdProp ?? routeProjectId;
     const [savedNoteId, setSavedNoteId] = useState<string | null>(null);
     const [savingNoteId, setSavingNoteId] = useState<string | null>(null);
+    const [failedNoteState, setFailedNoteState] = useState<{ messageId: string; error: string } | null>(null);
     const [collapsedTraceByAssistantId, setCollapsedTraceByAssistantId] = useState<Record<string, boolean>>({});
     const [pendingArtifactMutation, setPendingArtifactMutation] = useState<{ artifactId: string; actionKey: string } | null>(null);
     const [confirmationState, setConfirmationState] = useState<ArtifactConfirmationState>(null);
+    const savedNoteResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // ── Shared scroll hook ──────────────────────────────────────────────────
     const {
@@ -878,6 +895,12 @@ function TimelineRendererInner({
     }, [conversationId, notifyConversationChanged]);
 
     useStreamStartNotification(isLoading, notifyStreamStart);
+
+    useEffect(() => () => {
+        if (savedNoteResetRef.current) {
+            clearTimeout(savedNoteResetRef.current);
+        }
+    }, []);
 
     const firstItemRef = useRef<HTMLDivElement | null>(null);
     const {
@@ -945,14 +968,26 @@ function TimelineRendererInner({
     const handleSaveToNotes = useCallback(async (content: string, messageId: string) => {
         if (onSaveToNotes) {
             setSavingNoteId(messageId);
+            setFailedNoteState((current) => (
+                current?.messageId === messageId ? null : current
+            ));
             try {
                 await onSaveToNotes(content, messageId);
+                if (savedNoteResetRef.current) {
+                    clearTimeout(savedNoteResetRef.current);
+                }
                 setSavedNoteId(messageId);
-                setTimeout(() => setSavedNoteId(null), 2000);
-            } catch {
-                // Silently fail — note creation error doesn't need to block UI
+                savedNoteResetRef.current = setTimeout(() => {
+                    setSavedNoteId((current) => (current === messageId ? null : current));
+                    savedNoteResetRef.current = null;
+                }, 2000);
+            } catch (error) {
+                setFailedNoteState({
+                    messageId,
+                    error: error instanceof Error ? error.message : "Unable to save note.",
+                });
             } finally {
-                setSavingNoteId(null);
+                setSavingNoteId((current) => (current === messageId ? null : current));
             }
         }
     }, [onSaveToNotes]);
@@ -1364,6 +1399,7 @@ function TimelineRendererInner({
                         isStreaming={isStreaming && index === lastAssistantIndex}
                         isSaved={savedNoteId === item.id}
                         isSaving={savingNoteId === item.id}
+                        noteSaveError={failedNoteState?.messageId === item.id ? failedNoteState.error : null}
                         onCopy={handleCopy}
                         onSaveToNotes={onSaveToNotes ? handleSaveToNotes : undefined}
                         onInsert={onInsert}
@@ -1532,6 +1568,7 @@ function TimelineRendererInner({
         renderCheckpoint,
         savedNoteId,
         savingNoteId,
+        failedNoteState,
         suppressedProgressId,
     ]);
 
@@ -1695,6 +1732,11 @@ function TimelineRendererInner({
                         isStreaming={streamingAssistantMessageId === entry.assistantMessage.id}
                         isSaved={savedNoteId === entry.assistantMessage.id}
                         isSaving={savingNoteId === entry.assistantMessage.id}
+                        noteSaveError={
+                            failedNoteState?.messageId === entry.assistantMessage.id
+                                ? failedNoteState.error
+                                : null
+                        }
                         onCopy={handleCopy}
                         onSaveToNotes={onSaveToNotes ? handleSaveToNotes : undefined}
                         onInsert={onInsert}
@@ -1715,6 +1757,7 @@ function TimelineRendererInner({
         renderPresentedTimelineItem,
         savedNoteId,
         savingNoteId,
+        failedNoteState,
         streamingAssistantMessageId,
         suppressedProgressId,
         toggleCollapsedTrace,

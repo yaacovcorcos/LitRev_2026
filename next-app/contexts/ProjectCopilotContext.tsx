@@ -329,7 +329,7 @@ function ProjectCopilotRuntime({
                 filename: result.data.filename,
                 size: result.data.size,
                 mimeType: result.data.mimeType,
-                extractedText: result.data.extractedText,
+                extraction: result.data.extraction,
                 isExisting: false,
             });
         } catch (err) {
@@ -353,7 +353,7 @@ function ProjectCopilotRuntime({
                 filename: result.data.filename,
                 size: result.data.size,
                 mimeType: result.data.mimeType,
-                extractedText: result.data.extractedText,
+                extraction: result.data.extraction,
                 isExisting: true,
             });
         } catch (err) {

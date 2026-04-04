@@ -10,6 +10,7 @@ import { classifyError, sanitizeErrorMessage, withValidatedAction, type ActionRe
 import { withAuth } from "@/lib/server/auth/session";
 import { logServerError } from "@/lib/server/logging";
 import { projectIdSchema, studyIdSchema, resourceIdSchema } from "@/lib/schemas/ids";
+import type { PendingAttachmentExtraction } from "@/types/copilot-context";
 
 type FilesActionErrorCode =
   | "ACCESS_DENIED"
@@ -199,14 +200,21 @@ export async function importStudyWithPdfAction(
 export async function uploadChatAttachmentAction(
   projectId: string,
   formData: FormData
-): Promise<ActionResult<{ fileAssetId: string; filename: string; size: number; mimeType: string; extractedText: string; publicUrl?: string }>> {
+): Promise<ActionResult<{
+  fileAssetId: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  extraction: PendingAttachmentExtraction;
+  publicUrl?: string;
+}>> {
   return withValidatedAction(projectIdSchema, projectId,
     (id) => withAuth(async ({ userId, workspaceId }) => {
       const file = formData.get("file");
       if (!(file instanceof File)) {
         throw new Error("File is required.");
       }
-      const { fileAsset, extractedText } = await uploadChatAttachment(
+      const { fileAsset, extraction } = await uploadChatAttachment(
         { ownerId: userId, workspaceId }, id, file
       );
       return {
@@ -214,7 +222,7 @@ export async function uploadChatAttachmentAction(
         filename: fileAsset.filename,
         size: fileAsset.size,
         mimeType: fileAsset.mimeType,
-        extractedText,
+        extraction,
         publicUrl: fileAsset.publicUrl,
       };
     }),
@@ -229,10 +237,16 @@ const extractTextFromExistingFileInput = z.object({
 export async function extractTextFromExistingFileAction(
   projectId: string,
   fileAssetId: string
-): Promise<ActionResult<{ fileAssetId: string; filename: string; size: number; mimeType: string; extractedText: string }>> {
+): Promise<ActionResult<{
+  fileAssetId: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+  extraction: PendingAttachmentExtraction;
+}>> {
   return withValidatedAction(extractTextFromExistingFileInput, { projectId, fileAssetId },
     (v) => withAuth(async ({ userId, workspaceId }) => {
-      const { fileAsset, extractedText } = await extractTextFromExistingFile(
+      const { fileAsset, extraction } = await extractTextFromExistingFile(
         { ownerId: userId, workspaceId }, v.projectId, v.fileAssetId
       );
       return {
@@ -240,7 +254,7 @@ export async function extractTextFromExistingFileAction(
         filename: fileAsset.filename,
         size: fileAsset.size,
         mimeType: fileAsset.mimeType,
-        extractedText,
+        extraction,
       };
     }),
   );
