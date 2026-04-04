@@ -56,6 +56,7 @@ describe("messagesToTimeline", () => {
         createdAt: "2026-02-28T00:00:03.000Z",
         userInputRequest: {
           callId: "ask-call-1",
+          questionId: "ask-call-1:question-1",
           question: "Continue with strict mode?",
           questionType: "yes_no",
           answered: false,
@@ -88,6 +89,7 @@ describe("messagesToTimeline", () => {
     expect(timeline[0]).toMatchObject({
       type: "user_input_request",
       callId: "ask-call-1",
+      questionId: "ask-call-1:question-1",
       question: "Continue with strict mode?",
       answered: false,
     });
@@ -217,6 +219,27 @@ describe("messagesToTimeline", () => {
         code: "CLIENT_STREAM_ERROR",
         retryable: false,
       },
+    });
+  });
+
+  it("preserves questionId on streamed user_input_required chunks", () => {
+    const timeline = reduceStreamChunk([], {
+      type: "user_input_required",
+      userInputRequest: {
+        callId: "ask-call-2",
+        questionId: "ask-call-2:question-1",
+        question: "Do you want me to keep going?",
+        questionType: "yes_no",
+      },
+    }, "ai-3");
+
+    expect(timeline[0]).toMatchObject({
+      type: "user_input_request",
+      id: "user-input-ask-call-2",
+      callId: "ask-call-2",
+      questionId: "ask-call-2:question-1",
+      question: "Do you want me to keep going?",
+      answered: false,
     });
   });
 });

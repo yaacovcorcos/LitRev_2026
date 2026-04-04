@@ -770,6 +770,7 @@ describe("project conversation stream event handlers", () => {
         type: "user_input_required",
         userInputRequest: {
           callId: "ask-1",
+          questionId: "ask-1:question-1",
           question: "Continue?",
           questionType: "yes_no",
         },
@@ -779,9 +780,23 @@ describe("project conversation stream event handlers", () => {
     );
 
     expect(setPendingUserInput).toHaveBeenCalledTimes(1);
+    expect(setPendingUserInput).toHaveBeenCalledWith(expect.objectContaining({
+      callId: "ask-1",
+      questionId: "ask-1:question-1",
+    }));
     const askMessage = messages.find((m) => m.id === "user-input-ask-1");
-    expect(askMessage?.userInputRequest?.question).toBe("Continue?");
-    expect(askMessage?.userInputRequest?.answered).toBe(false);
+    expect(askMessage?.userInputRequest).toMatchObject({
+      callId: "ask-1",
+      questionId: "ask-1:question-1",
+      question: "Continue?",
+      answered: false,
+    });
+    const timeline = messagesToTimeline(messages);
+    expect(timeline.find((item) => item.type === "user_input_request")).toMatchObject({
+      callId: "ask-1",
+      questionId: "ask-1:question-1",
+      answered: false,
+    });
   });
 
   it("appends structured stream errors from shared reducer intents", () => {
