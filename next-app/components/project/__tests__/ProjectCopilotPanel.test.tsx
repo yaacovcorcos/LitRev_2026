@@ -4,9 +4,10 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectCopilotPanel } from "../ProjectCopilotPanel";
 
-const { mockUseProjectConversation, mockNotify } = vi.hoisted(() => ({
+const { mockUseProjectConversation, mockNotify, mockCreateNoteAction } = vi.hoisted(() => ({
   mockUseProjectConversation: vi.fn(),
   mockNotify: vi.fn(),
+  mockCreateNoteAction: vi.fn(),
 }));
 
 vi.mock("@/contexts/ProjectConversationContext", () => ({
@@ -14,7 +15,7 @@ vi.mock("@/contexts/ProjectConversationContext", () => ({
 }));
 
 vi.mock("@/app/actions/notes", () => ({
-  createNoteAction: vi.fn(),
+  createNoteAction: (...args: unknown[]) => mockCreateNoteAction(...args),
 }));
 
 vi.mock("@/contexts/NotificationContext", () => ({
@@ -92,6 +93,7 @@ describe("ProjectCopilotPanel suggestion wiring", () => {
   let baseContextValue: Record<string, unknown>;
 
   beforeEach(() => {
+    mockCreateNoteAction.mockReset();
     baseContextValue = {
       messages: [
         {
@@ -392,6 +394,40 @@ describe("ProjectCopilotPanel suggestion wiring", () => {
         continueFromRunId: "run-clicked",
         suppressUserMessageAppend: true,
       },
+    );
+  });
+
+  it("rethrows a failed note save from the panel shell-owned handler instead of swallowing it", async () => {
+    mockCreateNoteAction.mockResolvedValue({
+      success: false,
+      error: "Unable to save note.",
+    });
+
+    render(
+      <ProjectCopilotPanel
+        page="overview"
+        contextDisplay="Overview"
+        emptyState={{
+          icon: "smart_toy",
+          title: "AI Copilot",
+          description: "Help text",
+          suggestions: [{ label: "Summarize", prompt: "Summarize my project progress" }],
+        }}
+        inputPlaceholder="Ask..."
+      />,
+    );
+
+    const props = mockChatTimeline.mock.calls[0]?.[0] as {
+      onSaveToNotes?: (content: string, messageId: string) => Promise<void>;
+    };
+
+    await expect(props.onSaveToNotes?.("Panel answer", "assistant-2")).rejects.toThrow("Unable to save note.");
+    expect(mockCreateNoteAction).toHaveBeenCalledWith(
+      "project-1",
+      "Panel answer",
+      "conversation",
+      undefined,
+      "assistant-2",
     );
   });
 

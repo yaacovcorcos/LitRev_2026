@@ -250,6 +250,39 @@ describe("files actions", () => {
     });
   });
 
+  it("returns ready extraction text for newly uploaded chat attachments", async () => {
+    mocks.uploadChatAttachment.mockResolvedValue({
+      fileAsset: {
+        id: "file-1",
+        filename: "study.pdf",
+        size: 123,
+        mimeType: "application/pdf",
+        publicUrl: "https://example.test/study.pdf",
+      },
+      extraction: {
+        status: "ready",
+        text: "Extracted PDF text",
+      },
+    });
+
+    const result = await uploadChatAttachmentAction("project-1", createPdfFormData());
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        fileAssetId: "file-1",
+        filename: "study.pdf",
+        size: 123,
+        mimeType: "application/pdf",
+        extraction: {
+          status: "ready",
+          text: "Extracted PDF text",
+        },
+        publicUrl: "https://example.test/study.pdf",
+      },
+    });
+  });
+
   it("returns structured extraction status for existing PDF attachments", async () => {
     mocks.extractTextFromExistingFile.mockResolvedValue({
       fileAsset: {
@@ -278,6 +311,37 @@ describe("files actions", () => {
           status: "failed",
           reason: "storage_fetch_failed",
           message: "LitRev found the PDF, but could not load it for chat. Remove it or try again.",
+        },
+      },
+    });
+  });
+
+  it("returns ready extraction text for existing PDF attachments", async () => {
+    mocks.extractTextFromExistingFile.mockResolvedValue({
+      fileAsset: {
+        id: "file-1",
+        filename: "study.pdf",
+        size: 123,
+        mimeType: "application/pdf",
+      },
+      extraction: {
+        status: "ready",
+        text: "Recovered study text",
+      },
+    });
+
+    const result = await extractTextFromExistingFileAction("project-1", "file-1");
+
+    expect(result).toEqual({
+      success: true,
+      data: {
+        fileAssetId: "file-1",
+        filename: "study.pdf",
+        size: 123,
+        mimeType: "application/pdf",
+        extraction: {
+          status: "ready",
+          text: "Recovered study text",
         },
       },
     });

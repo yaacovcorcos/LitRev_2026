@@ -4,9 +4,10 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationMainView } from "../ConversationMainView";
 
-const { mockUseProjectConversation, mockChatTimeline } = vi.hoisted(() => ({
+const { mockUseProjectConversation, mockChatTimeline, mockCreateNoteAction } = vi.hoisted(() => ({
   mockUseProjectConversation: vi.fn(),
   mockChatTimeline: vi.fn(),
+  mockCreateNoteAction: vi.fn(),
 }));
 
 const mockRouterPush = vi.fn();
@@ -33,7 +34,7 @@ vi.mock("@/lib/agent/suggestions", () => ({
 }));
 
 vi.mock("@/app/actions/notes", () => ({
-  createNoteAction: vi.fn(),
+  createNoteAction: (...args: unknown[]) => mockCreateNoteAction(...args),
 }));
 
 vi.mock("../../chat/ChatTimeline", () => ({
@@ -76,6 +77,7 @@ describe("ConversationMainView parity", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRouterPush.mockReset();
+    mockCreateNoteAction.mockReset();
     const sendMessage = vi.fn();
     const reconnectRun = vi.fn();
     const answerUserInput = vi.fn();
@@ -260,6 +262,28 @@ describe("ConversationMainView parity", () => {
       "ask-1",
       "Start with the strongest RCT",
       "overview",
+    );
+  });
+
+  it("rethrows a failed note save from the shell-owned handler instead of swallowing it", async () => {
+    mockCreateNoteAction.mockResolvedValue({
+      success: false,
+      error: "Unable to save note.",
+    });
+
+    render(<ConversationMainView projectId="project-1" />);
+
+    const props = mockChatTimeline.mock.calls[0]?.[0] as {
+      onSaveToNotes?: (content: string, messageId: string) => Promise<void>;
+    };
+
+    await expect(props.onSaveToNotes?.("Summarized answer", "assistant-1")).rejects.toThrow("Unable to save note.");
+    expect(mockCreateNoteAction).toHaveBeenCalledWith(
+      "project-1",
+      "Summarized answer",
+      "conversation",
+      "conv-1",
+      "assistant-1",
     );
   });
 
