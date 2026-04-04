@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   isDevQuickLoginAllowed: vi.fn(),
+  hasTrustedDevQuickLoginOrigin: vi.fn(),
   ensureDevQuickLoginIdentity: vi.fn(),
   getDevQuickLoginIdentity: vi.fn(),
   buildFixtureProjectDescription: vi.fn(),
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/server/auth/dev-quick-login", () => ({
   isDevQuickLoginAllowed: (...args: unknown[]) => mocks.isDevQuickLoginAllowed(...args),
+  hasTrustedDevQuickLoginOrigin: (...args: unknown[]) => mocks.hasTrustedDevQuickLoginOrigin(...args),
   ensureDevQuickLoginIdentity: (...args: unknown[]) => mocks.ensureDevQuickLoginIdentity(...args),
   getDevQuickLoginIdentity: (...args: unknown[]) => mocks.getDevQuickLoginIdentity(...args),
   buildFixtureProjectDescription: (...args: unknown[]) => mocks.buildFixtureProjectDescription(...args),
@@ -36,6 +38,7 @@ const { POST } = await import("@/app/api/dev/test-home-state/route");
 describe("POST /api/dev/test-home-state", () => {
   beforeEach(() => {
     mocks.isDevQuickLoginAllowed.mockReset();
+    mocks.hasTrustedDevQuickLoginOrigin.mockReset();
     mocks.ensureDevQuickLoginIdentity.mockReset();
     mocks.getDevQuickLoginIdentity.mockReset();
     mocks.buildFixtureProjectDescription.mockReset();
@@ -45,6 +48,7 @@ describe("POST /api/dev/test-home-state", () => {
     mocks.prisma.project.findMany.mockReset();
 
     mocks.isDevQuickLoginAllowed.mockReturnValue(true);
+    mocks.hasTrustedDevQuickLoginOrigin.mockReturnValue(true);
     mocks.ensureDevQuickLoginIdentity.mockResolvedValue({
       userId: "seed-user",
       workspaceId: "seed-workspace",
@@ -70,6 +74,18 @@ describe("POST /api/dev/test-home-state", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ error: "seedKey is required" });
+  });
+
+  it("returns 403 for an untrusted preview origin", async () => {
+    mocks.hasTrustedDevQuickLoginOrigin.mockReturnValue(false);
+
+    const response = await POST(new Request("http://localhost/api/dev/test-home-state", {
+      method: "POST",
+    }) as never);
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Invalid origin" });
+    expect(mocks.ensureDevQuickLoginIdentity).not.toHaveBeenCalled();
   });
 
   it("deletes only seeded fixtures for zero-state setup", async () => {

@@ -121,6 +121,9 @@ export function ExportModal({
 
   const displayExport = newExport || latestExport;
   const olderExports = exportHistory.filter((f) => f.id !== displayExport?.id);
+  const displayExportLink = displayExport
+    ? (displayExport.downloadUrl ?? displayExport.publicUrl)
+    : undefined;
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -252,23 +255,23 @@ export function ExportModal({
                   </div>
                 </div>
 
-                {displayExport.publicUrl && (
+                {displayExportLink && (
                   <div className={styles.linkSection}>
                     <div className={styles.linkHeader}>
                       <span className="material-icons-round">link</span>
-                      <span>Public Link</span>
+                      <span>Link</span>
                     </div>
                     <div className={styles.linkRow}>
                       <input
                         type="text"
                         readOnly
-                        value={displayExport.publicUrl}
+                        value={displayExportLink}
                         className={styles.linkInput}
                       />
                       <button
                         type="button"
                         className={styles.copyBtn}
-                        onClick={() => handleCopyLink(displayExport.publicUrl!, displayExport.id)}
+                        onClick={() => handleCopyLink(displayExportLink, displayExport.id)}
                       >
                         <span className="material-icons-round">
                           {copiedId === displayExport.id ? "check" : "content_copy"}
@@ -330,11 +333,11 @@ export function ExportModal({
                               <span className="material-icons-round">download</span>
                             </button>
                           )}
-                          {file.publicUrl && (
+                          {(file.downloadUrl ?? file.publicUrl) && (
                             <button
                               type="button"
                               className={styles.historyBtn}
-                              onClick={() => handleCopyLink(file.publicUrl!, file.id)}
+                              onClick={() => handleCopyLink(file.downloadUrl ?? file.publicUrl!, file.id)}
                               aria-label={copiedId === file.id ? "Copied export link" : "Copy export link"}
                               title={copiedId === file.id ? "Copied!" : "Copy link"}
                             >

@@ -206,7 +206,6 @@ export async function uploadChatAttachmentAction(
   size: number;
   mimeType: string;
   extraction: PendingAttachmentExtraction;
-  publicUrl?: string;
 }>> {
   return withValidatedAction(projectIdSchema, projectId,
     (id) => withAuth(async ({ userId, workspaceId }) => {
@@ -223,7 +222,6 @@ export async function uploadChatAttachmentAction(
         size: fileAsset.size,
         mimeType: fileAsset.mimeType,
         extraction,
-        publicUrl: fileAsset.publicUrl,
       };
     }),
   );

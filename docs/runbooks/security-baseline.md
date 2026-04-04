@@ -85,6 +85,7 @@ For LitRev specifically:
 - storage identity must be server-owned
 - raw storage paths are not a client contract
 - file reads must start from validated project-owned records
+- tenant-scoped files must not rely on direct public object URLs; user-facing file access should stay behind a private bucket plus signed or app-authorized delivery
 
 Primary references:
 - Supabase secure-data docs

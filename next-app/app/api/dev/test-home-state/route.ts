@@ -7,6 +7,7 @@ import {
   createDevFixtureProjectId,
   ensureDevQuickLoginIdentity,
   getDevQuickLoginIdentity,
+  hasTrustedDevQuickLoginOrigin,
   isDevQuickLoginAllowed,
 } from "@/lib/server/auth/dev-quick-login";
 
@@ -33,6 +34,9 @@ function buildFixtureWhere(seedKey: string): Prisma.ProjectWhereInput {
 export async function POST(request: NextRequest) {
   if (!isDevQuickLoginAllowed()) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (!hasTrustedDevQuickLoginOrigin(request)) {
+    return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
   }
 
   const body = (await request.json().catch(() => ({}))) as {

@@ -557,9 +557,9 @@ export default function StudyDetailPage() {
                                         </p>
                                     ) : null}
                                     <div className={styles.processingActions}>
-                                        {pdfFile.publicUrl ? (
+                                        {pdfFile.downloadUrl || pdfFile.publicUrl ? (
                                             <a
-                                                href={pdfFile.publicUrl}
+                                                href={pdfFile.downloadUrl ?? pdfFile.publicUrl}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className={styles.processingActionSecondary}

@@ -107,9 +107,10 @@ export function useDraftExport(deps: UseDraftExportDeps) {
     if (!result.success) {
       throw new Error(result.error);
     }
-    if (!result.data.publicUrl || typeof document === "undefined") return;
+    const exportUrl = result.data.downloadUrl ?? result.data.publicUrl;
+    if (!exportUrl || typeof document === "undefined") return;
     const a = document.createElement("a");
-    a.href = result.data.publicUrl;
+    a.href = exportUrl;
     a.download = result.data.filename;
     document.body.appendChild(a);
     a.click();
