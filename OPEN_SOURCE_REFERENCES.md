@@ -38,6 +38,20 @@ All GitHub URLs below were checked with HTTP `200` on 2026-04-05.
 |---|---|---|
 | [aidenybai/react-grab](https://github.com/aidenybai/react-grab) | Interaction-model inspiration for semantic context capture, target/action contracts, recent history, and anchored follow-up affordances | `docs/plans/plan-context-capture.md` |
 
+### Evidence Synthesis and Ledger
+
+| Upstream repo | Current LitRev role | Current owner docs |
+|---|---|---|
+| [asreview/asreview](https://github.com/asreview/asreview) | Screening-workflow comparison input for explicit decision states, progress framing, and reviewer-oriented evidence triage patterns | `docs/plans/plan-ledger.md` |
+| [asreview/asreview-datatools](https://github.com/asreview/asreview-datatools) | Evidence-ingest comparison input for dedupe discipline, import normalization, and snowballing-style expansion utilities | `docs/plans/plan-ledger.md` |
+| [IEBH/SRA2](https://github.com/IEBH/SRA2) | Workflow-separation comparison input for staged evidence-synthesis modules such as search, dedupe, screening, and full-text review | `docs/plans/plan-ledger.md` |
+| [mjwestgate/revtools](https://github.com/mjwestgate/revtools) | Ledger-UX comparison input for modular duplicate review and title/abstract screening surfaces | `docs/plans/plan-ledger.md` |
+| [aurumz-rgb/ReviewAid](https://github.com/aurumz-rgb/ReviewAid) | Extraction-review comparison input for schema-driven outputs, review dashboards, and confidence-aware evidence extraction UX | `docs/plans/plan-ledger.md` |
+| [extralit/extralit](https://github.com/extralit/extralit) | Extraction-pipeline comparison input for validation, human-in-the-loop extraction review, and structured evidence outputs | `docs/plans/plan-ledger.md` |
+| [ijmarshall/robotreviewer](https://github.com/ijmarshall/robotreviewer) | Bounded PDF-analysis comparison input for constrained evidence summaries and reviewable automation output shape | `docs/plans/plan-ledger.md` |
+| [matheus-rech/clinical-extraction-system](https://github.com/matheus-rech/clinical-extraction-system) | Provenance comparison input for annotation, source-linking, and audit-trail treatment of extracted evidence | `docs/plans/plan-ledger.md` |
+| [nealhaddaway/CitationChaser](https://github.com/nealhaddaway/CitationChaser) | Evidence-expansion comparison input for forward/backward citation chasing workflows | `docs/plans/plan-ledger.md` |
+
 ### Governance and Tooling
 
 | Upstream repo | Current LitRev role | Current owner docs |
