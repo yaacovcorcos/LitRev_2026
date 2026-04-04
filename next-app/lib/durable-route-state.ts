@@ -161,6 +161,112 @@ export function buildDraftRouteSearchParams(
   return params;
 }
 
+export const LEDGER_STUDY_QUERY_PARAM = "study" as const;
+export const LEDGER_FILTER_QUERY_PARAM = "filter" as const;
+export const LEDGER_FILTER_VALUES = [
+  "all",
+  "meets-criteria",
+  "fails-criteria",
+  "in-date-range",
+  "matching-design",
+] as const;
+
+export type LedgerCriteriaFilter = (typeof LEDGER_FILTER_VALUES)[number];
+
+export type LedgerRouteState = {
+  studyId: string | null;
+  criteriaFilter: LedgerCriteriaFilter;
+};
+
+function isLedgerCriteriaFilter(
+  value: string | null | undefined,
+): value is LedgerCriteriaFilter {
+  if (!value) return false;
+  return LEDGER_FILTER_VALUES.includes(value as LedgerCriteriaFilter);
+}
+
+function normalizeLedgerCriteriaFilter(
+  value: string | null | undefined,
+): LedgerCriteriaFilter {
+  const normalized = normalizeOptionalString(value);
+  return isLedgerCriteriaFilter(normalized) ? normalized : "all";
+}
+
+function cloneSearchParams(
+  base?: URLSearchParams | SearchParamsReader | null,
+): URLSearchParams {
+  if (!base) return new URLSearchParams();
+  if (base instanceof URLSearchParams) {
+    return new URLSearchParams(base.toString());
+  }
+  if (typeof (base as { toString?: () => string }).toString === "function") {
+    return new URLSearchParams(
+      (base as { toString: () => string }).toString(),
+    );
+  }
+  const params = new URLSearchParams();
+  return params;
+}
+
+export function readLedgerRouteState(
+  searchParams: SearchParamsReader,
+): LedgerRouteState {
+  return {
+    studyId: normalizeOptionalString(searchParams.get(LEDGER_STUDY_QUERY_PARAM)),
+    criteriaFilter: normalizeLedgerCriteriaFilter(
+      searchParams.get(LEDGER_FILTER_QUERY_PARAM),
+    ),
+  };
+}
+
+export function buildLedgerRouteSearchParams(
+  state: LedgerRouteState,
+  base?: URLSearchParams | SearchParamsReader | null,
+): URLSearchParams {
+  const params = cloneSearchParams(base);
+  params.delete(LEDGER_STUDY_QUERY_PARAM);
+  params.delete(LEDGER_FILTER_QUERY_PARAM);
+
+  if (state.studyId) {
+    params.set(LEDGER_STUDY_QUERY_PARAM, state.studyId);
+  }
+  if (state.criteriaFilter !== "all") {
+    params.set(LEDGER_FILTER_QUERY_PARAM, state.criteriaFilter);
+  }
+
+  return params;
+}
+
+export function buildLedgerRouteHref(
+  projectId: string,
+  state: LedgerRouteState,
+  base?: URLSearchParams | SearchParamsReader | null,
+): string {
+  const params = buildLedgerRouteSearchParams(state, base);
+  const query = params.toString();
+  const path = `/project/${safeEncodeURIComponent(projectId)}/ledger`;
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
+export function buildLedgerStudyDetailHref(
+  projectId: string,
+  studyId: string,
+  state?: Pick<LedgerRouteState, "criteriaFilter">,
+  base?: URLSearchParams | SearchParamsReader | null,
+): string {
+  const params = cloneSearchParams(base);
+  params.delete(LEDGER_STUDY_QUERY_PARAM);
+  params.delete(LEDGER_FILTER_QUERY_PARAM);
+
+  if (state?.criteriaFilter && state.criteriaFilter !== "all") {
+    params.set(LEDGER_FILTER_QUERY_PARAM, state.criteriaFilter);
+  }
+
+  const query = params.toString();
+  const path = `/project/${safeEncodeURIComponent(projectId)}/ledger/${safeEncodeURIComponent(studyId)}`;
+  return query.length > 0 ? `${path}?${query}` : path;
+}
+
 export const PROTOCOL_SECTION_QUERY_PARAM = "section" as const;
 export const PROTOCOL_SECTION_IDS = Object.keys(
   PROTOCOL_SECTION_LABELS,
