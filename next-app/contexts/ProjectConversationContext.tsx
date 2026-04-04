@@ -66,7 +66,8 @@ import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/c
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import type { QueuedFollowUp } from "@/types/queued-followup";
 
-const MODEL_STORAGE_KEY = "litrev_copilot_model";
+// Keep the legacy key so saved model preference survives the naming migration.
+const LEGACY_COPILOT_MODEL_STORAGE_KEY = "litrev_copilot_model";
 const DEFAULT_MODEL: SelectableModelId = DEFAULT_SELECTABLE_MODEL_ID;
 
 export type { PendingAttachment } from "@/types/project-conversation-context";
@@ -170,7 +171,7 @@ function ProjectConversationRuntime({
     // Load model preference from localStorage on mount
     useEffect(() => {
         if (typeof window === "undefined") return;
-        const stored = window.localStorage.getItem(MODEL_STORAGE_KEY);
+        const stored = window.localStorage.getItem(LEGACY_COPILOT_MODEL_STORAGE_KEY);
         const isValid = USER_SELECTABLE_MODELS.some((m) => m.id === stored);
         if (isValid) {
             setSelectedModelState((current) => (
@@ -193,7 +194,7 @@ function ProjectConversationRuntime({
     const setSelectedModel = useCallback((modelId: SelectableModelId) => {
         setSelectedModelState(modelId);
         if (typeof window !== "undefined") {
-            window.localStorage.setItem(MODEL_STORAGE_KEY, modelId);
+            window.localStorage.setItem(LEGACY_COPILOT_MODEL_STORAGE_KEY, modelId);
         }
         // State guard: force reasoning off when model doesn't support it
         const newTier = getReasoningSupportTier(modelId);
