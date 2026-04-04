@@ -69,6 +69,12 @@ All run from `next-app/` except deploy.
 6. Update stale docs in the same task if behavior changed.
 7. Commit atomically (one task = one commit, no unrelated files).
 
+## Quality Bar (Required)
+
+- Optimize for long-term correctness and maintainability, not the fastest superficial patch.
+- Do the harder durable fix when the alternative is a brittle workaround, misleading shim, or trust-eroding band-aid.
+- Do not ship knowingly low-quality "small fixes" that leave the underlying problem in place unless the user explicitly asks for a temporary stopgap.
+
 ## Routing Trigger Table (Mandatory)
 
 | Trigger signal | Required Tier 2 specialist | Required Tier 3 retrieval before editing | Mandatory checks before done |
