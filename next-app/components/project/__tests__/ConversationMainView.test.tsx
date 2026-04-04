@@ -102,7 +102,7 @@ describe("ConversationMainView parity", () => {
           text: "",
           createdAt: "2026-03-10T00:00:01.000Z",
           checkpoint: {
-            label: "PubMed returned 18 results. Reviewing the strongest matches now.",
+            label: "PubMed found 18 total results. Reviewing the strongest matches now.",
             runId: "run-1",
             checkpointKind: "recovery",
           },

@@ -58,7 +58,7 @@ describe("TimelineRenderer execution trace collapse", () => {
       {
         type: "checkpoint",
         id: "checkpoint-live-1",
-        label: "PubMed returned 10 results and the strongest matches are being reviewed now for relevance and outcome fit.",
+        label: "PubMed found 10 total results and the strongest matches are being reviewed now for relevance and outcome fit.",
         createdAt: "2026-03-11T00:00:03.000Z",
       },
     ]);
@@ -66,7 +66,7 @@ describe("TimelineRenderer execution trace collapse", () => {
     expect(screen.queryByRole("button", { name: "Show process details" })).toBeNull();
     expect(screen.getByLabelText("Process details")).not.toBeNull();
     expect(screen.getByText("Found 10 of 10 PubMed results.")).not.toBeNull();
-    expect(screen.getByText("PubMed returned 10 results and the strongest matches are being reviewed now for relevance and outcome fit.")).not.toBeNull();
+    expect(screen.getByText("PubMed found 10 total results and the strongest matches are being reviewed now for relevance and outcome fit.")).not.toBeNull();
   });
 
   it("renders open process details for a reserved streaming assistant after the trace suffix", () => {
@@ -126,7 +126,7 @@ describe("TimelineRenderer execution trace collapse", () => {
       {
         type: "checkpoint",
         id: "checkpoint-1",
-        label: "PubMed returned 10 results.",
+        label: "PubMed found 10 total results.",
         createdAt: "2026-03-11T00:00:03.000Z",
       },
       {
@@ -139,7 +139,7 @@ describe("TimelineRenderer execution trace collapse", () => {
 
     const summaryButton = screen.getByRole("button", { name: "Show process details" });
     expect(summaryButton.textContent).toContain("Process details");
-    expect(summaryButton.textContent).toContain("PubMed returned 10 results.");
+    expect(summaryButton.textContent).toContain("PubMed found 10 total results.");
     expect(screen.getByText("I found 10 strong studies on this topic.")).not.toBeNull();
     expect(screen.queryByText("Found 10 of 10 PubMed results.")).toBeNull();
 
@@ -265,7 +265,7 @@ describe("TimelineRenderer execution trace collapse", () => {
       {
         type: "checkpoint",
         id: "checkpoint-grouped-1",
-        label: "PubMed returned 10 results and the strongest matches are being reviewed now for relevance and outcome fit.",
+        label: "PubMed found 10 total results and the strongest matches are being reviewed now for relevance and outcome fit.",
         createdAt: "2026-03-11T00:00:03.000Z",
       },
       {
@@ -278,7 +278,7 @@ describe("TimelineRenderer execution trace collapse", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Show process details" }));
     const processDetails = screen.getByLabelText("Process details");
-    expect(processDetails.textContent).toContain("PubMed returned 10 results");
+    expect(processDetails.textContent).toContain("PubMed found 10 total results");
     expect(processDetails.querySelector(`.${artifactStyles.checkpointLine}`)).toBeNull();
     expect(container.querySelectorAll(`.${artifactStyles.checkpointLine}`)).toHaveLength(0);
   });

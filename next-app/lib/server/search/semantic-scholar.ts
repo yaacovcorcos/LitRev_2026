@@ -3,6 +3,7 @@ import "server-only";
 import type { SearchResult, SearchResponse } from "@/types/search";
 import type { Study } from "@/types/ledger";
 import { parsePublicationYearPrefix } from "@/lib/server/search/publication-year";
+import { parseOpaqueOffsetCursor } from "@/lib/search-contract";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -120,10 +121,12 @@ function matchesYearRange(year: number | undefined, yearRange: YearRange): boole
  */
 export async function searchSemanticScholar(
     query: string,
-    options?: { maxResults?: number; yearRange?: string; offset?: number }
+    options?: { maxResults?: number; yearRange?: string; cursor?: string; offset?: number }
 ): Promise<SearchResponse> {
     const limit = Math.min(options?.maxResults ?? 10, 100);
-    const offset = options?.offset ?? 0;
+    const offset = options?.cursor !== undefined
+        ? parseOpaqueOffsetCursor(options.cursor, "Semantic Scholar") ?? 0
+        : options?.offset ?? 0;
 
     const params = new URLSearchParams({
         query,

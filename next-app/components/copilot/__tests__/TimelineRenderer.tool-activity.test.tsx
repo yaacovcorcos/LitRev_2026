@@ -211,7 +211,7 @@ describe("TimelineRenderer tool activity cards", () => {
 
     expect(screen.getByText("PubMed")).not.toBeNull();
     expect(screen.getByText("3 searches")).not.toBeNull();
-    expect(screen.getByText("The search is narrowing toward a smaller result set.")).not.toBeNull();
+    expect(screen.getByText("The search is narrowing toward a smaller total result set.")).not.toBeNull();
     expect(screen.queryByText("search_pubmed")).toBeNull();
     expect(screen.queryByText("1.")).toBeNull();
 
@@ -258,9 +258,9 @@ describe("TimelineRenderer tool activity cards", () => {
 
     expect(screen.getByText("PubMed")).not.toBeNull();
     expect(screen.getByText("2 searches")).not.toBeNull();
-    expect(screen.queryByText("The search is narrowing toward a smaller result set.")).toBeNull();
-    expect(screen.queryByText("The search is broadening to explore a larger result set.")).toBeNull();
-    expect(screen.queryByText("The search is still broad and is being refined further.")).toBeNull();
+    expect(screen.queryByText("The search is narrowing toward a smaller total result set.")).toBeNull();
+    expect(screen.queryByText("The search is broadening to explore a larger total result set.")).toBeNull();
+    expect(screen.queryByText("The total result set is still broad and is being refined further.")).toBeNull();
     expect(screen.queryByText("Multiple PubMed searches were used to refine the result set.")).toBeNull();
   });
 

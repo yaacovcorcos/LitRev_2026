@@ -1,4 +1,5 @@
 import type { AIStreamChunk } from "@/types/ai";
+import { formatSearchCountDetail, formatSearchSummary } from "@/lib/search-contract";
 
 export type ToolReceiptSeed = {
   displayLabel?: string;
@@ -32,15 +33,6 @@ function buildPreview(value: unknown, maxLength = 96): string | undefined {
   if (!normalized) return undefined;
   if (normalized.length <= maxLength) return normalized;
   return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
-}
-
-function formatCountText(returnedCount?: number, totalResults?: number): string | null {
-  if (typeof returnedCount === "number" && typeof totalResults === "number") {
-    return `${returnedCount} of ${totalResults} results`;
-  }
-  if (typeof returnedCount === "number") return `Returned ${returnedCount} results`;
-  if (typeof totalResults === "number") return `${totalResults} results`;
-  return null;
 }
 
 function isSearchToolName(toolName: string | undefined): toolName is SearchToolName {
@@ -100,21 +92,7 @@ function getSearchResultIdentifiers(toolName: SearchToolName, result: Record<str
 
 function buildSearchSummary(toolName: SearchToolName, returnedCount?: number, totalResults?: number): string | undefined {
   const label = SEARCH_TOOL_LABELS[toolName];
-  if (toolName === "search_pubmed") {
-    if (typeof returnedCount === "number" && typeof totalResults === "number") {
-      return `Found ${returnedCount} of ${totalResults} PubMed results.`;
-    }
-    if (typeof returnedCount === "number") return `Returned ${returnedCount} PubMed results.`;
-    if (typeof totalResults === "number") return `Found ${totalResults} PubMed results.`;
-    return undefined;
-  }
-
-  if (typeof returnedCount === "number" && typeof totalResults === "number") {
-    return `Found ${returnedCount} of ${totalResults} ${label} results.`;
-  }
-  if (typeof returnedCount === "number") return `Returned ${returnedCount} ${label} results.`;
-  if (typeof totalResults === "number") return `Found ${totalResults} ${label} results.`;
-  return undefined;
+  return formatSearchSummary(label, { returnedCount, totalResults });
 }
 
 function buildSearchSeed(chunk: AIStreamChunk): ToolReceiptSeed | undefined {
@@ -138,7 +116,7 @@ function buildSearchPatch(chunk: AIStreamChunk): ToolReceiptPatch | undefined {
   const totalResults = typeof record.totalResults === "number" ? record.totalResults : undefined;
   const resultIdentifiers = getSearchResultIdentifiers(chunk.toolName, record);
   const detailItems = [
-    formatCountText(returnedCount, totalResults),
+    formatSearchCountDetail({ returnedCount, totalResults }),
     resultIdentifiers && resultIdentifiers.length > 0 ? resultIdentifiers.join(" · ") : null,
   ].filter((value): value is string => Boolean(value));
 

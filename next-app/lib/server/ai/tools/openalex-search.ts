@@ -6,7 +6,7 @@ const inputSchema = z.object({
     query: z.string().min(1, "Query is required"),
     maxResults: z.number().int().min(1).max(100).optional().default(10),
     yearRange: z.string().optional(),
-    cursor: z.string().optional(),
+    cursor: z.string().trim().min(1).optional(),
 });
 
 const outputSchema = z.object({
@@ -48,7 +48,7 @@ export const openAlexSearchTool: AITool = {
                 },
                 cursor: {
                     type: "string",
-                    description: "OpenAlex cursor for pagination from a previous response",
+                    description: "Opaque continuation token from a previous OpenAlex search response",
                 },
             },
             required: ["query"],

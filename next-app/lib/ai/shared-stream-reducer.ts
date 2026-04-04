@@ -1,4 +1,10 @@
 import { appendReasoningRaw } from "@/lib/ai/reasoning-visibility";
+import {
+  formatSearchMagnitudeDeltaSentence,
+  formatSearchMagnitudeSentence,
+  getSearchMagnitude,
+  type SearchCountBasis,
+} from "@/lib/search-contract";
 import type {
   AIErrorEnvelope,
   AIStreamChunk,
@@ -26,6 +32,7 @@ export type SharedStreamState = {
   effectiveConvId: string | null;
   completedPubmedSearchCount: number;
   lastPubmedSearchSize: number | null;
+  lastPubmedSearchSizeBasis: SearchCountBasis | null;
 };
 
 export type SharedStreamIntent =
@@ -153,6 +160,7 @@ export function createInitialSharedStreamState(
     effectiveConvId: null,
     completedPubmedSearchCount: 0,
     lastPubmedSearchSize: null,
+    lastPubmedSearchSizeBasis: null,
     ...overrides,
   };
 }
@@ -213,37 +221,48 @@ function removeCallId(callIds: string[], callId: string): string[] {
   return callIds.filter((id) => id !== callId);
 }
 
-function getPubMedSearchSize(metadata?: Pick<Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>, "returnedCount" | "totalResults">): number | null {
-  if (typeof metadata?.totalResults === "number") return metadata.totalResults;
-  if (typeof metadata?.returnedCount === "number") return metadata.returnedCount;
-  return null;
-}
-
 function buildPubMedCheckpoint(params: {
   metadata?: Pick<Extract<SharedStreamIntent, { type: "tool_activity_upsert" }>, "returnedCount" | "totalResults">;
   completedSearchCount: number;
   previousSearchSize: number | null;
+  previousSearchBasis: SearchCountBasis | null;
 }): string | null {
-  const size = getPubMedSearchSize(params.metadata);
-  if (size === null) return null;
+  const magnitude = getSearchMagnitude({
+    returnedCount: params.metadata?.returnedCount,
+    totalResults: params.metadata?.totalResults,
+  });
+  if (magnitude === null) return null;
+  const size = magnitude.value;
+  const magnitudeLead = formatSearchMagnitudeSentence("PubMed", magnitude);
 
   if (size <= 2) {
-    return `PubMed returned ${size} results. The search may be too narrow, so broader terms may be needed next.`;
+    return `${magnitudeLead}. The search may be too narrow, so broader terms may be needed next.`;
   }
 
   if (params.completedSearchCount === 0) {
     if (size >= 25) {
-      return `PubMed returned ${size} results. The search is broad, so it is being narrowed next.`;
+      return magnitude.basis === "total"
+        ? `${magnitudeLead}. The search is broad, so it is being narrowed next.`
+        : `${magnitudeLead}. The current page is broad, so refinement may still be needed next.`;
     }
-    return `PubMed returned ${size} results. Reviewing the strongest matches now.`;
+    return `${magnitudeLead}. Reviewing the strongest matches now.`;
   }
 
-  if (params.previousSearchSize !== null && size < params.previousSearchSize) {
-    return `The latest PubMed search narrowed the result set from ${params.previousSearchSize} to ${size} results. Reviewing the strongest matches now.`;
-  }
+  if (params.previousSearchSize !== null && params.previousSearchBasis !== null) {
+    const deltaSummary = formatSearchMagnitudeDeltaSentence(
+      "PubMed",
+      { value: params.previousSearchSize, basis: params.previousSearchBasis },
+      magnitude,
+    );
 
-  if (params.previousSearchSize !== null && size > params.previousSearchSize) {
-    return `The latest PubMed search broadened the result set from ${params.previousSearchSize} to ${size} results. Refinement may still be needed next.`;
+    if (deltaSummary) {
+      if (size < params.previousSearchSize) {
+        return `${deltaSummary} Reviewing the strongest matches now.`;
+      }
+      if (size > params.previousSearchSize) {
+        return `${deltaSummary} Refinement may still be needed next.`;
+      }
+    }
   }
 
   return null;
@@ -356,6 +375,10 @@ export function reduceSharedStreamChunk(
       const callId = chunk.toolResult?.callId ?? fallbackCallId;
       const isPubMedResult = chunk.toolName === "search_pubmed";
       const receiptPatch = buildToolReceiptPatch(chunk);
+      const receiptSearchMagnitude = getSearchMagnitude({
+        returnedCount: receiptPatch?.returnedCount,
+        totalResults: receiptPatch?.totalResults,
+      });
       if (callId) {
         intents.push({
           type: "tool_activity_upsert",
@@ -382,6 +405,7 @@ export function reduceSharedStreamChunk(
           metadata: receiptPatch,
           completedSearchCount: prev.completedPubmedSearchCount,
           previousSearchSize: prev.lastPubmedSearchSize,
+          previousSearchBasis: prev.lastPubmedSearchSizeBasis,
         });
         if (checkpoint) {
           intents.push({
@@ -407,8 +431,11 @@ export function reduceSharedStreamChunk(
           ? prev.completedPubmedSearchCount + 1
           : prev.completedPubmedSearchCount,
         lastPubmedSearchSize: isPubMedResult && !chunk.toolResult?.error
-          ? getPubMedSearchSize(receiptPatch)
+          ? receiptSearchMagnitude?.value ?? null
           : prev.lastPubmedSearchSize,
+        lastPubmedSearchSizeBasis: isPubMedResult && !chunk.toolResult?.error
+          ? receiptSearchMagnitude?.basis ?? null
+          : prev.lastPubmedSearchSizeBasis,
       };
       return { state: next, intents };
     }

@@ -26,5 +26,5 @@ export type SearchResponse = {
   totalResults?: number; // omitted when the runtime cannot truthfully derive a count for the current query contract
   returnedCount: number;
   results: SearchResult[];
-  nextCursor?: string; // retstart for PubMed pagination
+  nextCursor?: string; // opaque continuation token that can be passed back to the same search tool
 };

@@ -116,7 +116,7 @@ describe("/api/ai/stream route", () => {
   it("streams checkpoint and user-input events without route-side persistence authorship", async () => {
     mocks.streamChatWithArtifacts.mockImplementation(async function* () {
       yield { type: "run_start", runId: "run-1", conversationId: "conv-1" };
-      yield { type: "checkpoint", checkpointLabel: "PubMed returned 18 results. Reviewing the strongest matches now." };
+      yield { type: "checkpoint", checkpointLabel: "PubMed found 18 total results. Reviewing the strongest matches now." };
       yield {
         type: "user_input_required",
         userInputRequest: {

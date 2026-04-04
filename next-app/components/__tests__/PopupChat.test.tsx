@@ -193,7 +193,7 @@ describe("PopupChat failure handling", () => {
             expect(screen.getByText("Waiting for your answer")).toBeTruthy();
         });
 
-        expect(screen.getByText("PubMed returned 18 results. Reviewing the strongest matches now.")).toBeTruthy();
+        expect(screen.getByText("PubMed found 18 total results. Reviewing the strongest matches now.")).toBeTruthy();
         expect(screen.getByText("Which of these results should I inspect first?")).toBeTruthy();
         expect(screen.getByRole("button", { name: "Continue in Copilot to answer" })).toBeTruthy();
         expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
