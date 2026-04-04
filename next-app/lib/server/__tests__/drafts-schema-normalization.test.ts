@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createDefaultDraftState } from "@/lib/draftStorage";
+import { createDefaultDraftState } from "@/lib/draft-storage";
 import { draftStateSchema, normalizeDraftStateInput } from "@/lib/schemas/drafts";
 import { projectIdSchema } from "@/lib/schemas/ids";
 

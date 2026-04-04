@@ -13,7 +13,7 @@ import {
   type StudyDuplicatePairConfidence,
 } from "@/lib/server/search/dedup";
 import { rewriteCitationStudyIdsInContentBySection } from "@/lib/citation-compiler";
-import { normalizeDraftState } from "@/lib/draftStorage";
+import { normalizeDraftState } from "@/lib/draft-storage";
 import type { ScopeInput } from "@/lib/server/scope";
 import type { DraftSectionId } from "@/types/draft";
 import type { Study, StudyDetails } from "@/types/ledger";

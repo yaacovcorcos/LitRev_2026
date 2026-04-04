@@ -213,8 +213,8 @@ vi.mock("@tiptap/react", () => {
   };
 });
 
-vi.mock("@/lib/draftStorage", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/draftStorage")>();
+vi.mock("@/lib/draft-storage", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/draft-storage")>();
   return {
     ...actual,
     loadDraftState: (...args: Parameters<typeof actual.loadDraftState>) => mockLoadDraftState(...args),

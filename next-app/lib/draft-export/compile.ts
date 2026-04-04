@@ -2,11 +2,11 @@ import { compileDraftCitations } from "@/lib/citation-compiler";
 import { compileDraftDiagnosticsFromNormalized } from "@/lib/draft-diagnostics/compile";
 import type { DraftDiagnostic } from "@/lib/draft-diagnostics/model";
 import { formatBibliographyEntries } from "@/lib/citation-formatting";
-import { normalizeDraftState, type DraftStateInput } from "@/lib/draftStorage";
+import { normalizeDraftState, type DraftStateInput } from "@/lib/draft-storage";
 import {
   draftSectionHasMeaningfulContent,
   getVisibleFullDraftSectionIds,
-} from "@/lib/draftStateContracts";
+} from "@/lib/draft-state-contracts";
 import type { Study } from "@/types/ledger";
 import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
 import type {

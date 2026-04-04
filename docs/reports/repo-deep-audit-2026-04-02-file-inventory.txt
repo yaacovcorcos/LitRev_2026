@@ -154,8 +154,8 @@ next-app/app/admin/usage/usage.module.css
 next-app/app/admin/users/AdminUserRoleControls.tsx
 next-app/app/admin/users/page.tsx
 next-app/app/admin/users/users.module.css
-next-app/app/ai/AiChatHeader.tsx
-next-app/app/ai/AiHistorySidebarContent.tsx
+next-app/app/ai/AIChatHeader.tsx
+next-app/app/ai/AIHistorySidebarContent.tsx
 next-app/app/ai/__tests__/ai-export.test.ts
 next-app/app/ai/__tests__/page.test.tsx
 next-app/app/ai/ai-export.ts
@@ -256,12 +256,12 @@ next-app/app/project/[id]/page.tsx
 next-app/app/project/[id]/project-shell.module.css
 next-app/app/project/[id]/project-workspace.module.css
 next-app/app/project/[id]/protocol/ProtocolSections.tsx
-next-app/app/project/[id]/protocol/__tests__/protocolExport.test.ts
+next-app/app/project/[id]/protocol/__tests__/protocol-export.test.ts
 next-app/app/project/[id]/protocol/error.tsx
 next-app/app/project/[id]/protocol/loading.tsx
 next-app/app/project/[id]/protocol/page.tsx
 next-app/app/project/[id]/protocol/protocol.module.css
-next-app/app/project/[id]/protocol/protocolExport.ts
+next-app/app/project/[id]/protocol/protocol-export.ts
 next-app/app/providers.tsx
 next-app/app/signup/page.tsx
 next-app/components/AppShell.module.css
@@ -567,7 +567,7 @@ next-app/lib/__tests__/citation-preview-feature-flags.test.ts
 next-app/lib/__tests__/criteria-matching-high-confidence.test.ts
 next-app/lib/__tests__/criteria-matching.test.ts
 next-app/lib/__tests__/demo-onboarding.test.ts
-next-app/lib/__tests__/draftStorage.test.ts
+next-app/lib/__tests__/draft-storage.test.ts
 next-app/lib/__tests__/durable-route-state.test.ts
 next-app/lib/__tests__/feature-flags.test.ts
 next-app/lib/__tests__/manuscript-schema.test.ts
@@ -701,8 +701,8 @@ next-app/lib/draft-export/compile.ts
 next-app/lib/draft-export/model.ts
 next-app/lib/draft-export/render-docx.ts
 next-app/lib/draft-export/render-markdown.ts
-next-app/lib/draftStateContracts.ts
-next-app/lib/draftStorage.ts
+next-app/lib/draft-state-contracts.ts
+next-app/lib/draft-storage.ts
 next-app/lib/durable-route-state.ts
 next-app/lib/feature-flags.ts
 next-app/lib/file-validation.ts

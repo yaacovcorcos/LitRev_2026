@@ -20,7 +20,7 @@ import {
 } from "@/app/actions/extraction";
 import { getDraftAction } from "@/app/actions/drafts";
 import { DRAFT_SECTIONS, DraftSectionId } from "@/types/draft";
-import { loadDraftState, DraftState } from "@/lib/draftStorage";
+import { loadDraftState, DraftState } from "@/lib/draft-storage";
 import type { Study, StudyDetails, StudyProcessingPhase, StudyRelevance } from "@/types/ledger";
 import type { FileAsset } from "@/types/files";
 import { AlertDialog } from "@/components/ConfirmDialog";

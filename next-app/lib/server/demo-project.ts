@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 
-import { createDefaultDraftState, normalizeDraftState, type DraftState } from "@/lib/draftStorage";
+import { createDefaultDraftState, normalizeDraftState, type DraftState } from "@/lib/draft-storage";
 import { prisma } from "@/lib/server/prisma";
 import { getProject } from "@/lib/server/projects";
 import { requireScope, type ServiceScope, type ScopeInput } from "@/lib/server/scope";

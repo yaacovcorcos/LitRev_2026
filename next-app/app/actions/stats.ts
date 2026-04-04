@@ -8,7 +8,7 @@ import {
 } from "@/lib/server/action-utils";
 import { withAuth, type AuthContext } from "@/lib/server/auth/session";
 import { projectIdSchema } from "@/lib/schemas/ids";
-import type { DraftState } from "@/lib/draftStorage";
+import type { DraftState } from "@/lib/draft-storage";
 import type { ProtocolData } from "@/types/protocol";
 import { DRAFT_SECTIONS } from "@/types/draft";
 

@@ -19,7 +19,7 @@ import {
   resolveDraftMode,
   resolveFullDraftActiveSection,
   resolveSectionModeActiveSection,
-} from "@/lib/draftStateContracts";
+} from "@/lib/draft-state-contracts";
 
 const DRAFT_KEY_PREFIX = "litrev_draft_v1";
 

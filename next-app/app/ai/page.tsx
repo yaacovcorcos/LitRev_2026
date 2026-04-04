@@ -98,14 +98,14 @@ import {
 } from "./conversation-timeline";
 import styles from "./ai-view.module.css";
 
-const AiChatTimeline = dynamic(() =>
+const AIChatTimeline = dynamic(() =>
   import("@/components/chat/ChatTimeline").then((module) => module.ChatTimeline)
 );
-const AiHistorySidebarContent = dynamic(() =>
-  import("./AiHistorySidebarContent").then((module) => module.AiHistorySidebarContent)
+const AIHistorySidebarContent = dynamic(() =>
+  import("./AIHistorySidebarContent").then((module) => module.AIHistorySidebarContent)
 );
-const AiChatHeader = dynamic(() =>
-  import("./AiChatHeader").then((module) => module.AiChatHeader)
+const AIChatHeader = dynamic(() =>
+  import("./AIChatHeader").then((module) => module.AIChatHeader)
 );
 
 const AI_ROUTE_MEASURE = "litrev-ai-route";
@@ -2513,7 +2513,7 @@ export default function AIView() {
           </div>
 
           {!isHistoryCollapsed ? (
-            <AiHistorySidebarContent
+            <AIHistorySidebarContent
               historyContentId={historyContentId}
               isHistoryLoading={isHistoryLoading}
               conversations={conversations}
@@ -2544,7 +2544,7 @@ export default function AIView() {
         ) : null}
 
         <section className={styles.chatInterface} role="region" aria-label="Chat interface">
-          <AiChatHeader
+          <AIChatHeader
             mobileAiV2Enabled={mobileAiV2Enabled}
             isPhoneViewport={isPhoneViewport}
             isHistoryCollapsed={isHistoryCollapsed}
@@ -2564,7 +2564,7 @@ export default function AIView() {
           />
 
           <div className={styles.chatContent}>
-            <AiChatTimeline
+            <AIChatTimeline
               variant="page"
               projectId={selectedProjectId ?? undefined}
               items={activeTimeline}

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { normalizeDraftState } from "@/lib/draftStorage";
+import { normalizeDraftState } from "@/lib/draft-storage";
 
 /**
  * Normalize unknown draft payloads into JSON-safe data before validation.

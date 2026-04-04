@@ -1,6 +1,6 @@
 import { type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import type { DraftMode, DraftSectionId } from "@/types/draft";
-import type { DraftSectionFormat } from "@/lib/draftStorage";
+import type { DraftSectionFormat } from "@/lib/draft-storage";
 import {
   FONT_FAMILY_OPTIONS,
   FONT_SIZE_OPTIONS,

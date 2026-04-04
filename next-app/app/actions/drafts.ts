@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import type { DraftState, DraftStateInput } from "@/lib/draftStorage";
+import type { DraftState, DraftStateInput } from "@/lib/draft-storage";
 import { getDraft, saveDraft } from "@/lib/server/drafts";
 import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";

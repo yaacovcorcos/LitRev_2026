@@ -11,7 +11,7 @@ import {
   type DraftCheckpointKind,
   type DraftCheckpointRecord,
 } from "@/lib/draft-checkpoints";
-import { createDefaultDraftState, type DraftState, type DraftStateInput } from "@/lib/draftStorage";
+import { createDefaultDraftState, type DraftState, type DraftStateInput } from "@/lib/draft-storage";
 import { assertProjectAccess } from "@/lib/server/access";
 import { getDraft, saveDraft } from "@/lib/server/drafts";
 import { prisma } from "@/lib/server/prisma";

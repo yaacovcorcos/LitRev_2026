@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 import { DraftSectionId } from "@/types/draft";
-import { DEFAULT_SECTION_FORMAT, type DraftSectionFormat, DraftState, emptyDoc } from "@/lib/draftStorage";
+import { DEFAULT_SECTION_FORMAT, type DraftSectionFormat, DraftState, emptyDoc } from "@/lib/draft-storage";
 import type { DraftRouteState } from "@/lib/durable-route-state";
 import { createCustomSectionId, customSectionPlaceholder } from "./draft-helpers";
 import type { Editor } from "@tiptap/react";

@@ -11,7 +11,7 @@ type ContextMenuState = {
   conversationId: string;
 } | null;
 
-type AiHistorySidebarContentProps = {
+type AIHistorySidebarContentProps = {
   historyContentId: string;
   isHistoryLoading: boolean;
   conversations: ChatConversation[];
@@ -31,7 +31,7 @@ type AiHistorySidebarContentProps = {
   onDeleteConversation: (conversationId: string, event: React.MouseEvent) => void;
 };
 
-export function AiHistorySidebarContent({
+export function AIHistorySidebarContent({
   historyContentId,
   isHistoryLoading,
   conversations,
@@ -49,7 +49,7 @@ export function AiHistorySidebarContent({
   onStartRename,
   onDuplicateConversation,
   onDeleteConversation,
-}: AiHistorySidebarContentProps) {
+}: AIHistorySidebarContentProps) {
   return (
     <>
       <div id={historyContentId} aria-hidden={false}>

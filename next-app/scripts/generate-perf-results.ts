@@ -11,7 +11,7 @@ import { chromium, devices, type Browser, type BrowserContext, type BrowserConte
 import { PrismaClient, type Prisma } from "@prisma/client";
 import { Pool } from "pg";
 import { createDefaultProtocolData } from "../types/protocol";
-import { createDefaultDraftState } from "../lib/draftStorage";
+import { createDefaultDraftState } from "../lib/draft-storage";
 import {
   getBrowserProbeInitScriptContent,
   type BrowserProbeMetrics,

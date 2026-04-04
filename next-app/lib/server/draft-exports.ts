@@ -5,7 +5,7 @@ import { assertProjectAccess } from "@/lib/server/access";
 import { listStudies } from "@/lib/server/ledger";
 import { deleteFileAsset, uploadGeneratedProjectFile } from "@/lib/server/files";
 import type { ScopeInput } from "@/lib/server/scope";
-import type { DraftStateInput } from "@/lib/draftStorage";
+import type { DraftStateInput } from "@/lib/draft-storage";
 import type { FileAsset } from "@/types/files";
 import type { DraftExportFormat, DraftExportMode } from "@/lib/draft-export/model";
 import { compileDraftExportDocument } from "@/lib/draft-export/compile";
