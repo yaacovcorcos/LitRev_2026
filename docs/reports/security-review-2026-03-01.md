@@ -125,3 +125,77 @@ Or better: stop accepting `storagePath` from the client entirely — generate it
 | **Client-side rendering** | No `eval`, no `innerHTML`, no `postMessage`, no iframes with dynamic src |
 | **Markdown rendering** | `react-markdown` without `rehype-raw`; raw HTML stripped by default |
 | **File upload validation** | `uploadChatAttachment` and `importStudyWithPdf` call `validateFileServer`; `uploadStudyFile` skips it (low risk — not an injection vector) |
+
+
+---
+
+## Vuln 3 — Public Storage Bucket Makes Canonical Project Files Public By URL
+
+| Field | Value |
+|-------|-------|
+| **Status** | `OPEN` — 2026-04-04 |
+| **Severity** | HIGH |
+| **Confidence** | 9/10 |
+| **Category** | Data Exposure / Authorization Boundary Weakening |
+| **Primary file** | `next-app/lib/server/files.ts` (lines 120-154) |
+| **Also affects** | `next-app/lib/server/file-storage.ts` (lines 163-170), `next-app/lib/server/draft-exports.ts` (lines 87-105), `next-app/app/actions/files.ts` (lines 199-219), `docs/plans/plan-backend.md` (line 11) |
+
+### Description
+
+Canonical project files are uploaded into the primary Supabase bucket and immediately assigned a public object URL under `/storage/v1/object/public/...`. That URL is persisted on `FileAsset` rows and then surfaced back to client code as `publicUrl` and `downloadUrl` for canonical files.
+
+This is not a path-injection bug anymore. It is a confidentiality-boundary problem: once a canonical file URL exists, LitRev authorization no longer mediates access to that object. This affects study PDFs, generated exports, and chat attachments.
+
+### Recommendation
+
+Move canonical project files to a private bucket and replace public URLs with short-lived signed URLs or app-proxied downloads scoped by current authorization.
+
+---
+
+## Vuln 4 — Authenticated Audio Transcription Bypasses AI Cost Controls
+
+| Field | Value |
+|-------|-------|
+| **Status** | `OPEN` — 2026-04-04 |
+| **Severity** | MEDIUM |
+| **Confidence** | 8/10 |
+| **Category** | Resource Abuse / Cost Control Gap |
+| **Primary file** | `next-app/app/api/ai/transcribe/route.ts` (lines 9-42) |
+| **Also affects** | `next-app/lib/server/ai/transcription.ts` (lines 25-42), `next-app/lib/server/ai/rate-limiter.ts` (lines 174-240), `next-app/lib/server/ai/ai-service.ts` (lines 557-620) |
+
+### Description
+
+The transcription route authenticates the caller and enforces a size cap, but it calls the provider directly without passing through the repo’s normal AI rate-limiter and usage-accounting path. The chat runtime validates rate limits and records usage; transcription currently does neither.
+
+### Recommendation
+
+Bring transcription under the same AI governance path: enforce per-user/workspace rate limits, record usage, and add route-specific abuse controls.
+
+---
+
+## Vuln 5 — PDF Extraction Logs Raw AI Response Content On Parse Failure
+
+| Field | Value |
+|-------|-------|
+| **Status** | `OPEN` — 2026-04-04 |
+| **Severity** | MEDIUM |
+| **Confidence** | 8/10 |
+| **Category** | Privacy / Log Leakage |
+| **Primary file** | `next-app/lib/server/pdf-extraction.ts` (lines 211-217) |
+| **Also affects** | Any server log sink consuming `logServerError` output |
+
+### Description
+
+`parseAIJson()` logs the raw AI response body when JSON parsing fails. That body is document-derived content and may include sensitive text extracted from uploaded files.
+
+### Recommendation
+
+Do not log raw provider response content here. Log only bounded diagnostics and add a regression test to prevent future content leakage.
+
+---
+
+## 2026-04-04 Hardening Gaps (Not Yet Tracked As Vulnerabilities)
+
+- Preview-only dev fixture routes (`next-app/app/api/dev/demo-project/route.ts`, `next-app/app/api/dev/test-project/route.ts`, `next-app/app/api/dev/test-home-state/route.ts`) lack the origin/CSRF check used by `/api/dev/quick-login` when preview quick login is enabled.
+- The repo currently has no committed CSP/security-header configuration (`next-app/next.config.ts`, `next-app/proxy.ts`).
+- The repo currently has no committed Dependabot or CodeQL configuration, and `CI` does not declare explicit least-privilege permissions (`.github/workflows/ci.yml`).
