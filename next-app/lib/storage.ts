@@ -25,15 +25,6 @@ export function loadProjects(fallback: Project[]): Project[] {
   return fallback;
 }
 
-export function saveProjects(projects: Project[]) {
-  if (!isBrowser()) return;
-  try {
-    window.localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
-  } catch (err) {
-    console.warn("saveProjects failed", err);
-  }
-}
-
 export function loadSortPreference(): string | null {
   if (!isBrowser()) return null;
   try {

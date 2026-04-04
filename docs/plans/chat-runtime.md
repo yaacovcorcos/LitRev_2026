@@ -24,6 +24,7 @@ This plan does not own:
 ## Current Architecture
 - `/ai` and project copilot already share the normalized stream event model through `shared-stream-reducer.ts` and shared runtime helpers in `lib/ai/`.
 - `/ai` standard send and plan paths already run through the shared reducer/runtime contract.
+- `/ai`, main project conversation, and side-panel project copilot now all hand pre-normalized `TimelineItem[]` data into the shared timeline renderer, so progress/approval state and timeline rendering consume the same normalized shape instead of re-deriving it twice on the project surfaces.
 - Project copilot already migrated off bespoke chunk accumulation onto the shared reducer/runtime path, but still carries a few surface adapter differences that matter for truthful progress/presentation.
 - `/ai` and project copilot now share the same default transparency semantics on top of that runtime: `summary` mode stays provider-independent, compact process summaries are derived from existing shared trace facts, and raw provider reasoning is limited to explicit `full` mode on surfaces that support it.
 - `/ai`, main conversation, and side-panel copilot now also share the queued-follow-up contract on top of that runtime: one explicit text-only next message may be queued while a run is active, rendered as an attached composer cap, and auto-dispatched only after the surface returns to true idle/sendable state.

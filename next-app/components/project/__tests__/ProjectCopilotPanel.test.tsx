@@ -195,7 +195,13 @@ describe("ProjectCopilotPanel suggestion wiring", () => {
     expect(screen.getByText("2 of 3")).toBeTruthy();
     expect(screen.getByRole("progressbar")).toBeTruthy();
     expect(status.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const props = mockChatTimeline.mock.calls[0]?.[0] as { suppressedProgressId?: string | null };
+    const props = mockChatTimeline.mock.calls[0]?.[0] as {
+      items?: Array<{ type: string; id: string }>;
+      messages?: unknown[];
+      suppressedProgressId?: string | null;
+    };
+    expect(props.items?.find((item) => item.type === "progress")).toMatchObject({ id: "progress-1" });
+    expect(props.messages).toBeUndefined();
     expect(props.suppressedProgressId).toBe("progress-1");
   });
 

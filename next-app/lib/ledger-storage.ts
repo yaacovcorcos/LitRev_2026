@@ -47,12 +47,3 @@ export function loadLedger(projectId: string, fallback: Study[]): Study[] {
     return fallback;
   }
 }
-
-export function saveLedger(projectId: string, studies: Study[]) {
-  if (!isBrowser()) return;
-  try {
-    window.localStorage.setItem(storageKey(projectId), JSON.stringify(studies));
-  } catch (err) {
-    console.warn("saveLedger failed", err);
-  }
-}

@@ -749,9 +749,3 @@ export function useProjectConversation() {
 export function useProjectConversationSafe() {
     return useContext(ProjectConversationContext);
 }
-
-/** Streaming gate hook — returns whether the user can interact with artifact actions. */
-export function useStreamingGate() {
-    const { isLoading, streamPhase, canAct } = useProjectConversation();
-    return { isStreaming: isLoading, streamPhase, canAct };
-}
