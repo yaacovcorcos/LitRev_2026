@@ -21,12 +21,14 @@ vi.mock('@/lib/ai/config', () => ({
   AI_CONFIG: {
     maxRequestsPerMinute: 20,
     maxTokensPerDay: 300000,
+    maxTranscriptionsPerDay: 100,
   },
 }))
 
 import {
   checkRateLimit,
   checkDailyTokenLimit,
+  countUsageRequestsSince,
   getCacheMetricSummary,
   recordUsage,
   recordCacheMetric,
@@ -119,6 +121,29 @@ describe('Rate Limiter', () => {
         workspaceId: 'workspace-1',
       })
       expect(callArgs.where.projectId).toBeUndefined()
+    })
+  })
+
+  describe('countUsageRequestsSince', () => {
+    it('counts usage rows with an optional source filter', async () => {
+      mockCount.mockResolvedValue(3)
+      const since = new Date('2026-04-05T00:00:00.000Z')
+
+      const count = await countUsageRequestsSince(
+        { userId: 'user-1', workspaceId: 'workspace-1' },
+        since,
+        { source: 'voice_transcription' },
+      )
+
+      expect(count).toBe(3)
+      expect(mockCount).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          workspaceId: 'workspace-1',
+          createdAt: { gte: since },
+          source: 'voice_transcription',
+        },
+      })
     })
   })
 
@@ -249,6 +274,30 @@ describe('Rate Limiter', () => {
           contextPage: 'legacy_unknown',
           conversationId: null,
           model: 'gpt-5.2-mini',
+          inputTokens: 0,
+          outputTokens: 0,
+        },
+      })
+    })
+
+    it('records voice transcription with an explicit source and context page', async () => {
+      mockCreate.mockResolvedValue({})
+      await recordUsage(null, 'whisper-large-v3-turbo', 0, 0, {
+        userId: 'user-1',
+        workspaceId: 'workspace-1',
+        source: 'voice_transcription',
+        contextPage: 'overview',
+      })
+
+      expect(mockCreate).toHaveBeenCalledWith({
+        data: {
+          projectId: null,
+          userId: 'user-1',
+          workspaceId: 'workspace-1',
+          source: 'voice_transcription',
+          contextPage: 'overview',
+          conversationId: null,
+          model: 'whisper-large-v3-turbo',
           inputTokens: 0,
           outputTokens: 0,
         },

@@ -199,6 +199,7 @@ export const AI_CONFIG = {
     reasoningModel: (process.env.AI_REASONING_MODEL || DEFAULT_REASONING_MODEL_ID).trim(),
     maxRequestsPerMinute: parseInt((process.env.AI_RATE_LIMIT || "20").trim(), 10),
     maxTokensPerDay: parseInt((process.env.AI_DAILY_TOKEN_LIMIT || "500000").trim(), 10),
+    maxTranscriptionsPerDay: parseInt((process.env.AI_TRANSCRIPTION_DAILY_LIMIT || "100").trim(), 10),
     defaultTemperature: 0.7,
     defaultMaxTokens: 2048,
     requestTimeoutMs: 60000,

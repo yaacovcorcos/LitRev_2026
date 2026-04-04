@@ -360,7 +360,10 @@ export function ChatComposerCore({
         toggleRecording,
         stopRecording,
         clearError: clearVoiceError,
-    } = useVoiceInput(handleTranscription, handleTranscriptionSettled);
+    } = useVoiceInput(handleTranscription, handleTranscriptionSettled, {
+        page,
+        projectId,
+    });
 
     const setSelectedModel = useCallback((modelId: SelectableModelId) => {
         onModelChange?.(modelId);

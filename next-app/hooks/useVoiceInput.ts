@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import type { CopilotPage } from "@/types/ai";
 
 export type VoiceInputState = "idle" | "requesting_permission" | "recording" | "transcribing";
 export type VoiceTranscriptionSettlement =
@@ -17,9 +18,15 @@ type AudioRuntime = {
 
 const ELAPSED_UPDATE_MS = 250;
 
+type VoiceInputAttribution = {
+    page?: CopilotPage;
+    projectId?: string;
+};
+
 export function useVoiceInput(
     onTranscription: (text: string) => void,
     onTranscriptionSettled?: (result: VoiceTranscriptionSettlement) => void,
+    attribution?: VoiceInputAttribution,
 ) {
     const [state, setState] = useState<VoiceInputState>("idle");
     const [error, setError] = useState<string | null>(null);
@@ -141,6 +148,12 @@ export function useVoiceInput(
             const formData = new FormData();
             formData.append("audio", blob, `recording.${ext}`);
             formData.append("language", "en");
+            if (attribution?.page) {
+                formData.append("page", attribution.page);
+            }
+            if (attribution?.projectId) {
+                formData.append("projectId", attribution.projectId);
+            }
             const controller = new AbortController();
             transcriptionAbortRef.current = controller;
 
@@ -180,6 +193,8 @@ export function useVoiceInput(
         resetElapsedTracking,
         stopAudioRuntime,
         stopMediaTracks,
+        attribution?.page,
+        attribution?.projectId,
     ]);
 
     const startRecording = useCallback(async () => {

@@ -156,7 +156,7 @@ Move canonical project files to a private bucket and replace public URLs with sh
 
 | Field | Value |
 |-------|-------|
-| **Status** | `OPEN` — 2026-04-04 |
+| **Status** | `FIXED` — 2026-04-05 (`5ca1c6a6`) |
 | **Severity** | MEDIUM |
 | **Confidence** | 8/10 |
 | **Category** | Resource Abuse / Cost Control Gap |
@@ -170,6 +170,12 @@ The transcription route authenticates the caller and enforces a size cap, but it
 ### Recommendation
 
 Bring transcription under the same AI governance path: enforce per-user/workspace rate limits, record usage, and add route-specific abuse controls.
+
+### Closeout
+
+Fixed in commit `5ca1c6a6`.
+
+`/api/ai/transcribe` now routes through a dedicated governed transcription service before the provider call. The route applies the shared per-user/workspace AI gate, validates optional project attribution server-side, records truthful zero-token `voice_transcription` usage rows, and returns deterministic local governance statuses instead of collapsing failures into generic `500`s. The transcription-specific daily cap in this fix is intentionally scoped to persisted successful transcriptions; the shared per-minute AI gate remains the burst-abuse control for all requests.
 
 ---
 

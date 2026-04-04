@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { VoiceTranscriptionSettlement } from "@/hooks/useVoiceInput";
 import { ChatComposerCore } from "../ChatComposerCore";
+import type { CopilotPage } from "@/types/ai";
 
 const mockVoiceState = {
     state: "idle" as "idle" | "requesting_permission" | "recording" | "transcribing",
@@ -15,14 +16,17 @@ const mockVoiceState = {
 };
 let transcriptionHandler: ((text: string) => void) | null = null;
 let transcriptionSettledHandler: ((result: VoiceTranscriptionSettlement) => void) | null = null;
+let transcriptionAttribution: { page?: CopilotPage; projectId?: string } | undefined;
 
 vi.mock("@/hooks/useVoiceInput", () => ({
     useVoiceInput: (
         onTranscription: (text: string) => void,
         onTranscriptionSettled?: (result: VoiceTranscriptionSettlement) => void,
+        attribution?: { page?: CopilotPage; projectId?: string },
     ) => {
         transcriptionHandler = onTranscription;
         transcriptionSettledHandler = onTranscriptionSettled ?? null;
+        transcriptionAttribution = attribution;
         return mockVoiceState;
     },
 }));
@@ -39,6 +43,7 @@ describe("ChatComposerCore composer refresh", () => {
         mockVoiceState.visualizerAnalyser = null;
         transcriptionHandler = null;
         transcriptionSettledHandler = null;
+        transcriptionAttribution = undefined;
         vi.clearAllMocks();
         Object.defineProperty(window, "matchMedia", {
             writable: true,
@@ -71,6 +76,10 @@ describe("ChatComposerCore composer refresh", () => {
         expect(screen.getByRole("button", { name: /voice input/i })).toBeTruthy();
         expect(screen.queryByRole("button", { name: /attach file/i })).toBeNull();
         expect(screen.getByText(/gpt-5.2/i)).toBeTruthy();
+        expect(transcriptionAttribution).toEqual({
+            page: "overview",
+            projectId: "proj_1",
+        });
     });
 
     it("renders waveform recording state with separate stop and transcribe/send actions", () => {
