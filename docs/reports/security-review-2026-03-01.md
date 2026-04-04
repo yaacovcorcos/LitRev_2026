@@ -133,7 +133,7 @@ Or better: stop accepting `storagePath` from the client entirely — generate it
 
 | Field | Value |
 |-------|-------|
-| **Status** | `OPEN` — 2026-04-04 |
+| **Status** | `FIXED` — 2026-04-05 (`e6952771`) |
 | **Severity** | HIGH |
 | **Confidence** | 9/10 |
 | **Category** | Data Exposure / Authorization Boundary Weakening |
@@ -149,6 +149,12 @@ This is not a path-injection bug anymore. It is a confidentiality-boundary probl
 ### Recommendation
 
 Move canonical project files to a private bucket and replace public URLs with short-lived signed URLs or app-proxied downloads scoped by current authorization.
+
+### Closeout
+
+Fixed in commit `e6952771`.
+
+Canonical tenant-scoped `FileAsset` rows no longer mint or persist direct public storage object URLs. Canonical clients now receive authenticated app-owned download routes at `/api/projects/[projectId]/files/[fileId]`, and the production `study-assets` bucket was flipped from `public: true` to `public: false` after the merged route was live in production. Explicit `external/demo/*` compatibility remains the only public-URL legacy path.
 
 ---
 
@@ -183,7 +189,7 @@ Fixed in commit `5ca1c6a6`.
 
 | Field | Value |
 |-------|-------|
-| **Status** | `OPEN` — 2026-04-04 |
+| **Status** | `FIXED` — 2026-04-05 (`e6952771`) |
 | **Severity** | MEDIUM |
 | **Confidence** | 8/10 |
 | **Category** | Privacy / Log Leakage |
@@ -198,10 +204,15 @@ Fixed in commit `5ca1c6a6`.
 
 Do not log raw provider response content here. Log only bounded diagnostics and add a regression test to prevent future content leakage.
 
+### Closeout
+
+Fixed in commit `e6952771`.
+
+`parseAIJson()` no longer logs raw model response content on parse failure. The error payload now records only bounded diagnostics such as response length and code-fence shape, and regression coverage verifies that document-derived content is not emitted to logs.
+
 ---
 
 ## 2026-04-04 Hardening Gaps (Not Yet Tracked As Vulnerabilities)
 
-- Preview-only dev fixture routes (`next-app/app/api/dev/demo-project/route.ts`, `next-app/app/api/dev/test-project/route.ts`, `next-app/app/api/dev/test-home-state/route.ts`) lack the origin/CSRF check used by `/api/dev/quick-login` when preview quick login is enabled.
 - The repo currently has no committed CSP/security-header configuration (`next-app/next.config.ts`, `next-app/proxy.ts`).
 - The repo currently has no committed Dependabot or CodeQL configuration, and `CI` does not declare explicit least-privilege permissions (`.github/workflows/ci.yml`).
