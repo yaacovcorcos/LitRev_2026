@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { groupConversationsByDate, type ChatConversation } from "../group-conversations-by-date";
+import { groupConversationsByDate, type ChatConversation } from "../groupConversationsByDate";
 
 describe("groupConversationsByDate", () => {
   beforeEach(() => {
