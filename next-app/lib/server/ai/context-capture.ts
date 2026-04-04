@@ -1,5 +1,5 @@
 import type { ContextCaptureTarget, StudySnapshot } from "@/types/context-capture";
-import { buildStudyContext, sanitizeContext } from "@/lib/ai/prompts/copilot-prompts";
+import { buildStudyContext, sanitizeContext } from "@/lib/ai/prompts/assistant-prompts";
 import { CONTEXT_CAPTURE_STUDY_SET_MAX } from "@/lib/context-capture/targets";
 
 function sanitizeListValues(values: string[], maxChars: number): string {

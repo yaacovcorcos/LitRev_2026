@@ -2,11 +2,16 @@ export const PHASE2_HOTSPOT_GLOBS = [
   "app/ai/**/*.ts",
   "app/ai/**/*.tsx",
   "app/project/[id]/layout.tsx",
-  "components/copilot/**/*.ts",
-  "components/copilot/**/*.tsx",
-  "contexts/ProjectCopilotContext.tsx",
-  "hooks/useCopilotConversations.ts",
-  "hooks/useCopilotStreamActions.ts",
+  "components/chat/**/*.ts",
+  "components/chat/**/*.tsx",
+  "components/project/ConversationMainView.tsx",
+  "components/project/ProjectCopilotPanel.tsx",
+  "components/project/ProjectConversationComposer.tsx",
+  "components/project/ProjectConversationAutonomySettings.tsx",
+  "components/project/project-copilot-panel-scroll-containment.ts",
+  "contexts/ProjectConversationContext.tsx",
+  "hooks/useProjectConversationManager.ts",
+  "hooks/useProjectConversationStreamActions.ts",
 ];
 
 export function createPhase2HotspotConfigs({

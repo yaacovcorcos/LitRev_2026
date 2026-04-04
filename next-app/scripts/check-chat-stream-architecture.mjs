@@ -17,16 +17,16 @@ const scanRoots = [
 ];
 
 const allowedChunkBranchFiles = new Set([
-  path.normalize(path.join("components", "copilot", "StreamReducer.ts")),
-  path.normalize(path.join("contexts", "project-copilot-stream-events.ts")),
-  path.normalize(path.join("hooks", "useCopilotStreamActions.ts")),
+  path.normalize(path.join("components", "chat", "chat-timeline-reducer.ts")),
+  path.normalize(path.join("contexts", "project-conversation-stream-events.ts")),
+  path.normalize(path.join("hooks", "useProjectConversationStreamActions.ts")),
   path.normalize(path.join("lib", "ai", "ai-stream-runtime.ts")),
   path.normalize(path.join("lib", "ai", "shared-stream-reducer.ts")),
   path.normalize(path.join("lib", "ai", "stream-processor.ts")),
 ]);
 
 const allowedReduceUsageFiles = new Set([
-  path.normalize(path.join("contexts", "project-copilot-stream-events.ts")),
+  path.normalize(path.join("contexts", "project-conversation-stream-events.ts")),
   path.normalize(path.join("lib", "ai", "ai-stream-runtime.ts")),
   path.normalize(path.join("lib", "ai", "popup-stream-runtime.ts")),
   path.normalize(path.join("lib", "ai", "shared-stream-reducer.ts")),

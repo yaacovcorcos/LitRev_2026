@@ -34,7 +34,7 @@ describe("eslint-governance-phase2-hotspots.config", () => {
   it("includes the stream-actions hotspot and excludes unrelated draft hooks", async () => {
     const [streamActionsResult] = await lintText(
       "// eslint-disable-next-line react-hooks/exhaustive-deps\nexport const broken = true;",
-      "hooks/useCopilotStreamActions.ts",
+      "hooks/useProjectConversationStreamActions.ts",
     );
 
     expect(streamActionsResult.messages.map((message) => message.ruleId)).toContain(

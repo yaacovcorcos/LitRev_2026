@@ -1,6 +1,6 @@
 /**
  * Autonomy Preset Levels
- * Shared between server (autonomy.ts) and client (AutonomySettings.tsx)
+ * Shared between server (autonomy.ts) and client (ProjectConversationAutonomySettings.tsx)
  */
 
 import type { AutonomyLevel, AutonomyPreset } from "@/types/agent";

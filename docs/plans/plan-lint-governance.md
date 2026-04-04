@@ -45,7 +45,7 @@ This plan does not own product behavior or `PRD.md`.
 - Governance tooling imports now come from direct devDependencies in `next-app/package.json`, not only transitive `eslint-config-next` dependencies.
 - The required governance contract remains phase-owned through `governance:ci-required`, and the legacy full-repo lint baseline has now been intentionally reduced to zero warnings and folded into the protected `check` inventory as its own required step.
 - Phase 1 now has explicit config slices for the governed app surface and a scripts-only logging slice, plus a stable `npm run lint:governance:phase1` verifier.
-- Phase 2 now has a dedicated `npm run lint:governance:phase2-hotspots` verifier for the `/ai` + copilot runtime surface, including `hooks/useCopilotStreamActions.ts` and the bundled async-cleanup rules for that same hot-spot slice only.
+- Phase 2 now has a dedicated `npm run lint:governance:phase2-hotspots` verifier for the `/ai` + copilot runtime surface, including `hooks/useProjectConversationStreamActions.ts` and the bundled async-cleanup rules for that same hot-spot slice only.
 - Phase 4 now has stable permanent verifiers for:
   - async policy: `npm run lint:governance:phase4-async`
   - runtime test policy: `npm run lint:governance:phase4-tests`
@@ -113,12 +113,12 @@ Shipped:
 - `litrev/no-effect-reset-choreography`
 - Purposeful cleanup of the intended hot-spot runtime files:
   - `/ai`
-  - `ProjectCopilotContext`
-  - `useCopilotConversations`
-  - `useCopilotStreamActions`
-  - `CopilotInputCore`
-  - `TimelineRenderer`
-  - `usePendingApprovalBarState`
+  - `ProjectConversationContext`
+  - `useProjectConversationManager`
+  - `useProjectConversationStreamActions`
+  - `ChatComposerCore`
+  - `ChatTimeline`
+  - `useChatPendingApprovalBarState`
 - Bundled async-cleanup removal for the same Phase 2 hot-spot verifier surface only
 
 Missing:
@@ -213,7 +213,7 @@ Missing:
 - [x] Completed Phase 3 by hardening import-boundary enforcement for sourced re-exports and string-literal dynamic imports, adding the stable `lint:governance:phase3-searchability` verifier, and cleaning the remaining UI filename/export mismatches without broadening Phase 3 beyond the governed UI surface.
 - [x] Compressed the remaining non-Phase-3 roadmap into unified `Phase 4 — Policy Maturity` and `Phase 5 — Enforcement Rollout` so policy completion stays separate from CI enforcement.
 - [x] Completed Phase 2 by shipping the stable `lint:governance:phase2-hotspots` verifier, removing the remaining hot-spot effect/reset violations in copilot UI/runtime files, and bundling the co-located async cleanup for that same verifier surface without broadening Phase 4 completion.
-- [x] Added the stable `lint:governance:phase2-hotspots` verifier and completed the PR 1 runtime/controller cleanup for `/ai`, `ProjectCopilotContext`, `useCopilotConversations`, and `useCopilotStreamActions`, while keeping the remaining component/layout debt explicit for the Phase 2 follow-up slice.
+- [x] Added the stable `lint:governance:phase2-hotspots` verifier and completed the PR 1 runtime/controller cleanup for `/ai`, `ProjectConversationContext`, `useProjectConversationManager`, and `useProjectConversationStreamActions`, while keeping the remaining component/layout debt explicit for the Phase 2 follow-up slice.
 - [x] Completed Phase 1 by locking exact rule scope, adding a stable `lint:governance:phase1` verifier, extending the logging rules to `scripts/**` only, and fixing the remaining live logging violations.
 - [x] Hardened Phase 0 by declaring direct governance ESLint plugin dependencies, moving the audit baseline onto tested shared JS enumeration, and adding dedicated governance-tooling tests.
 - [x] Rewrote this plan into an explicit phase-status tracker so future work can review the program phase by phase against actual shipped state.

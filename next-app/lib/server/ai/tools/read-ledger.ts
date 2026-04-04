@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
-import { buildLedgerContext } from "@/lib/ai/prompts/copilot-prompts";
+import { buildLedgerContext } from "@/lib/ai/prompts/assistant-prompts";
 import { computeLedgerCounts, computeStudyLedger } from "@/lib/server/ledger-utils";
 
 const inputSchema = z.object({

@@ -49,7 +49,7 @@ Rule meanings:
 | File | Rule | Current breakpoint | Target meaning | Decision | Follow-up owner |
 |---|---|---:|---|---|---|
 | `next-app/components/project/ProjectTabBar.module.css` | tab-bar phone touch-target and label-density behavior | `768` | `phone` interaction behavior | keep (migrated in `MOB-FND-007`) | completed |
-| `next-app/components/copilot/TimelineMessages.module.css` | message/timeline narrow-layout tweaks | `768` | likely `compact` or chat-specific behavior | defer | chat foundation |
+| `next-app/components/chat/ChatTimeline.module.css` | message/timeline narrow-layout tweaks | `768` | likely `compact` or chat-specific behavior | defer | chat foundation |
 | `next-app/components/PopupChat.module.css` | popup narrow-mode layout | `767` | phone popup compatibility behavior | keep (migrated in `MOB-002` PR 3) | completed |
 | `next-app/components/PopupChat.module.css` | extra-tight popup density tweak | `500` | `tiny-phone` candidate | defer until popup redesign confirms semantics | `MOB-005` |
 | `next-app/components/AppShell.module.css` | shell mobile layout | `900` | split into `phone` bottom-nav behavior and `compact` collapsed-shell behavior | keep; shared shell retirement finalized in `MOB-FND-013` while legacy `900px` remains confined to non-`shellV2` consumers | completed |
@@ -63,7 +63,7 @@ Rule meanings:
 | `next-app/components/TopBar.module.css` | top-bar responsive changes | `900` | compact shell behavior | transitional | relevant surface wave |
 | `next-app/components/UserMenu.module.css` | user menu responsive changes | `900` | compact shell behavior | transitional | `MOB-FND-003` |
 | `next-app/components/ControlsBar.module.css` | controls-bar responsive changes | `900` | compact behavior | transitional; home now uses scoped modifiers from `MOB-FND-004` without rewriting shared default behavior | relevant surface wave |
-| `next-app/components/ProjectCopilot.module.css` | project copilot responsive changes | `900` | chat/compact transitional behavior | transitional | chat foundation |
+| `next-app/components/project/ProjectCopilotPanel.module.css` | project copilot responsive changes | `900` | chat/compact transitional behavior | transitional | chat foundation |
 | `next-app/app/ai/ai-view.module.css` | `/ai` history overlay / single-column shell behavior | `767` | phone shell behavior | keep (migrated in `MOB-002` PR 2) | completed |
 | `next-app/app/ai/ai-view.module.css` | `/ai` desktop/compact shell height contract | authored `100vh` route math | keep (migrated in `MOB-002` PR 2) | completed |
 | `next-app/app/project/[id]/project-shell.module.css` | conversation-mode bottom offset | `767` | phone shell behavior | keep (migrated in `MOB-002` PR 1) | completed |

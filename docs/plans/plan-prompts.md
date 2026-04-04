@@ -31,12 +31,12 @@ Those are owned by:
 ## Current Architecture
 *How this domain works right now, based on actual committed code.*
 
-- **Copilot Base (`lib/ai/prompts/copilot-prompts.ts`):** Foundation identity for all modes. Enforces markdown and strict verifiable hyperlinking to studies (via DOI/PMID).
+- **Copilot Base (`lib/ai/prompts/assistant-prompts.ts`):** Foundation identity for all modes. Enforces markdown and strict verifiable hyperlinking to studies (via DOI/PMID).
 - **Copilot Modes:** 7 variants (Protocol, Scoping, Search, Screening, Drafting, QA, General) that prepend Base + append mode-specific behavior.
 - **Scoping Prompt Contract:** Scoping now teaches a broad-first evidence pass, avoids forcing early population/intervention/outcome commitments before evidence, recommends a default direction after synthesis, and reserves `ask_user` for hard blockers or the rare no-safe-default handoff case.
 - **Clarification Prompt Contract:** Base prompt now aligns with the runtime-owned clarification controller: `ask_user` is the only blocking clarification primitive, the assistant should do non-blocked work first, include a safe `recommendedAnswer` / `recommendedReason` when available, treat resolved clarifications as authoritative, and never re-ask the same blocker after runtime suppression.
 - **Structured Mention Contract:** Base prompt currently requires hidden `MENTIONED_STUDIES` JSON comments whenever a response names specific studies so UI can render actionable study chips; parser fallback remains as a last-resort path when metadata is omitted. This is a compatibility-era prompt contract and should not spread beyond the current mixed-channel architecture.
-- **Context Assembly (`lib/server/ai/ai-service.ts` + `lib/ai/prompts/copilot-prompts.ts`):** Prompt assembly follows a stable-to-variable sequence for caching and grounding: Mode Prompt -> Scope -> Project -> Protocol -> Autonomy -> Ledger -> Location -> Study -> Memory -> Additional.
+- **Context Assembly (`lib/server/ai/ai-service.ts` + `lib/ai/prompts/assistant-prompts.ts`):** Prompt assembly follows a stable-to-variable sequence for caching and grounding: Mode Prompt -> Scope -> Project -> Protocol -> Autonomy -> Ledger -> Location -> Study -> Memory -> Additional.
 - **Runtime-Led Summary Alignment:** Summary mode semantics are runtime-owned. Prompts must support process-trace-first UX, but they do not define or own summary-mode meaning.
 - **Visible-Answer And Continuation Hygiene:** Prompt rules now explicitly forbid echoing `[CONTINUATION_CONTEXT]`, `payload_json`, machine-only runtime labels, hidden protocol blocks, or raw provider reasoning into normal visible answer prose; continuation seeds have also shifted toward machine-oriented fields.
 - **PDF Extraction Pipeline:** 

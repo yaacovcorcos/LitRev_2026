@@ -37,10 +37,15 @@ Contracts:
 - `npm run lint:governance:phase1` is the stable verification command for the completed Phase 1 contract
 - `npm run lint:governance:phase2-hotspots` is the stable verification command for the completed Phase 2 hot-spot surface only:
   - `app/ai/**`
-  - `components/copilot/**`
-  - `contexts/ProjectCopilotContext.tsx`
-  - `hooks/useCopilotConversations.ts`
-  - `hooks/useCopilotStreamActions.ts`
+  - `components/chat/**`
+  - `components/project/ConversationMainView.tsx`
+  - `components/project/ProjectCopilotPanel.tsx`
+  - `components/project/ProjectConversationComposer.tsx`
+  - `components/project/ProjectConversationAutonomySettings.tsx`
+  - `components/project/project-copilot-panel-scroll-containment.ts`
+  - `contexts/ProjectConversationContext.tsx`
+  - `hooks/useProjectConversationManager.ts`
+  - `hooks/useProjectConversationStreamActions.ts`
   - `app/project/[id]/layout.tsx`
 - `npm run lint:governance:phase3-searchability` is the stable verification command for the completed Phase 3 searchability contract on the UI surface only:
   - `app/**`

@@ -29,7 +29,7 @@ export type CachePolicyResource =
   | "memoryDiagnosticsTabs"
   | "aiConversationList"
   | "aiConversationTimeline"
-  | "projectCopilotConversationState"
+  | "projectConversationState"
   | "popupTranscript";
 
 export type CachePolicy = {
@@ -136,7 +136,7 @@ export const PROJECT_DATA_POLICIES = {
     preloadMode: "explicit_navigation",
     invalidationReasons: ["server_mutation", "manual_refresh", "scope_change", "route_entry"],
   },
-  projectCopilotConversationState: {
+  projectConversationState: {
     freshnessClass: "session_only",
     staleWindowMs: null,
     preloadMode: "never",

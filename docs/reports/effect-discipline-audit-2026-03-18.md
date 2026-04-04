@@ -10,10 +10,10 @@ Freeze the starting point for the effect-discipline rollout so follow-up migrati
 - Files with at least one direct `useEffect` / `useLayoutEffect`, excluding tests: `65`
 - Highest-signal hot spots for the first migration batch:
   - `next-app/app/ai/page.tsx`
-  - `next-app/contexts/ProjectCopilotContext.tsx`
-  - `next-app/hooks/useCopilotConversations.ts`
-  - `next-app/components/copilot/CopilotInputCore.tsx`
-  - `next-app/components/copilot/TimelineRenderer.tsx`
+  - `next-app/contexts/ProjectConversationContext.tsx`
+  - `next-app/hooks/useProjectConversationManager.ts`
+  - `next-app/components/chat/ChatComposerCore.tsx`
+  - `next-app/components/chat/ChatTimeline.tsx`
   - `next-app/components/PopupChat.tsx`
 
 ## Classification
@@ -73,10 +73,10 @@ The current repo contains a mix of:
 - Targeted warning-only lint now flags direct `useEffect` / `useLayoutEffect` imports in the first chat/runtime hot spots.
 - First chat/runtime migrations landed in:
   - `/ai`
-  - `ProjectCopilotContext`
-  - `useCopilotConversations`
-  - `CopilotInputCore`
-  - `TimelineRenderer`
+  - `ProjectConversationContext`
+  - `useProjectConversationManager`
+  - `ChatComposerCore`
+  - `ChatTimeline`
   - `PopupChat`
 - Route/bootstrap ownership now uses server bootstraps for:
   - project overview stats

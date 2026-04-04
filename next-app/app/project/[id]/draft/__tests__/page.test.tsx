@@ -81,8 +81,8 @@ vi.mock("@/components/project/ProjectPageLayout", () => ({
   ProjectPageLayout: ({ children }: { children: ReactNode }) => <div data-testid="project-page-layout">{children}</div>,
 }));
 
-vi.mock("@/components/ProjectCopilot", () => ({
-  ProjectCopilot: () => <div data-testid="project-copilot" />,
+vi.mock("@/components/project/ProjectCopilotPanel", () => ({
+  ProjectCopilotPanel: () => <div data-testid="project-copilot" />,
 }));
 
 vi.mock("@/components/ui/EmptyState", () => ({
@@ -108,8 +108,8 @@ vi.mock("@/contexts/LedgerContext", () => ({
   }),
 }));
 
-vi.mock("@/contexts/ProjectCopilotContext", () => ({
-  useProjectCopilot: () => ({
+vi.mock("@/contexts/ProjectConversationContext", () => ({
+  useProjectConversation: () => ({
     isCollapsed: false,
     panelWidth: 360,
     setPanelWidth: mockSetCopilotPanelWidth,

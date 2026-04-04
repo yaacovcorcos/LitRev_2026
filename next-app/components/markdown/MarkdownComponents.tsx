@@ -100,7 +100,7 @@ function CodeBlock({ language, code }: { language: string | null; code: string }
     );
 }
 
-/** Shared ReactMarkdown `components` override — use in both TimelineRenderer and AI page */
+/** Shared ReactMarkdown `components` override — use in both ChatTimeline and AI page */
 export const MarkdownComponents: Components = {
     pre: ({ children }: { children?: ReactNode }) => {
         // ReactMarkdown renders fenced blocks as <pre><code class="language-xxx">...</code></pre>

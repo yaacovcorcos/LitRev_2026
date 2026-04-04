@@ -62,7 +62,7 @@ The intended end state is a shared context-capture system that works across proj
 - Draft already has one useful context-aware path: selected text into popup in `next-app/app/project/[id]/draft/page.tsx`.
 - Ledger already has reusable multi-select state in `next-app/app/project/[id]/ledger/page.tsx` and `next-app/app/project/[id]/ledger/useLedgerActions.ts`, but AI actions currently operate only at single-study row level.
 - Notes currently have no contextual AI entry path in `next-app/app/project/[id]/notes/page.tsx`.
-- Main copilot still renders a plain subhead string rather than typed context receipts in `next-app/components/ProjectCopilot.tsx`.
+- Main copilot still renders a plain subhead string rather than typed context receipts in `next-app/components/project/ProjectCopilotPanel.tsx`.
 
 ### React Grab Pattern Extraction
 Steal:
@@ -449,11 +449,11 @@ Scope:
 - Recent-context reuse
 
 Touched paths:
-- `next-app/components/ProjectCopilot.tsx`
-- `next-app/components/copilot/CopilotInput.tsx`
-- `next-app/components/copilot/CopilotInputCore.tsx`
+- `next-app/components/project/ProjectCopilotPanel.tsx`
+- `next-app/components/project/ProjectConversationComposer.tsx`
+- `next-app/components/chat/ChatComposerCore.tsx`
 - `next-app/components/PopupChat.tsx`
-- `next-app/contexts/ProjectCopilotContext.tsx`
+- `next-app/contexts/ProjectConversationContext.tsx`
 
 Blast radius:
 - medium to high

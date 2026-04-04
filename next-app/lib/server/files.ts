@@ -291,7 +291,7 @@ export async function deleteFileAsset(
 }
 
 /**
- * Upload a PDF attachment for a copilot conversation.
+ * Upload a PDF attachment for a project conversation.
  * Uploads to Supabase, creates a FileAsset with kind="attachment",
  * and extracts text for AI injection.
  */

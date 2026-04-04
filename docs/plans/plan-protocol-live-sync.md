@@ -57,7 +57,7 @@ The intended end state is a single project-scoped protocol client state that upd
 - On cleanup, `ProtocolProvider` clears the pending timer rather than flushing it, so refresh/route exit can drop edits in `next-app/contexts/ProtocolContext.tsx`.
 - A local protocol storage helper already exists in `next-app/lib/protocol-storage.ts` but is not used by the current protocol page runtime.
 - `next-app/hooks/useProjectState.ts` fetches protocol directly via `getProtocolAction()` because `ProtocolProvider` is page-scoped, so copilot/conversation readers currently bypass any shared client protocol slice.
-- Accepted copilot protocol artifacts dispatch project-data invalidation through `next-app/hooks/useCopilotStreamActions.ts`.
+- Accepted copilot protocol artifacts dispatch project-data invalidation through `next-app/hooks/useProjectConversationStreamActions.ts`.
 - `ProjectDataContext` responds to those events by refetching protocol from the server in `next-app/contexts/ProjectDataContext.tsx`.
 - Ledger criteria filtering consumes cached protocol from `ProjectDataContext`, copies it into local state, and updates only when that cached slice changes in `next-app/app/project/[id]/ledger/page.tsx`.
 - Server-side artifact apply for `protocol_suggestion` and `criteria_card` writes directly to the protocol row in `next-app/lib/server/agent/artifacts.ts`.
@@ -497,7 +497,7 @@ Rollback:
 ### Fault Boundaries
 - Protocol page local UX issue: `ProtocolContext.tsx`, `protocol/page.tsx`
 - Shared state / propagation issue: `ProjectDataContext.tsx`, `project-data-events.ts`
-- Copilot acceptance issue: `useCopilotStreamActions.ts`
+- Copilot acceptance issue: `useProjectConversationStreamActions.ts`
 - Direct protocol-reader migration issue: `useProjectState.ts`
 - Server apply issue: `lib/server/agent/artifacts.ts`
 - Persistence issue: `app/actions/protocols.ts`, `lib/server/protocols.ts`, auth/session path

@@ -40,7 +40,7 @@
 - The external empty-route composer metric remained noisier than the internal route marker, so the bundle/composer side is still the blocking path even though populated timeline readiness is back near baseline.
 - Shared non-regression checks remained green through:
   - full `npx vitest run`
-  - `TimelineRenderer.windowing-defaults.test.tsx`
+  - `ChatTimeline.windowing-defaults.test.tsx`
   - existing project copilot and project conversation tests already in the suite
 
 ## Conclusion

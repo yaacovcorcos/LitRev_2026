@@ -53,7 +53,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 | `Verification` | Verification and magic-link tokens | None | Indexes on `identifier + createdAt`, `expiresAt` | No nullable business fields | No |
 | `Workspace` | Top-level collaboration scope | None | No special unique beyond PK | None | No |
 | `WorkspaceMember` | User membership in workspace | `workspaceId -> Workspace`, `userId -> User` | Unique on `workspaceId + userId`; index on `userId` | None | No |
-| `Project` | Main application hub | `workspaceId -> Workspace`, `ownerId -> User` | Indexes on `workspaceId`, `ownerId`; unique on `ownerId + workspaceId + demoKey` | `demoKey`, `description`, `papers`, `progress`, `projectCopilot` optional | No |
+| `Project` | Main application hub | `workspaceId -> Workspace`, `ownerId -> User` | Indexes on `workspaceId`, `ownerId`; unique on `ownerId + workspaceId + demoKey` | `demoKey`, `description`, `papers`, `progress`, `projectConversation` optional | No |
 | `Protocol` | Canonical protocol JSON for a project | `projectId -> Project` | `projectId` unique | None | No |
 | `Draft` | Current draft state for a project | `projectId -> Project` | `projectId` unique | None | No |
 | `DraftVersion` | Versioned draft snapshots by section | `projectId -> Project` | Unique on `projectId + section + version`; indexes on `projectId + section`, `projectId + createdAt` | `contentText`, `artifactId`, `conversationId` optional linkage/context | No |

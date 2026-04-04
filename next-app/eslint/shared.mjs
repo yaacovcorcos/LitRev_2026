@@ -97,11 +97,16 @@ export function isUiRuntimeFile(filename) {
 export function isHotspotEffectFile(filename) {
   const relative = relativeToRoot(filename);
   return relative === "app/ai/page.tsx"
-    || relative === "contexts/ProjectCopilotContext.tsx"
-    || relative === "hooks/useCopilotConversations.ts"
-    || relative === "hooks/useCopilotStreamActions.ts"
+    || relative === "contexts/ProjectConversationContext.tsx"
+    || relative === "hooks/useProjectConversationManager.ts"
+    || relative === "hooks/useProjectConversationStreamActions.ts"
     || relative === "app/project/[id]/layout.tsx"
-    || relative.startsWith("components/copilot/")
+    || relative.startsWith("components/chat/")
+    || relative === "components/project/ConversationMainView.tsx"
+    || relative === "components/project/ProjectCopilotPanel.tsx"
+    || relative === "components/project/ProjectConversationComposer.tsx"
+    || relative === "components/project/ProjectConversationAutonomySettings.tsx"
+    || relative === "components/project/project-copilot-panel-scroll-containment.ts"
     || relative.startsWith("app/ai/");
 }
 

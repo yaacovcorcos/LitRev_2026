@@ -14,8 +14,8 @@
 
 ## File candidates
 - /Users/yaacovcorcos/LitRev_2026/next-app/app/project/[id]/layout.tsx
-- /Users/yaacovcorcos/LitRev_2026/next-app/components/ProjectCopilot.tsx
-- /Users/yaacovcorcos/LitRev_2026/next-app/components/copilot/scrollContainment.ts
+- /Users/yaacovcorcos/LitRev_2026/next-app/components/project/ProjectCopilotPanel.tsx
+- /Users/yaacovcorcos/LitRev_2026/next-app/components/project/project-copilot-panel-scroll-containment.ts
 - /Users/yaacovcorcos/LitRev_2026/next-app/app/project/[id]/project-shell.module.css
 
 ## Acceptance criteria for A1

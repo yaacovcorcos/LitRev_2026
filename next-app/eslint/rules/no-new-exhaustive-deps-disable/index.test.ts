@@ -5,7 +5,7 @@ createRuleTester().run("litrev/no-new-exhaustive-deps-disable", rule, {
   valid: [
     {
       code: "useEffect(() => {}, []);",
-      filename: "/repo/next-app/components/copilot/Foo.tsx",
+      filename: "/repo/next-app/components/chat/Foo.tsx",
     },
     {
       code: "// eslint-disable-next-line react-hooks/exhaustive-deps\nuseEffect(() => {}, []);",
@@ -13,13 +13,13 @@ createRuleTester().run("litrev/no-new-exhaustive-deps-disable", rule, {
     },
     {
       code: "latestMessageRef.current = message;",
-      filename: "/repo/next-app/components/copilot/TimelineRenderer.tsx",
+      filename: "/repo/next-app/components/chat/ChatTimeline.tsx",
     },
   ],
   invalid: [
     {
       code: "// eslint-disable-next-line react-hooks/exhaustive-deps\nuseEffect(() => {}, []);",
-      filename: "/repo/next-app/components/copilot/Foo.tsx",
+      filename: "/repo/next-app/components/chat/Foo.tsx",
       errors: [{ messageId: "noDisable" }],
     },
     {

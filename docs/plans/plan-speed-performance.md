@@ -54,7 +54,7 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - `next-app/scripts/compare-ai-closeout.ts` evaluates the pinned `SPD-005` thresholds against a baseline/head pair
 - `/ai` also now opts into route-local lazy boundaries without forking shared copilot infrastructure:
   - the shared composer lazy-loads attachment and autonomy controls behind dynamic feature islands
-  - the shared `TimelineRenderer` supports an opt-in initial visible window and readiness callback, and `/ai` uses that opt-in path while project copilot/conversation keep the default full render behavior
+  - the shared `ChatTimeline` supports an opt-in initial visible window and readiness callback, and `/ai` uses that opt-in path while project copilot/conversation keep the default full render behavior
 - `/ai` now also defers history/sidebar chrome and conversation-list hydration out of the initial route chunk:
   - the history sidebar content and header chrome load behind route-local lazy boundaries
   - global workspace context and the conversation list both preload only after composer-ready, so populated closeout runs no longer pay the full sidebar fetch on first open
@@ -66,7 +66,7 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - only `protocol`, `ledger`, `ledger/[studyId]`, and `draft` currently ship route-level `loading.tsx`
   - most other surfaces still manage loading with client-side skeleton/error states inside the page itself
 - The project shell is the main lifetime boundary for project work:
-  - `ProjectCopilotProvider`, `PopupChatProvider`, and `ProjectDataProvider` all persist for the lifetime of the shell under `next-app/app/project/[id]/layout.tsx`
+  - `ProjectConversationProvider`, `PopupChatProvider`, and `ProjectDataProvider` all persist for the lifetime of the shell under `next-app/app/project/[id]/layout.tsx`
   - boot mode is route-derived (`conversation`, `overview`, `protocol`, `ledger`, `draft`, `memory`, `notes`) via `next-app/lib/project-entry-boot-mode.ts`
 - Long-lived chat/runtime state is now a first-class part of performance and memory behavior:
   - project copilot stores panel state and model preference in localStorage, restores project-scoped DB-backed conversations, and keeps scope-to-conversation mappings in memory for the shell lifetime
@@ -403,7 +403,7 @@ Precedence rules:
 | `memoryDiagnosticsTabs` | `session_only` | route-local tab fetches | none | `maintenance_action`, `manual_refresh`, `route_entry` | `never` |
 | `aiConversationList` | `stale_while_revalidate` | server conversation list | `30000ms` | `server_mutation`, `manual_refresh`, `scope_change`, `seed_expired`, `route_entry` | `idle` after route ready |
 | `aiConversationTimeline` | `session_only` | DB-backed timeline with in-memory LRU reuse | none | `server_mutation`, `manual_refresh`, `scope_change`, LRU eviction, `route_entry` when not cached | `explicit_navigation` |
-| `projectCopilotConversationState` | `session_only` | DB-backed conversation + in-shell runtime state | none | `server_mutation`, `manual_refresh`, `scope_change`, project switch | `never` |
+| `projectConversationState` | `session_only` | DB-backed conversation + in-shell runtime state | none | `server_mutation`, `manual_refresh`, `scope_change`, project switch | `never` |
 | `popupTranscript` | `session_only` | popup-local runtime state | none | popup close, context change, `manual_refresh` | `never` |
 
 ### Important Defaults
@@ -411,7 +411,7 @@ Precedence rules:
 - `must_be_fresh` governs server-backed read reuse, not active local editing buffers.
 - `protocolDocument` and `draftManuscript` never use time-based TTL invalidation while unsynced local edits exist.
 - `notesIndex` and `projectMemoryList` may render seeded empty state if that seed is explicit; `[]` is valid seed data and must not mean "not loaded".
-- `memoryDiagnosticsTabs`, `aiConversationTimeline`, `projectCopilotConversationState`, and `popupTranscript` remain session-scoped in this phase.
+- `memoryDiagnosticsTabs`, `aiConversationTimeline`, `projectConversationState`, and `popupTranscript` remain session-scoped in this phase.
 - The legacy `litrev:ledger-changed` bridge remains only for backward compatibility until ledger consolidation in `SPD-008f`.
 
 ### Required Deliverables
@@ -497,7 +497,7 @@ Precedence rules:
     - long-session memory retention
   - Use `docs/plans/plan-speed-performance.md` as the canonical owner; do not create a parallel cache-plan file unless this plan becomes too broad to stay legible.
   - The current code-verified findings to preserve as the starting baseline are:
-    - project-shell work is lifetime-scoped under `ProjectCopilotProvider` + `PopupChatProvider` + `ProjectDataProvider`
+    - project-shell work is lifetime-scoped under `ProjectConversationProvider` + `PopupChatProvider` + `ProjectDataProvider`
     - `/` now has a route-specific server bootstrap + fast auth path + authoritative seeded `ProjectsContext` refresh model rather than the older client-only project-index waterfall
     - shared project data uses client domain slices, not Next server-cache primitives
     - route-local persistence is already significant for protocol, draft, project-entry restore, and chat/UI preferences

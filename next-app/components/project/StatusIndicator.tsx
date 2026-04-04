@@ -1,6 +1,6 @@
 "use client";
 
-import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { useProjectConversation } from "@/contexts/ProjectConversationContext";
 import { useParams } from "next/navigation";
 import { useProjectTokenUsage } from "@/hooks/useProjectTokenUsage";
 import styles from "./StatusIndicator.module.css";
@@ -12,7 +12,7 @@ function formatTokens(n: number): string {
 }
 
 export function StatusIndicator() {
-    const { currentRunId } = useProjectCopilot();
+    const { currentRunId } = useProjectConversation();
     const params = useParams<{ id: string }>();
     const projectId = params?.id ?? "";
     const totalTokens = useProjectTokenUsage(projectId);

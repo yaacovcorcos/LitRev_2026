@@ -27,7 +27,7 @@ import { useProjects } from "@/contexts/ProjectsContext";
 import { useLedger } from "@/contexts/LedgerContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { usePopupChat } from "@/contexts/PopupChatContext";
-import { useProjectCopilotSafe } from "@/contexts/ProjectCopilotContext";
+import { useProjectConversationSafe } from "@/contexts/ProjectConversationContext";
 import { COMPACT_MEDIA_QUERY, PHONE_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import {
   canUseDraftSectionMode,
@@ -130,7 +130,7 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
   const { getProjectById, isLoadingProjects, projectsError } = useProjects();
   const { getStudiesByProject } = useLedger();
   const { isEmbeddedInProjectShell } = useProjectShell();
-  const projectCopilot = useProjectCopilotSafe();
+  const projectConversation = useProjectConversationSafe();
   const { openPopupChat } = usePopupChat();
   const { draft: cachedDraft, warmDomain } = useProjectData();
 
@@ -839,7 +839,7 @@ export function useDraftWorkspaceController({ projectId }: ControllerParams) {
     isLoadingProjects,
     projectsError,
     isEmbeddedInProjectShell,
-    projectCopilot,
+    projectConversation,
     draft,
     canUseSectionMode,
     resolvedMode,
