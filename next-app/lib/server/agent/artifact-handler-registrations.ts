@@ -27,6 +27,7 @@ import { upsertStudyTrusted, updateStudyTrusted } from "@/lib/server/ledger";
 import { ensureProtocolWithDb, saveProtocolTrusted } from "@/lib/server/protocols";
 import { createDraftVersionTrusted } from "@/lib/server/draft-versions";
 import { getDraftTrusted, saveDraftTrusted } from "@/lib/server/drafts";
+import { buildDraftCheckpointSnapshot } from "@/lib/draft-checkpoints";
 import { logServerWarn } from "@/lib/server/logging";
 import { ArtifactError } from "./artifact-errors";
 import type {
@@ -90,6 +91,38 @@ export function buildEvidenceTableMarkdown(payload: EvidenceTablePayload): strin
     }
 
     return `## Evidence Table\n\n${lines.join("\n")}`;
+}
+
+function resolveDraftDiffSectionKey(payload: DraftDiffPayload): string {
+    if (typeof payload.sectionKey === "string" && payload.sectionKey.trim().length > 0) {
+        return payload.sectionKey.trim().toLowerCase();
+    }
+
+    return payload.section.toLowerCase();
+}
+
+function serializeDraftSectionContent(value: unknown): string {
+    return JSON.stringify(value ?? null);
+}
+
+async function createDraftApplyCheckpoint(
+    ctx: ArtifactExecutionContext,
+    artifactId: string,
+    conversationId: string | null,
+    sectionLabel: string,
+    draftState: Parameters<typeof buildDraftCheckpointSnapshot>[0],
+): Promise<void> {
+    await ctx.db.draftCheckpoint.create({
+        data: {
+            projectId: ctx.projectId,
+            workspaceId: ctx.workspaceId,
+            label: `Accepted AI draft proposal: ${sectionLabel}`,
+            kind: "ai_apply",
+            snapshot: buildDraftCheckpointSnapshot(draftState),
+            artifactId,
+            conversationId: conversationId ?? null,
+        },
+    });
 }
 
 async function applyCriteriaCard(ctx: ArtifactExecutionContext, payload: CriteriaCardPayload) {
@@ -387,6 +420,26 @@ async function applyStudyUpdate(ctx: ArtifactExecutionContext, artifactId: strin
 
 async function applyDraftDiff(ctx: ArtifactExecutionContext, payload: DraftDiffPayload, artifactId: string, conversationId: string | null) {
     const tipTapContent = textToTipTapDoc(payload.content);
+    const currentDraft = await getDraftTrusted(ctx.db, ctx.projectId);
+    const sectionKey = resolveDraftDiffSectionKey(payload);
+    const currentSectionContent = currentDraft?.contentBySection?.[sectionKey] ?? null;
+    const baseSectionContent = Object.prototype.hasOwnProperty.call(payload, "baseSectionContent")
+        ? payload.baseSectionContent ?? null
+        : currentSectionContent;
+
+    if (serializeDraftSectionContent(currentSectionContent) !== serializeDraftSectionContent(baseSectionContent)) {
+        logServerWarn("draft_diff", "rejected stale draft proposal apply because the target section changed", {
+            artifactId,
+            projectId: ctx.projectId,
+            section: payload.section,
+            sectionKey,
+        });
+        throw new ArtifactError(
+            "ARTIFACT_APPLY_FAILED",
+            `Draft section "${payload.section}" changed after this proposal was created. Re-run the draft proposal from the latest text.`,
+        );
+    }
+
     await createDraftVersionTrusted(ctx.db, {
         projectId: ctx.projectId,
         section: payload.section,
@@ -397,16 +450,11 @@ async function applyDraftDiff(ctx: ArtifactExecutionContext, payload: DraftDiffP
     });
 
     const { createDefaultDraftState } = await import("@/lib/draft-storage");
-    const { DRAFT_SECTIONS } = await import("@/types/draft");
-    const sectionKey = DRAFT_SECTIONS.find(
-        (section) => section.key === payload.section.toLowerCase() || section.label.toLowerCase() === payload.section.toLowerCase(),
-    )?.key ?? payload.section.toLowerCase();
-
-    const currentDraft = await getDraftTrusted(ctx.db, ctx.projectId);
     const draftState = currentDraft ?? createDefaultDraftState();
     draftState.contentBySection[sectionKey] = tipTapContent as typeof draftState.contentBySection[string];
 
     await saveDraftTrusted(ctx.db, ctx.projectId, draftState);
+    await createDraftApplyCheckpoint(ctx, artifactId, conversationId, payload.section, draftState);
 }
 
 async function applyEvidenceTable(ctx: ArtifactExecutionContext, payload: EvidenceTablePayload, conversationId: string | null) {
@@ -572,12 +620,9 @@ export function registerArtifactHandlers({
 
     snapshotReaders.set("draft_diff", async (ctx, artifact) => {
         const payload = artifact.payload as unknown as DraftDiffPayload;
-        const { DRAFT_SECTIONS } = await import("@/types/draft");
         const currentDraft = await getDraftTrusted(ctx.db, ctx.projectId);
         if (!currentDraft) return null;
-        const sectionKey = DRAFT_SECTIONS.find(
-            (section) => section.key === payload.section.toLowerCase() || section.label.toLowerCase() === payload.section.toLowerCase(),
-        )?.key ?? payload.section.toLowerCase();
+        const sectionKey = resolveDraftDiffSectionKey(payload);
         return currentDraft.contentBySection?.[sectionKey] ?? null;
     });
 
@@ -650,11 +695,7 @@ export function registerArtifactHandlers({
     restoreFunctions.set("draft_diff", async (ctx, artifact) => {
         const payload = artifact.payload as unknown as DraftDiffPayload;
         const { createDefaultDraftState } = await import("@/lib/draft-storage");
-        const { DRAFT_SECTIONS } = await import("@/types/draft");
-
-        const sectionKey = DRAFT_SECTIONS.find(
-            (section) => section.key === payload.section.toLowerCase() || section.label.toLowerCase() === payload.section.toLowerCase(),
-        )?.key ?? payload.section.toLowerCase();
+        const sectionKey = resolveDraftDiffSectionKey(payload);
 
         const currentDraft = await getDraftTrusted(ctx.db, ctx.projectId);
         const draftState = currentDraft ?? createDefaultDraftState();

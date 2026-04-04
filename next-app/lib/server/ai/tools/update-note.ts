@@ -16,9 +16,11 @@ const inputSchema = z.object({
  */
 const outputSchema = z.object({
     section: z.string().min(1),
+    sectionKey: z.string().min(1),
     content: z.string().min(1),
     citations: z.array(z.object({ studyId: z.string(), label: z.string() })),
     wordCount: z.number().int().nonnegative(),
+    baseSectionContent: z.unknown().nullable(),
 });
 
 export const updateNoteTool: AITool = {
@@ -66,14 +68,16 @@ export const updateNoteTool: AITool = {
         const action = args.action as "replace" | "append" | "revise";
 
         try {
+            const sectionKey = DRAFT_SECTIONS.find(
+                (s) => s.key === section.toLowerCase() || s.label.toLowerCase() === section.toLowerCase()
+            )?.key ?? section.toLowerCase();
+            const draft = await getDraft(undefined, projectId);
+            const baseSectionContent = draft?.contentBySection[sectionKey] ?? null;
+
             // For append, read existing draft content to produce the combined text
             let finalContent = content;
             if (action === "append") {
-                const draft = await getDraft(undefined, projectId);
                 if (draft) {
-                    const sectionKey = DRAFT_SECTIONS.find(
-                        (s) => s.key === section.toLowerCase() || s.label.toLowerCase() === section.toLowerCase()
-                    )?.key ?? section.toLowerCase();
                     const existing = draft.contentBySection[sectionKey];
                     if (existing) {
                         const existingText = extractTextFromContent(existing as unknown as NoteContent);
@@ -93,9 +97,11 @@ export const updateNoteTool: AITool = {
                 callId: "",
                 result: {
                     section,
+                    sectionKey,
                     content: finalContent,
                     citations: [],
                     wordCount,
+                    baseSectionContent,
                 },
             };
         } catch (error) {

@@ -86,10 +86,12 @@ export interface StudyUpdatePayload {
 
 export interface DraftDiffPayload {
     section: string;
+    sectionKey?: string;
     subsection?: string;
     content: string;
     citations: { studyId: string; label: string }[];
     wordCount: number;
+    baseSectionContent?: unknown | null;
 }
 
 export interface ScreeningBatchPayload {
@@ -263,10 +265,12 @@ export const StudyUpdateSchema = z.object({
 
 export const DraftDiffSchema = z.object({
     section: z.string().min(1),
+    sectionKey: z.string().min(1).optional(),
     subsection: z.string().optional(),
     content: z.string().min(1),
     citations: z.array(z.object({ studyId: z.string(), label: z.string() })),
     wordCount: z.number().int().nonnegative(),
+    baseSectionContent: z.unknown().nullable().optional(),
 });
 
 export const ScreeningBatchSchema = z.object({
