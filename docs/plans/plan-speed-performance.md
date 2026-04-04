@@ -10,6 +10,8 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - `next-app/scripts/perf-budget-check.mjs`
   - `next-app/scripts/generate-perf-results.ts`
   - `next-app/scripts/perf-baseline-report.mjs`
+- The browser-side CI probe bootstrap is now injected from a shared self-contained script in `next-app/lib/performance-browser-probe.ts` instead of relying on cross-context helper capture from the Node harness.
+- Nightly performance certification no longer depends on a broken Playwright `addInitScript` closure path; the probe now initializes `window.__perfProbe` correctly on headless CI routes before LCP/CLS/INP collection begins.
 - CI now separates artifact roles correctly:
   - baseline: `output/performance/baseline/baseline-latest.json`
   - results: `output/performance/results/results-<sha>.json`

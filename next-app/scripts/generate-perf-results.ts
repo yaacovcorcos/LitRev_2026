@@ -13,6 +13,11 @@ import { Pool } from "pg";
 import { createDefaultProtocolData } from "../types/protocol";
 import { createDefaultDraftState } from "../lib/draftStorage";
 import {
+  getBrowserProbeInitScriptContent,
+  type BrowserProbeMetrics,
+  type BrowserProbeWindow,
+} from "../lib/performance-browser-probe";
+import {
   createPerformanceArtifactRoots,
   parseAllowList,
   resolvePathWithinRoots,
@@ -110,28 +115,7 @@ type PerfCookie = {
   secure: boolean;
 };
 
-type BrowserProbeMetrics = {
-  lcp: number | null;
-  cls: number;
-  inp: number | null;
-};
-
-type BrowserProbeWindow = Window & typeof globalThis & {
-  __perfProbe?: BrowserProbeMetrics;
-};
-
 type CollectedBrowserMetrics = Record<ProbeMetricName, number | null>;
-
-function getBrowserProbeTarget(target: BrowserProbeWindow): BrowserProbeMetrics {
-  if (!target.__perfProbe) {
-    target.__perfProbe = {
-      lcp: null,
-      cls: 0,
-      inp: null,
-    };
-  }
-  return target.__perfProbe;
-}
 
 const PROFILE_CONFIGS: Record<ProbeProfile, BrowserContextOptions> = {
   "desktop-normal": {
@@ -440,67 +424,8 @@ async function seedProbeFixture(baseUrl: string): Promise<{ cookie: PerfCookie; 
 }
 
 async function installBrowserProbe(context: BrowserContext) {
-  await context.addInitScript(() => {
-    const target = window as BrowserProbeWindow;
-    const probe = getBrowserProbeTarget(target);
-
-    try {
-      new PerformanceObserver((entryList) => {
-        const entries = entryList.getEntries();
-        const lastEntry = entries[entries.length - 1];
-        if (lastEntry) {
-          probe.lcp = lastEntry.startTime;
-        }
-      }).observe({ type: "largest-contentful-paint", buffered: true });
-    } catch {
-      probe.lcp = null;
-    }
-
-    try {
-      new PerformanceObserver((entryList) => {
-        for (const entry of entryList.getEntries() as Array<{ hadRecentInput?: boolean; value?: number }>) {
-          if (!entry.hadRecentInput) {
-            probe.cls += entry.value ?? 0;
-          }
-        }
-      }).observe({ type: "layout-shift", buffered: true });
-    } catch {
-      probe.cls = 0;
-    }
-
-    try {
-      new PerformanceObserver((entryList) => {
-        for (const entry of entryList.getEntries() as Array<{ duration?: number }>) {
-          const duration = entry.duration ?? null;
-          if (duration == null) continue;
-          probe.inp = Math.max(probe.inp ?? 0, duration);
-        }
-      }).observe({
-        type: "event",
-        buffered: true,
-        durationThreshold: 16,
-      } as PerformanceObserverInit & { durationThreshold: number });
-    } catch {
-      probe.inp = null;
-    }
-
-    const recordPaintLatency = () => {
-      const start = performance.now();
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const latency = performance.now() - start;
-          probe.inp = Math.max(probe.inp ?? 0, latency);
-        });
-      });
-    };
-
-    window.addEventListener("pointerdown", recordPaintLatency, {
-      capture: true,
-      passive: true,
-    });
-    window.addEventListener("keydown", recordPaintLatency, {
-      capture: true,
-    });
+  await context.addInitScript({
+    content: getBrowserProbeInitScriptContent(),
   });
 }
 
