@@ -91,7 +91,7 @@ import {
 import { isProgressiveAnswerStreamingEnabled } from "@/lib/feature-flags";
 import { useRouter } from "next/navigation";
 import type { QueuedFollowUp } from "@/types/queued-followup";
-import { type ChatConversation, groupConversationsByDate } from "./conversation-history";
+import { type ChatConversation, groupConversationsByDate } from "./group-conversations-by-date";
 import {
   mapDbMessagesToTimeline,
   stripReservedAssistantTimelineItems,

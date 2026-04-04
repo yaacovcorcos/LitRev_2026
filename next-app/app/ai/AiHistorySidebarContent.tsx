@@ -2,7 +2,7 @@
 
 import { createPortal } from "react-dom";
 
-import type { ChatConversation, ConversationGroup } from "./conversation-history";
+import type { ChatConversation, ConversationGroup } from "./group-conversations-by-date";
 import styles from "./ai-view.module.css";
 
 type ContextMenuState = {
