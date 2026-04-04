@@ -2,20 +2,8 @@
 
 import { createPortal } from "react-dom";
 
+import type { ChatConversation, ConversationGroup } from "./groupConversationsByDate";
 import styles from "./ai-view.module.css";
-
-type ChatConversation = {
-  id: string;
-  title: string | null;
-  projectId?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type ConversationGroup = {
-  title: string;
-  items: ChatConversation[];
-};
 
 type ContextMenuState = {
   x: number;
