@@ -22,7 +22,7 @@ It does not replace:
    - This runbook only explains the shared cross-cutting execution model.
 
 2. Keep test design and execution separate.
-   - `docs/agents/testing-agent-contract.md` decides the right test layer and regression-proof shape.
+   - `docs/agents/testing-agent-contract.md` decides the right proof shape, including the high-risk proof matrix.
    - This runbook decides which shared lane to run, how to reproduce it, and who owns it first.
 
 3. Keep required lanes conservative.
@@ -58,7 +58,8 @@ It does not replace:
 For code changes:
 
 1. Run the route-specific mandatory checks from `AGENTS.md`.
-2. Add shared lanes when the touched surface intersects them:
+2. Use `docs/agents/testing-agent-contract.md` to decide the smallest truthful proof for the touched risk surface.
+3. Add shared lanes when the touched surface intersects them:
    - governance inventory, shared CI contract, or workflow truth:
      - `cd next-app && npm run governance:ci-required`
    - governance reporting or audit reproduction:
@@ -69,7 +70,7 @@ For code changes:
      - `cd next-app && npm run test:e2e:mobile:smoke`
    - citation-provider changes or provider drift triage:
      - `cd next-app && RUN_CITATION_PROVIDER_TESTS=1 npm run citation:smoke`
-3. If the change spans multiple domains and the safest shared baseline is not obvious, use the conservative fallback:
+4. If the change spans multiple domains and the safest shared baseline is not obvious, use the conservative fallback:
    - `cd next-app && npx tsc --noEmit`
    - `cd next-app && npm run lint`
    - `cd next-app && npx vitest run`

@@ -27,6 +27,7 @@ This plan does not own:
   - `perf:budget-check`, `perf:generate-results`, and related performance tooling
 - The current command surface is broad but still partially historical rather than conceptual; names mix tool identity, local history, and lane purpose.
 - There is no thin repo-root wrapper layer such as a `justfile`; contributors and agents still need to remember or rediscover the right `next-app/` commands from docs and local knowledge.
+- `docs/agents/testing-agent-contract.md` now carries a compact high-risk proof matrix, while `docs/runbooks/testing-ci-strategy.md` owns shared lane execution and local reproduction.
 - `docs/runbooks/testing-ci-strategy.md` now provides the short cross-cutting execution reference for:
   - what contributors should run locally before push beyond route-specific `AGENTS.md` requirements
   - what the required `check` gate guarantees versus what remains outside it
@@ -51,14 +52,8 @@ This plan does not own:
 
 ## External Pattern Position
 
-This plan adapts ideas through `docs/runbooks/external-pattern-intake.md`, not by copying other repos directly.
-
-The current intended upstream lessons are:
-- OpenAI Codex: explicit fast-versus-heavy workflow explanation plus a thin local command wrapper layer
-- OpenClaw: stronger named test-surface taxonomy, limited changed-scope execution for expensive lanes, and intentional smoke/perf lanes
-- OpenCode: clearer ownership of where tests run, cleaner unit-versus-e2e separation, and stronger CI artifact discipline
-
-LitRev should adapt those ideas to its existing owner model, not import a foreign CI matrix or duplicate truth across multiple wrapper layers.
+This plan adapts ideas through `docs/runbooks/external-pattern-intake.md`.
+LitRev should borrow useful execution patterns without importing a foreign CI matrix or duplicating truth across wrapper layers, plans, and runbooks.
 
 ## Program Status
 The testing doctrine is already strong. The remaining work is to make that doctrine easier to run, easier to understand, and harder to misuse.
@@ -162,6 +157,7 @@ Missing:
 - [x] Closed the raw lint baseline from broadly red to `0` errors / `0` warnings on `main` and promoted raw lint into the protected `check` contract through `governance:ci-required`.
 - [x] Added high-signal direct regression coverage for recent cleanup-sensitive flows such as timeline anchoring, streamed tool-call delta assembly, conversation JSON serialization, and hydration/body-scroll behavior.
 - [x] Added `docs/runbooks/testing-ci-strategy.md` as the canonical shared execution reference for local-before-push expectations, CI lane meaning, first-owner triage, changed-scope rules, smoke inventory, and protected-lane promotion discipline.
+- [x] Consolidated testing-doc overlap so proof-shape decisions live in `docs/agents/testing-agent-contract.md`, shared lane execution lives in `docs/runbooks/testing-ci-strategy.md`, and the plan stays focused on remaining execution deltas.
 
 ## Implementation Rules
 - Wrapper commands must call canonical package or script entrypoints; they must never become a second hidden implementation layer.

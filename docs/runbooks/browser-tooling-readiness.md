@@ -163,9 +163,7 @@ If `agent-browser` fails:
 - run `agent-browser install` again if Chrome for Testing was not fully installed
 - confirm the target dev server responds before debugging browser automation itself
 
-## Current LitRev baseline
-
-As of April 2, 2026, the expected local browser-tooling posture is:
+The expected steady-state posture is:
 - Playwright available in `next-app/`
 - `agent-browser` installed as a machine-level CLI
 - Playwright used for durable checked-in tests
