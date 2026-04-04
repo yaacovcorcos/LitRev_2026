@@ -496,7 +496,7 @@ export function ProjectCopilotPanel({
 
                 {/* Timeline / Message list */}
                 <ChatTimeline
-                    messages={messages}
+                    items={timelineItems}
                     isLoading={isLoading}
                     isConversationLoading={isConversationLoading}
                     conversationId={currentConversationId ?? undefined}

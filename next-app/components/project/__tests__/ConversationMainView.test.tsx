@@ -160,7 +160,7 @@ describe("ConversationMainView parity", () => {
     mockUseProjectConversation.mockReturnValue(baseContextValue);
   });
 
-  it("passes structured timeline-capable messages through to the shared renderer unchanged", () => {
+  it("passes normalized timeline items through to the shared renderer", () => {
     render(<ConversationMainView projectId="project-1" />);
 
     expect(screen.getByTestId("timeline-renderer")).toBeTruthy();
@@ -175,14 +175,16 @@ describe("ConversationMainView parity", () => {
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(status.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(mockChatTimeline.mock.calls.length).toBeGreaterThanOrEqual(1);
-    const props = mockChatTimeline.mock.calls.at(-1)?.[0] as { messages: unknown[]; suppressedProgressId?: string | null };
-    expect(props.messages).toHaveLength(5);
-    expect(props.messages).toEqual(mockUseProjectConversation.mock.results[0]?.value.messages);
-    expect(props.suppressedProgressId).toBe("progress-1");
-    const checkpoint = props.messages.find((message) => (message as { checkpoint?: unknown }).checkpoint) as {
-      checkpoint?: { runId?: string; checkpointKind?: string };
+    const props = mockChatTimeline.mock.calls.at(-1)?.[0] as {
+      items: Array<{ type: string; id: string; runId?: string; checkpointKind?: string }>;
+      messages?: unknown[];
+      suppressedProgressId?: string | null;
     };
-    expect(checkpoint.checkpoint).toMatchObject({ runId: "run-1", checkpointKind: "recovery" });
+    expect(props.items).toHaveLength(5);
+    expect(props.messages).toBeUndefined();
+    expect(props.suppressedProgressId).toBe("progress-1");
+    const checkpoint = props.items.find((item) => item.type === "checkpoint");
+    expect(checkpoint).toMatchObject({ id: "checkpoint-1", runId: "run-1", checkpointKind: "recovery" });
   });
 
   it("targets reconnect, continue, and stop-and-retry actions to the clicked run", () => {

@@ -352,7 +352,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                 <div className={`${styles.contentArea} ${!hasMessages ? styles.contentAreaEmpty : ''}`}>
                     <ChatTimeline
                         variant="page"
-                        messages={messages}
+                        items={timelineItems}
                         isLoading={isLoading}
                         isConversationLoading={isConversationLoading}
                         conversationId={currentConversationId ?? undefined}

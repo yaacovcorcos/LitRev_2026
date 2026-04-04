@@ -20,10 +20,6 @@ export function sanitizeContextCaptureText(value: string | undefined, maxChars: 
     return `${normalized.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
 }
 
-export function joinContextLines(lines: Array<string | null | undefined>): string {
-    return lines.filter(Boolean).join("\n");
-}
-
 export function extractTextFromJsonContent(content: JSONContent | null | undefined): string {
     if (!content || typeof content !== "object") return "";
     if (content.type === "text" && typeof content.text === "string") {
@@ -41,4 +37,3 @@ export function summarizeStudyLabels(labels: string[], maxVisible: number = 3): 
     if (labels.length <= maxVisible) return visible.join(", ");
     return `${visible.join(", ")} +${labels.length - maxVisible} more`;
 }
-

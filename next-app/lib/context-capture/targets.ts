@@ -1,11 +1,8 @@
 import type { JSONContent } from "@tiptap/core";
 import type { PopupChatContext } from "@/types/popup-chat";
 import type {
-    AssistantMessageTarget,
-    ArtifactTarget,
     ContextCaptureTarget,
     DraftSelectionTarget,
-    NoteSelectionTarget,
     NoteTarget,
     ProtocolCriterionTarget,
     ProtocolFieldTarget,
@@ -64,33 +61,6 @@ type NoteTargetArgs = {
     linkedStudyId?: string | null;
     linkedSection?: string | null;
     sourceSurface?: NoteTarget["sourceSurface"];
-};
-
-type NoteSelectionTargetArgs = {
-    projectId: string;
-    noteId: string;
-    title?: string | null;
-    selectedText: string;
-    content: JSONContent | null | undefined;
-    tags?: string[];
-    sourceSurface?: NoteSelectionTarget["sourceSurface"];
-};
-
-type ArtifactTargetArgs = {
-    projectId: string;
-    artifactId: string;
-    artifactType: string;
-    title: string;
-    summary?: string;
-    sourceSurface?: ArtifactTarget["sourceSurface"];
-};
-
-type AssistantMessageTargetArgs = {
-    projectId: string;
-    messageId: string;
-    conversationId?: string;
-    content: string;
-    sourceSurface?: AssistantMessageTarget["sourceSurface"];
 };
 
 function buildStudyPreview(study: StudySnapshot): string {
@@ -257,54 +227,6 @@ export function buildNoteTarget(args: NoteTargetArgs): NoteTarget {
     };
 }
 
-export function buildNoteSelectionTarget(args: NoteSelectionTargetArgs): NoteSelectionTarget {
-    const selectedText = sanitizeContextCaptureText(args.selectedText, 900);
-    const excerpt = sanitizeContextCaptureText(extractTextFromJsonContent(args.content), 1_200);
-    return {
-        kind: "note_selection",
-        projectId: args.projectId,
-        noteId: args.noteId,
-        title: args.title,
-        selectedText,
-        excerpt,
-        tags: args.tags?.slice(0, 12) ?? [],
-        label: sanitizeContextCaptureText(args.title || "Untitled note", 120),
-        preview: sanitizeContextCaptureText(selectedText || excerpt, 80),
-        icon: "sticky_note_2",
-        sourceSurface: args.sourceSurface ?? "notes",
-    };
-}
-
-export function buildArtifactTarget(args: ArtifactTargetArgs): ArtifactTarget {
-    return {
-        kind: "artifact",
-        projectId: args.projectId,
-        artifactId: args.artifactId,
-        artifactType: args.artifactType,
-        title: sanitizeContextCaptureText(args.title, 160),
-        summary: sanitizeContextCaptureText(args.summary, 1_000),
-        label: sanitizeContextCaptureText(args.title, 160),
-        preview: sanitizeContextCaptureText(args.summary, 80),
-        icon: "description",
-        sourceSurface: args.sourceSurface ?? "copilot",
-    };
-}
-
-export function buildAssistantMessageTarget(args: AssistantMessageTargetArgs): AssistantMessageTarget {
-    const excerpt = sanitizeContextCaptureText(args.content, 1_000);
-    return {
-        kind: "assistant_message",
-        projectId: args.projectId,
-        messageId: args.messageId,
-        conversationId: args.conversationId,
-        excerpt,
-        label: "Assistant message",
-        preview: sanitizeContextCaptureText(excerpt, 80),
-        icon: "chat",
-        sourceSurface: args.sourceSurface ?? "copilot",
-    };
-}
-
 export function contextTargetToPopupContext(target: ContextCaptureTarget): PopupChatContext | null {
     switch (target.kind) {
         case "study":
@@ -346,12 +268,3 @@ export function contextTargetToPopupContext(target: ContextCaptureTarget): Popup
 export function isPopupSafeContextTarget(target: ContextCaptureTarget): boolean {
     return contextTargetToPopupContext(target) !== null;
 }
-
-export function getContextTargetSummary(target: ContextCaptureTarget): string {
-    return target.preview ?? target.label;
-}
-
-export function getContextTargetIcon(target: ContextCaptureTarget): string {
-    return target.icon;
-}
-
