@@ -87,7 +87,7 @@ export type ProjectConversationContextValue = {
     setCollapsed: (collapsed: boolean) => void;
     /** Update the panel width */
     setPanelWidth: (width: number) => void;
-    /** Send a message to the copilot */
+    /** Send a message through the shared project conversation runtime */
     sendMessage: (
         text: string,
         page: CopilotPage,
