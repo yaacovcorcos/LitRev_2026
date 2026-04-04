@@ -10,6 +10,7 @@ It covers:
 
 It does not replace:
 - `docs/agents/testing-agent-contract.md` for repo-wide testing strategy
+- `docs/runbooks/testing-ci-strategy.md` for shared CI lane meaning, local reproduction, and promotion rules
 - `docs/runbooks/responsive-foundation-certification.md` for required responsive Playwright certification gates
 
 ## Tool roles

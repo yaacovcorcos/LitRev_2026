@@ -96,8 +96,7 @@ npm run test:e2e:mobile:smoke
 ```
 
 GitHub automation contract:
-- `CI / check` runs `test:e2e:mobile:foundation`
-- `Mobile Smoke / mobile-smoke` runs `test:e2e:mobile:smoke` on pull requests that touch:
+- `Mobile Foundation / mobile-foundation` runs `test:e2e:mobile:foundation` on pushes to `main` and on pull requests that touch:
   - `next-app/app/**`
   - `next-app/components/**`
   - `next-app/styles/**`
@@ -109,7 +108,8 @@ GitHub automation contract:
   - `next-app/lib/ai/reliability-telemetry.ts`
   - `next-app/app/PerformanceVitalsReporter.tsx`
   - `.github/workflows/**`
-- docs-only mobile plan/runbook changes do not trigger the broader smoke workflow by default
+- `test:e2e:mobile:smoke` is currently a local-only adjunct lane; if a dedicated automated broader-smoke workflow is added later, update this runbook, `docs/runbooks/testing-ci-strategy.md`, and `docs/plans/plan-testing-execution.md` in the same task
+- docs-only mobile plan/runbook changes do not trigger the foundation workflow by default
 
 Foundation Playwright setup now uses seeded dev fixture routes so auth, home, sample/demo project setup, blank project setup, and protocol-ready setup do not share one ambient workspace:
 - `/api/dev/quick-login`
