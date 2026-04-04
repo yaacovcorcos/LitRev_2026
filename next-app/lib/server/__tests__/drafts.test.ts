@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createDefaultDraftState } from "@/lib/draftStorage";
+import { createDefaultDraftState } from "@/lib/draft-storage";
 
 const mockDraftFindUnique = vi.fn();
 const mockDraftUpsert = vi.fn();

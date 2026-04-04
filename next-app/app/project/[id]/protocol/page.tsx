@@ -13,7 +13,7 @@ import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { ProtocolProvider, useProtocol } from "@/contexts/ProtocolContext";
 import { calculatePRISMACounts } from "@/lib/criteria-matching";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
-import { buildProtocolMarkdown, getProtocolSuggestions } from "./protocolExport";
+import { buildProtocolMarkdown, getProtocolSuggestions } from "./protocol-export";
 import { ProtocolSections } from "./ProtocolSections";
 import { useFoundationRouteReady } from "@/lib/mobile/foundation-reliability";
 import { useResolvedProject } from "@/hooks/useResolvedProject";

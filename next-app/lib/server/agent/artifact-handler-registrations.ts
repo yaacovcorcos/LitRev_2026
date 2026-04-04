@@ -396,7 +396,7 @@ async function applyDraftDiff(ctx: ArtifactExecutionContext, payload: DraftDiffP
         conversationId: conversationId ?? undefined,
     });
 
-    const { createDefaultDraftState } = await import("@/lib/draftStorage");
+    const { createDefaultDraftState } = await import("@/lib/draft-storage");
     const { DRAFT_SECTIONS } = await import("@/types/draft");
     const sectionKey = DRAFT_SECTIONS.find(
         (section) => section.key === payload.section.toLowerCase() || section.label.toLowerCase() === payload.section.toLowerCase(),
@@ -649,7 +649,7 @@ export function registerArtifactHandlers({
 
     restoreFunctions.set("draft_diff", async (ctx, artifact) => {
         const payload = artifact.payload as unknown as DraftDiffPayload;
-        const { createDefaultDraftState } = await import("@/lib/draftStorage");
+        const { createDefaultDraftState } = await import("@/lib/draft-storage");
         const { DRAFT_SECTIONS } = await import("@/types/draft");
 
         const sectionKey = DRAFT_SECTIONS.find(

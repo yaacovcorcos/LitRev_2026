@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import type { DraftStateInput } from "@/lib/draftStorage";
+import type { DraftStateInput } from "@/lib/draft-storage";
 import type { FileAsset } from "@/types/files";
 import { withAuth } from "@/lib/server/auth/session";
 import { sanitizeErrorMessage } from "@/lib/server/action-utils";

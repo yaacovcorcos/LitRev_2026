@@ -398,7 +398,7 @@ Core concepts:
 ### Reuse
 - `next-app/app/project/[id]/draft/page.tsx`
   - route ownership, shell embedding, project copilot integration, local draft boot path
-- `next-app/lib/draftStorage.ts`
+- `next-app/lib/draft-storage.ts`
   - local-first durability concepts
 - `next-app/lib/citation-compiler.ts`
   - citation normalization/reference derivation logic

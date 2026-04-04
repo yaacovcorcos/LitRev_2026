@@ -4,10 +4,10 @@
  */
 import { CSSProperties } from "react";
 import { DRAFT_SECTIONS, DraftMode, DraftSectionId, DraftSectionKey, UNSECTIONED_DRAFT_ID } from "@/types/draft";
-import { DraftSectionFormat } from "@/lib/draftStorage";
+import { DraftSectionFormat } from "@/lib/draft-storage";
 import type { JSONContent } from "@tiptap/core";
 import type { Study } from "@/types/ledger";
-import { draftSectionHasMeaningfulContent } from "@/lib/draftStateContracts";
+import { draftSectionHasMeaningfulContent } from "@/lib/draft-state-contracts";
 
 export const EMPTY_IDS: string[] = [];
 

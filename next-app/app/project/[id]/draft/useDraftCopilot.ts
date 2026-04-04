@@ -3,7 +3,7 @@
  * for the Draft Studio page. Extracted from page.tsx (D-5).
  */
 import { useEffect, useRef, useState } from "react";
-import { CopilotMessage, DraftState } from "@/lib/draftStorage";
+import { CopilotMessage, DraftState } from "@/lib/draft-storage";
 import type { Editor } from "@tiptap/react";
 import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createDefaultProtocolData } from "@/types/protocol";
-import { buildProtocolMarkdown, getProtocolSuggestions } from "../protocolExport";
+import { buildProtocolMarkdown, getProtocolSuggestions } from "../protocol-export";
 
 describe("buildProtocolMarkdown", () => {
     const project = { id: "p1", name: "Test Review" };

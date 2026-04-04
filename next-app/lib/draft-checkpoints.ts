@@ -5,7 +5,7 @@ import {
   type DraftSectionFormat,
   type DraftState,
   type DraftStateInput,
-} from "@/lib/draftStorage";
+} from "@/lib/draft-storage";
 import { compileDraftCitations } from "@/lib/citation-compiler";
 import type { ManuscriptDocument } from "@/types/manuscript";
 import type { DraftSectionId } from "@/types/draft";

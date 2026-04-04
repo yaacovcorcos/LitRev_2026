@@ -36,7 +36,7 @@ import { isProtocolLiveSyncV1Enabled } from "@/lib/protocol-live-sync-feature-fl
 import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
 import type { Study } from "@/types/ledger";
 import type { ProjectMemory } from "@/types/memory";
-import type { DraftState } from "@/lib/draftStorage";
+import type { DraftState } from "@/lib/draft-storage";
 import type { NoteIndexItem } from "@/lib/server/notes";
 import type { ProjectBootMode } from "@/lib/project-entry-boot-mode";
 

@@ -6,7 +6,7 @@ import { useCallback, useMemo, useState } from "react";
 import { deleteFileAssetAction } from "@/app/actions/files";
 import { generateDraftExportAction } from "@/app/actions/draft-exports";
 import type { FileAsset } from "@/types/files";
-import type { DraftState } from "@/lib/draftStorage";
+import type { DraftState } from "@/lib/draft-storage";
 import { docHasContent, type SectionMeta } from "./draft-helpers";
 import type { Study } from "@/types/ledger";
 import { compileDraftCitations } from "@/lib/citation-compiler";

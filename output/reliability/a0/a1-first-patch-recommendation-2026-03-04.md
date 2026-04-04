@@ -13,10 +13,10 @@
   - Use route-level scroll-lock gating with a dedicated kill switch (recommended new flag), while preserving existing mobile fallback flag behavior.
 
 ## File candidates
-- /Users/yaacovcorcos/LitRev_2026/next-app/app/project/[id]/layout.tsx
-- /Users/yaacovcorcos/LitRev_2026/next-app/components/project/ProjectCopilotPanel.tsx
-- /Users/yaacovcorcos/LitRev_2026/next-app/components/project/project-copilot-panel-scroll-containment.ts
-- /Users/yaacovcorcos/LitRev_2026/next-app/app/project/[id]/project-shell.module.css
+- [layout.tsx](../../../next-app/app/project/[id]/layout.tsx)
+- [ProjectCopilotPanel.tsx](../../../next-app/components/project/ProjectCopilotPanel.tsx)
+- [project-copilot-panel-scroll-containment.ts](../../../next-app/components/project/project-copilot-panel-scroll-containment.ts)
+- [project-shell.module.css](../../../next-app/app/project/[id]/project-shell.module.css)
 
 ## Acceptance criteria for A1
 1. No dead-scroll in project shell under normal/poor network with long timelines.

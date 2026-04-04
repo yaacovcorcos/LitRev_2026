@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildDraftCheckpointSnapshot } from "@/lib/draft-checkpoints";
-import { normalizeDraftState, type DraftStateInput } from "@/lib/draftStorage";
+import { normalizeDraftState, type DraftStateInput } from "@/lib/draft-storage";
 import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
 
 const mockAssertProjectAccess = vi.fn();

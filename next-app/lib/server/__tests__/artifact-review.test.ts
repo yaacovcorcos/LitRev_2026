@@ -127,7 +127,7 @@ vi.mock("@/lib/server/drafts", () => ({
     saveDraftTrusted: mocks.saveDraftTrusted,
 }));
 
-vi.mock("@/lib/draftStorage", () => ({
+vi.mock("@/lib/draft-storage", () => ({
     createDefaultDraftState: vi.fn(() => ({
         contentBySection: {},
     })),

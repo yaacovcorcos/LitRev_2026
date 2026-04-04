@@ -1,6 +1,6 @@
 import type { JSONContent } from "@tiptap/core";
 import { buildReferencesDoc, compileDraftCitations, type CitationIssue } from "@/lib/citation-compiler";
-import type { DraftState } from "@/lib/draftStorage";
+import type { DraftState } from "@/lib/draft-storage";
 import { buildCompatContentBySection, createManuscriptDocument } from "@/lib/manuscript/schema";
 import type { Study } from "@/types/ledger";
 

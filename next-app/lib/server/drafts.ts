@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
 import { assertProjectAccess } from "@/lib/server/access";
-import { normalizeDraftState, type DraftState, type DraftStateInput } from "@/lib/draftStorage";
+import { normalizeDraftState, type DraftState, type DraftStateInput } from "@/lib/draft-storage";
 import type { Prisma } from "@prisma/client";
 import type { ScopeInput } from "@/lib/server/scope";
 

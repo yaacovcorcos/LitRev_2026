@@ -5,11 +5,11 @@ import {
   type CompiledCitations,
   type ResolvedCitationNode,
 } from "@/lib/citation-compiler";
-import { normalizeDraftState, type DraftState, type DraftStateInput } from "@/lib/draftStorage";
+import { normalizeDraftState, type DraftState, type DraftStateInput } from "@/lib/draft-storage";
 import {
   draftSectionHasMeaningfulContent,
   getVisibleFullDraftSectionIds,
-} from "@/lib/draftStateContracts";
+} from "@/lib/draft-state-contracts";
 import { UNSECTIONED_DRAFT_ID, type DraftSectionId } from "@/types/draft";
 import type { Study } from "@/types/ledger";
 import type {

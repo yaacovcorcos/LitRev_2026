@@ -21,7 +21,7 @@ import {
   saveDraftState,
   type DraftSectionFormat,
   type DraftState,
-} from "@/lib/draftStorage";
+} from "@/lib/draft-storage";
 import { useProjectData } from "@/hooks/useProjectData";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useLedger } from "@/contexts/LedgerContext";
@@ -37,7 +37,7 @@ import {
   resolveDraftMode,
   resolveFullDraftActiveSection,
   resolveSectionModeActiveSection,
-} from "@/lib/draftStateContracts";
+} from "@/lib/draft-state-contracts";
 import { useDraftExport } from "./useDraftExport";
 import { synchronizeDraftState } from "./draft-workspace-state";
 import {

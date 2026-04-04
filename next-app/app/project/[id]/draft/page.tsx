@@ -27,7 +27,7 @@ import {
   loadDraftState,
   saveDraftState,
   createDefaultDraftState,
-} from "@/lib/draftStorage";
+} from "@/lib/draft-storage";
 import { saveDraftAction } from "@/app/actions/drafts";
 import { useProjectData } from "@/hooks/useProjectData";
 import dynamic from "next/dynamic";
@@ -80,7 +80,7 @@ import {
   resolveFullDraftActiveSection,
   resolveDraftRouteProjection,
   resolveSectionModeActiveSection,
-} from "@/lib/draftStateContracts";
+} from "@/lib/draft-state-contracts";
 
 function createCitationUid(sectionId: DraftSectionId): string {
   const rand = Math.random().toString(36).slice(2, 8);

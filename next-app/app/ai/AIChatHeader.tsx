@@ -6,7 +6,7 @@ import type { ReasoningMode } from "@/types/ai";
 import type { ReasoningSupportTier } from "@/lib/ai/config";
 import styles from "./ai-view.module.css";
 
-const AiChatReasoningModeDropdown = dynamic(() =>
+const AIChatReasoningModeDropdown = dynamic(() =>
   import("@/components/chat/ChatReasoningModeDropdown").then((module) => module.ChatReasoningModeDropdown)
 );
 
@@ -15,7 +15,7 @@ type ProjectOption = {
   name: string;
 };
 
-type AiChatHeaderProps = {
+type AIChatHeaderProps = {
   mobileAiV2Enabled: boolean;
   isPhoneViewport: boolean;
   isHistoryCollapsed: boolean;
@@ -34,7 +34,7 @@ type AiChatHeaderProps = {
   onExportPdf: () => void;
 };
 
-export function AiChatHeader({
+export function AIChatHeader({
   mobileAiV2Enabled,
   isPhoneViewport,
   isHistoryCollapsed,
@@ -51,7 +51,7 @@ export function AiChatHeader({
   onReasoningModeChange,
   onExportMarkdown,
   onExportPdf,
-}: AiChatHeaderProps) {
+}: AIChatHeaderProps) {
   const [isProjectDropdownOpen, setProjectDropdownOpen] = useState(false);
   const projectDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -126,7 +126,7 @@ export function AiChatHeader({
 
       <div className={styles.headerActions}>
         {showReasoningControls ? (
-          <AiChatReasoningModeDropdown
+          <AIChatReasoningModeDropdown
             reasoningMode={reasoningMode}
             onReasoningModeChange={onReasoningModeChange}
             reasoningSupport={reasoningSupport}
@@ -144,7 +144,7 @@ export function AiChatHeader({
               </span>
               <span className="material-icons-round">expand_more</span>
             </button>
-          </AiChatReasoningModeDropdown>
+          </AIChatReasoningModeDropdown>
         ) : null}
 
         <button

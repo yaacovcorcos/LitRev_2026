@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StudyDuplicateCluster } from "@/lib/server/search/dedup";
-import { createDefaultDraftState, normalizeDraftState } from "@/lib/draftStorage";
+import { createDefaultDraftState, normalizeDraftState } from "@/lib/draft-storage";
 
 const mockStudyFindFirst = vi.fn();
 const mockStudyFindMany = vi.fn();

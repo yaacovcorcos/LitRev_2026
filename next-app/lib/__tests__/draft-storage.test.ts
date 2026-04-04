@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import { createDefaultDraftState, loadDraftState, normalizeDraftState } from "@/lib/draftStorage";
+import { createDefaultDraftState, loadDraftState, normalizeDraftState } from "@/lib/draft-storage";
 import { DEFAULT_SECTION_ORDER, UNSECTIONED_DRAFT_ID } from "@/types/draft";
 
 describe("createDefaultDraftState", () => {
