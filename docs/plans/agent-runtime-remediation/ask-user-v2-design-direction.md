@@ -40,6 +40,7 @@ Preserve these invariants:
 5. Freeform blocked rewrite remains a truthful supersede/new-turn path.
 6. Runtime policy, not prompt-only discipline, owns suppression and fallback.
 7. Cross-surface parity remains mandatory for `/ai`, main conversation, and side-panel copilot.
+8. The shipped single-question baseline already carries additive `questionId` support; V2 should build on that instead of reintroducing question identity as a UI-only heuristic later.
 
 ## Why V2 Is Needed
 

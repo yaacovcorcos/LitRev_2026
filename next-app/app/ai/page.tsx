@@ -1337,6 +1337,7 @@ export default function AIView() {
         ? {
             sourceRunId: pendingUserInput.sourceRunId,
             callId: pendingUserInput.callId,
+            questionId: pendingUserInput.questionId,
             resolution: "cancelled" as const,
             answerText: msgText,
             answeredAt: nowIso,
@@ -1858,6 +1859,9 @@ export default function AIView() {
         userInputResolution: {
           sourceRunId,
           callId,
+          questionId: requestItem?.type === "user_input_request"
+            ? requestItem.questionId
+            : undefined,
           resolution,
           answerText: answer,
           answeredAt: new Date().toISOString(),

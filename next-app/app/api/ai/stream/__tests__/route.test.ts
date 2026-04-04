@@ -92,6 +92,7 @@ describe("/api/ai/stream route", () => {
       request: {
         sourceRunId: "run-paused",
         callId: "ask-1",
+        questionId: "ask-1:question-1",
         question: "Which direction should I take?",
         questionType: "single_choice",
         recommendedAnswer: "Use the broader evidence-first pass",
@@ -121,6 +122,7 @@ describe("/api/ai/stream route", () => {
         type: "user_input_required",
         userInputRequest: {
           callId: "ask-1",
+          questionId: "ask-1:question-1",
           question: "Which study should I inspect first?",
           questionType: "single_choice",
         },
@@ -380,12 +382,14 @@ describe("/api/ai/stream route", () => {
     ]);
     expect(chunks[0]?.userInputResolution).toMatchObject({
       callId: "ask-1",
+      questionId: "ask-1:question-1",
       sourceRunId: "run-paused",
     });
     expect(mocks.persistUserInputResolution).toHaveBeenCalledWith({
       resolution: expect.objectContaining({
         sourceRunId: "run-paused",
         callId: "ask-1",
+        questionId: "ask-1:question-1",
         resolution: "answered",
       }),
     });
@@ -413,6 +417,67 @@ describe("/api/ai/stream route", () => {
         type: "ask_user_answer_resume_started",
       }),
     );
+  });
+
+  it("backfills questionId for older blocked clarification payloads before persisting the resolution", async () => {
+    mocks.resolvePendingUserInputSource.mockResolvedValueOnce({
+      sourceRunId: "run-paused",
+      conversationId: "conv-1",
+      requiredSequence: 4,
+      request: {
+        sourceRunId: "run-paused",
+        callId: "ask-legacy",
+        question: "Which direction should I take?",
+        questionType: "single_choice",
+        recommendedAnswer: "Use the broader evidence-first pass",
+        decisionBoundaryKey: "scoping-direction",
+      },
+    });
+    mocks.streamChatWithArtifacts.mockImplementation(async function* () {
+      yield { type: "run_start", runId: "run-continued", conversationId: "conv-1" };
+      yield { type: "run_end", runId: "run-continued", conversationId: "conv-1", runStatus: "completed", stopReason: null };
+    });
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          continueFromRunId: "run-paused",
+          agentMode: "general",
+          page: "ai",
+          persistUserMessage: false,
+          userInputResolution: {
+            sourceRunId: "run-paused",
+            callId: "ask-legacy",
+            resolution: "answered",
+            answerText: "Broaden the search first.",
+            answeredAt: "2026-03-24T10:00:00.000Z",
+          },
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    const chunks = body
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { type: string; userInputResolution?: { callId: string; questionId?: string } });
+
+    expect(chunks[0]?.userInputResolution).toMatchObject({
+      callId: "ask-legacy",
+      questionId: "ask-legacy:question-1",
+    });
+    expect(mocks.persistUserInputResolution).toHaveBeenCalledWith({
+      resolution: expect.objectContaining({
+        callId: "ask-legacy",
+        questionId: "ask-legacy:question-1",
+      }),
+    });
   });
 
   it("treats blocked-card cancel as a terminal structured dismissal", async () => {

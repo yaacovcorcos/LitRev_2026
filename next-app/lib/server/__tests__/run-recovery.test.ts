@@ -244,6 +244,7 @@ describe("run recovery", () => {
           type: "user_input_required",
           userInputRequest: {
             callId: "ask-1",
+            questionId: "ask-1:question-1",
             question: "Which study should I inspect first?",
             questionType: "single_choice",
           },
@@ -279,6 +280,7 @@ describe("run recovery", () => {
         chunk: {
           type: "error",
           error: "The active run is still holding this conversation. Choose how to continue.",
+          errorStatus: undefined,
           errorMeta: {
             kind: "run_conflict",
             code: "ACTIVE_RUN_EXISTS",
@@ -290,6 +292,7 @@ describe("run recovery", () => {
             recoveryRecommendation: "stop_and_retry",
           },
           errorCode: "ACTIVE_RUN_EXISTS",
+          errorHeaders: undefined,
           replay: true,
           conversationId: "conv-1",
         },

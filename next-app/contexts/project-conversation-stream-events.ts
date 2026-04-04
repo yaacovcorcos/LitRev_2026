@@ -325,6 +325,7 @@ function resolveUserInputMessage(
       ...message,
       userInputRequest: {
         ...message.userInputRequest,
+        questionId: payload.resolution.questionId ?? message.userInputRequest.questionId,
         resolution: payload.resolution.resolution,
         answered: !isCancelled,
         answer: payload.resolution.answerText ?? message.userInputRequest.answer,

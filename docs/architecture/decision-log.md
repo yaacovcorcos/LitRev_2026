@@ -16,6 +16,13 @@ Each entry should stay short and include:
 
 ## Entries
 
+### 2026-04-05 - `ask_user` keeps request identity on `sourceRunId + callId`, while carrying additive `questionId` for question-level structure
+
+- Decision: Keep the current canonical blocked-request identity on `sourceRunId + callId`, but add stable `questionId` support to the shipped single-question `ask_user` request/resolution flow as additive structure rather than replacing request identity.
+- Why it was made: The current runtime, replay, and continuation model already depends on request-bound identity. Adding `questionId` now creates a no-regret compatibility seam for richer future decision objects, replay, analytics, and multi-question support without destabilizing the proven pause/resume contract.
+- Constraints or assumptions: The current product still ships one-question requests, so `questionId` is not a separate request locator and must not be used to replace `sourceRunId + callId` in resume or stale-answer checks. Older persisted events may lack `questionId`, so runtime recovery and continuation paths must backfill it safely.
+- What would invalidate it: A future clarification/decision-system redesign that replaces the current request-bound resume contract with a stronger persisted identity model while preserving at least the same recovery correctness.
+
 ### 2026-04-02 - Security policy explicitly models LitRev as multi-tenant and defines report-quality gates
 
 - Decision: Keep `SECURITY.md` and `docs/runbooks/security-baseline.md` explicit about LitRev's multi-tenant trust model, non-boundary signals, and minimum evidence needed for security triage.

@@ -526,6 +526,7 @@ function ProjectConversationRuntime({
                 userInputResolution: {
                     sourceRunId,
                     callId,
+                    questionId: existing.userInputRequest?.questionId,
                     resolution,
                     answerText: answer,
                     answeredAt: new Date().toISOString(),

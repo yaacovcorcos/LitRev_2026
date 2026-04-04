@@ -1,5 +1,6 @@
 import "server-only";
 
+import { resolveUserInputQuestionId } from "@/lib/ai/user-input";
 import { prisma } from "@/lib/server/prisma";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import type {
@@ -474,6 +475,7 @@ export async function resolvePendingUserInputSource(params: {
         conversationId: run.conversationId ?? null,
         request: {
             ...request,
+            questionId: resolveUserInputQuestionId(request.questionId, request.callId),
             sourceRunId: run.id,
         },
         requiredSequence: requiredEvent.sequence,
@@ -498,10 +500,15 @@ export function buildUserInputResolutionContinuationContext(params: {
     resolution: UserInputResolution;
     controllerState: ClarificationControllerState;
 }): string {
+    const questionId = resolveUserInputQuestionId(
+        params.resolution.questionId ?? params.request.questionId,
+        params.resolution.callId,
+    );
     return [
         "seed_kind=user_input_resolution",
         `source_run_id=${params.resolution.sourceRunId}`,
         `user_input_call_id=${params.resolution.callId}`,
+        `user_input_question_id=${questionId}`,
         `resolution=${params.resolution.resolution}`,
         `clarification_count=${params.controllerState.totalClarificationCount}`,
         `has_durable_progress_since_last_resolution=${params.controllerState.hasDurableProgressSinceLastResolution ? "true" : "false"}`,
