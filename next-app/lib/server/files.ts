@@ -122,7 +122,7 @@ async function uploadBytesToSupabaseStorage(
   path: string,
   bytes: Uint8Array | Buffer,
   mimeType: string
-): Promise<{ storagePath: string; publicUrl: string }> {
+): Promise<{ storagePath: string }> {
   const apiKey = SUPABASE_SERVICE_ROLE_KEY;
   if (!SUPABASE_URL || !apiKey) {
     throw new Error("Missing Supabase configuration (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY).");
@@ -148,14 +148,12 @@ async function uploadBytesToSupabaseStorage(
     throw new Error(`Upload failed (${response.status}): ${text}`);
   }
 
-  const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${encodedPath}`;
   return {
     storagePath: `${STORAGE_BUCKET}/${path}`,
-    publicUrl,
   };
 }
 
-async function uploadToSupabaseStorage(path: string, file: File): Promise<{ storagePath: string; publicUrl: string }> {
+async function uploadToSupabaseStorage(path: string, file: File): Promise<{ storagePath: string }> {
   const body = new Uint8Array(await file.arrayBuffer());
   return uploadBytesToSupabaseStorage(path, body, file.type || "application/octet-stream");
 }
@@ -204,7 +202,7 @@ export async function uploadStudyFile(
   const ext = file.name.toLowerCase().slice(file.name.lastIndexOf(".") + 1);
   const safeName = sanitizeFilename(file.name);
   const objectPath = `projects/${projectId}/studies/${studyId}/${randomUUID()}-${safeName}`;
-  const { storagePath, publicUrl } = await uploadToSupabaseStorage(objectPath, file);
+  const { storagePath } = await uploadToSupabaseStorage(objectPath, file);
 
   const created = await prisma.fileAsset.create({
     data: {
@@ -217,7 +215,6 @@ export async function uploadStudyFile(
       mimeType: file.type || "application/octet-stream",
       size: file.size,
       storagePath,
-      publicUrl,
     },
   });
 
@@ -233,7 +230,7 @@ export async function uploadGeneratedProjectFile(
   const safeName = sanitizeFilename(input.filename);
   const safeDirectory = input.directory.trim().replace(/^\/+|\/+$/g, "") || "generated";
   const objectPath = `projects/${projectId}/${safeDirectory}/${randomUUID()}-${safeName}`;
-  const { storagePath, publicUrl } = await uploadBytesToSupabaseStorage(
+  const { storagePath } = await uploadBytesToSupabaseStorage(
     objectPath,
     input.bytes,
     input.mimeType || "application/octet-stream"
@@ -249,7 +246,6 @@ export async function uploadGeneratedProjectFile(
       mimeType: input.mimeType || "application/octet-stream",
       size: input.bytes.byteLength,
       storagePath,
-      publicUrl,
       version: input.version ?? undefined,
       metadata:
         input.metadata === null
@@ -311,7 +307,7 @@ export async function uploadChatAttachment(
 
   const safeName = sanitizeFilename(file.name);
   const objectPath = `projects/${projectId}/conversations/${randomUUID()}-${safeName}`;
-  const { storagePath, publicUrl } = await uploadToSupabaseStorage(objectPath, file);
+  const { storagePath } = await uploadToSupabaseStorage(objectPath, file);
 
   // Extract text from the uploaded PDF
   const { extractTextFromPdf } = await import("./pdf-extraction");
@@ -340,7 +336,6 @@ export async function uploadChatAttachment(
       mimeType: file.type || "application/pdf",
       size: file.size,
       storagePath,
-      publicUrl,
       metadata: {
         extractionStatus: extraction.status,
         extractionReason: extraction.status === "failed" ? extraction.reason : undefined,
@@ -437,7 +432,7 @@ export async function importStudyWithPdf(
   const objectPath = `projects/${projectId}/studies/${studyId}/${randomUUID()}-${safeName}`;
 
   // 1. Upload blob first (can't be inside a DB transaction)
-  const { storagePath, publicUrl } = await uploadToSupabaseStorage(objectPath, file);
+  const { storagePath } = await uploadToSupabaseStorage(objectPath, file);
 
   // 2. Create Study + FileAsset in a single DB transaction
   try {
@@ -475,7 +470,6 @@ export async function importStudyWithPdf(
           mimeType: file.type || "application/octet-stream",
           size: file.size,
           storagePath,
-          publicUrl,
         },
       });
       return [studyRecord, fileRecord] as const;

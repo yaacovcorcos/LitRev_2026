@@ -25,11 +25,30 @@ export type DevQuickLoginIdentity = {
   workspaceName: string;
 };
 
+type RequestOriginLike = {
+  headers: Pick<Headers, "get">;
+  nextUrl: URL;
+};
+
 export function isDevQuickLoginAllowed(env: EnvLike = process.env): boolean {
   // Always allow in local/dev runtime for fast iteration.
   if (env.NODE_ENV !== "production") return true;
   // In production runtime, allow only on preview deployments with explicit flag.
   return env.VERCEL_ENV === "preview" && env.ENABLE_DEV_QUICK_LOGIN === "1";
+}
+
+function getRequestOrigin(request: RequestOriginLike): string {
+  const proto = request.headers.get("x-forwarded-proto") || request.nextUrl.protocol.replace(":", "");
+  const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || request.nextUrl.host;
+  return `${proto}://${host}`;
+}
+
+export function hasTrustedDevQuickLoginOrigin(request: RequestOriginLike): boolean {
+  const origin = request.headers.get("origin");
+  if (!origin) {
+    return true;
+  }
+  return origin === getRequestOrigin(request);
 }
 
 export function normalizeCallbackUrl(input: string | null | undefined): string {

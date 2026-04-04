@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   isDevQuickLoginAllowed: vi.fn(),
+  hasTrustedDevQuickLoginOrigin: vi.fn(),
   ensureDevQuickLoginIdentity: vi.fn(),
   buildFixtureProjectDescription: vi.fn(),
   createDevFixtureProjectId: vi.fn(),
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/server/auth/dev-quick-login", () => ({
   isDevQuickLoginAllowed: (...args: unknown[]) => mocks.isDevQuickLoginAllowed(...args),
+  hasTrustedDevQuickLoginOrigin: (...args: unknown[]) => mocks.hasTrustedDevQuickLoginOrigin(...args),
   ensureDevQuickLoginIdentity: (...args: unknown[]) => mocks.ensureDevQuickLoginIdentity(...args),
   buildFixtureProjectDescription: (...args: unknown[]) => mocks.buildFixtureProjectDescription(...args),
   createDevFixtureProjectId: (...args: unknown[]) => mocks.createDevFixtureProjectId(...args),
@@ -24,11 +26,13 @@ const { POST } = await import("@/app/api/dev/test-project/route");
 describe("POST /api/dev/test-project", () => {
   beforeEach(() => {
     mocks.isDevQuickLoginAllowed.mockReset();
+    mocks.hasTrustedDevQuickLoginOrigin.mockReset();
     mocks.ensureDevQuickLoginIdentity.mockReset();
     mocks.buildFixtureProjectDescription.mockReset();
     mocks.createDevFixtureProjectId.mockReset();
     mocks.createProject.mockReset();
     mocks.isDevQuickLoginAllowed.mockReturnValue(true);
+    mocks.hasTrustedDevQuickLoginOrigin.mockReturnValue(true);
     mocks.ensureDevQuickLoginIdentity.mockResolvedValue({
       userId: "seed-user",
       workspaceId: "seed-workspace",
@@ -46,6 +50,18 @@ describe("POST /api/dev/test-project", () => {
     }) as never);
 
     expect(response.status).toBe(404);
+  });
+
+  it("returns 403 for an untrusted preview origin", async () => {
+    mocks.hasTrustedDevQuickLoginOrigin.mockReturnValue(false);
+
+    const response = await POST(new Request("http://localhost/api/dev/test-project", {
+      method: "POST",
+    }) as never);
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "Invalid origin" });
+    expect(mocks.ensureDevQuickLoginIdentity).not.toHaveBeenCalled();
   });
 
   it("creates a seeded fixture project", async () => {

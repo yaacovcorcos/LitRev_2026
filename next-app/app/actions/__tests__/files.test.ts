@@ -222,7 +222,6 @@ describe("files actions", () => {
         filename: "study.pdf",
         size: 123,
         mimeType: "application/pdf",
-        publicUrl: "https://example.test/study.pdf",
       },
       extraction: {
         status: "failed",
@@ -245,7 +244,6 @@ describe("files actions", () => {
           reason: "pdf_parse_failed",
           message: "LitRev uploaded the PDF, but could not read usable text from it. Remove it or attach a different PDF.",
         },
-        publicUrl: "https://example.test/study.pdf",
       },
     });
   });
@@ -257,7 +255,6 @@ describe("files actions", () => {
         filename: "study.pdf",
         size: 123,
         mimeType: "application/pdf",
-        publicUrl: "https://example.test/study.pdf",
       },
       extraction: {
         status: "ready",
@@ -278,7 +275,6 @@ describe("files actions", () => {
           status: "ready",
           text: "Extracted PDF text",
         },
-        publicUrl: "https://example.test/study.pdf",
       },
     });
   });

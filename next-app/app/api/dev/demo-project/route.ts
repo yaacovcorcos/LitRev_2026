@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { openOrCreateDemoProject } from "@/lib/server/demo-project";
 import {
   ensureDevQuickLoginIdentity,
+  hasTrustedDevQuickLoginOrigin,
   isDevQuickLoginAllowed,
 } from "@/lib/server/auth/dev-quick-login";
 
 export async function POST(request: NextRequest) {
   if (!isDevQuickLoginAllowed()) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  if (!hasTrustedDevQuickLoginOrigin(request)) {
+    return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
   }
 
   const body = (await request.json().catch(() => ({}))) as {

@@ -8,18 +8,13 @@ import {
 } from "@/lib/server/auth/auth-rate-limit";
 import {
   ensureDevQuickLoginIdentity,
+  hasTrustedDevQuickLoginOrigin,
   isDevQuickLoginAllowed,
   normalizeCallbackUrl,
 } from "@/lib/server/auth/dev-quick-login";
 import { getBetterAuthSecret } from "@/lib/server/auth/auth-secret";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
-
-function getRequestOrigin(request: NextRequest): string {
-  const proto = request.headers.get("x-forwarded-proto") || request.nextUrl.protocol.replace(":", "");
-  const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || request.nextUrl.host;
-  return `${proto}://${host}`;
-}
 
 function isHttpsRequest(request: NextRequest): boolean {
   const forwardedProto = request.headers.get("x-forwarded-proto");
@@ -38,8 +33,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const origin = request.headers.get("origin");
-  if (origin && origin !== getRequestOrigin(request)) {
+  if (!hasTrustedDevQuickLoginOrigin(request)) {
     return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
   }
 

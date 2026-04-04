@@ -213,9 +213,9 @@ export function StudyFilesPanel({
                     </span>
                   </button>
                 )}
-                {file.publicUrl && (
+                {(file.downloadUrl || file.publicUrl) && (
                   <a
-                    href={file.publicUrl}
+                    href={file.downloadUrl ?? file.publicUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={styles.actionBtn}

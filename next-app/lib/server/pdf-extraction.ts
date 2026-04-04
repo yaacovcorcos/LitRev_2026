@@ -209,11 +209,17 @@ export function extractWithRegex(text: string): RegexExtractionResult {
  * Helper: parse JSON from AI response (handles markdown code fences)
  */
 function parseAIJson(content: string): Record<string, unknown> | null {
-    const jsonStr = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
+    const trimmed = content.trim();
+    const jsonStr = trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
     try {
         return JSON.parse(jsonStr);
     } catch {
-        logServerError("pdf-extraction", "failed to parse AI response as JSON", { content });
+        logServerError("pdf-extraction", "failed to parse AI response as JSON", {
+            responseLength: content.length,
+            trimmedLength: trimmed.length,
+            jsonLength: jsonStr.length,
+            wrappedInCodeFence: /^```(?:json)?/i.test(trimmed),
+        });
         return null;
     }
 }

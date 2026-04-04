@@ -27,8 +27,6 @@ type ResolvedFileAssetAccess =
       mode: "canonical";
       bucket: string;
       objectPath: string;
-      publicUrl?: string;
-      downloadUrl?: string;
       canDeleteBlob: true;
     }
   | {
@@ -57,6 +55,10 @@ function encodeStoragePath(path: string): string {
     .join("/");
 }
 
+function encodeRouteSegment(value: string): string {
+  return encodeURIComponent(value);
+}
+
 function parseStoragePath(storagePath: string): ParsedStoragePath | null {
   const trimmed = storagePath.trim().replace(/^\/+|\/+$/g, "");
   if (!trimmed) return null;
@@ -73,12 +75,6 @@ function parseStoragePath(storagePath: string): ParsedStoragePath | null {
     objectPath: objectSegments.join("/"),
     objectSegments,
   };
-}
-
-function derivePublicStorageUrl(bucket: string, objectPath: string): string | undefined {
-  const supabaseUrl = getSupabaseUrl();
-  if (!supabaseUrl) return undefined;
-  return `${supabaseUrl}/storage/v1/object/public/${bucket}/${encodeStoragePath(objectPath)}`;
 }
 
 function normalizePublicUrl(value: string | null | undefined): string | undefined {
@@ -161,13 +157,10 @@ function maybeResolveFileAssetAccess(
   if (!parsed) return null;
 
   if (isCanonicalStoragePathForRecord(record, parsed)) {
-    const publicUrl = derivePublicStorageUrl(parsed.bucket, parsed.objectPath);
     return {
       mode: "canonical",
       bucket: parsed.bucket,
       objectPath: parsed.objectPath,
-      publicUrl,
-      downloadUrl: publicUrl,
       canDeleteBlob: true,
     };
   }
@@ -196,6 +189,10 @@ function requireValidatedFileAssetAccess(
   return access;
 }
 
+export function buildCanonicalFileAssetDownloadUrl(projectId: string, fileId: string): string {
+  return `/api/projects/${encodeRouteSegment(projectId)}/files/${encodeRouteSegment(fileId)}`;
+}
+
 export function getClientFileAssetUrls(record: FileAssetStorageRecord): {
   publicUrl?: string;
   downloadUrl?: string;
@@ -205,16 +202,26 @@ export function getClientFileAssetUrls(record: FileAssetStorageRecord): {
     return {};
   }
 
+  if (access.mode === "canonical") {
+    if (!record.id) {
+      return {};
+    }
+
+    return {
+      downloadUrl: buildCanonicalFileAssetDownloadUrl(record.projectId, record.id),
+    };
+  }
+
   return {
     publicUrl: access.publicUrl,
     downloadUrl: access.downloadUrl,
   };
 }
 
-export async function fetchFileAssetBytes(
+export async function fetchFileAssetResponse(
   record: FileAssetStorageRecord,
   expectation?: FileAssetStorageExpectation,
-): Promise<Buffer> {
+): Promise<Response> {
   const access = requireValidatedFileAssetAccess(record, expectation);
 
   let response: Response;
@@ -246,6 +253,14 @@ export async function fetchFileAssetBytes(
     throw new Error(`Failed to fetch file: ${response.status} ${response.statusText}`);
   }
 
+  return response;
+}
+
+export async function fetchFileAssetBytes(
+  record: FileAssetStorageRecord,
+  expectation?: FileAssetStorageExpectation,
+): Promise<Buffer> {
+  const response = await fetchFileAssetResponse(record, expectation);
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
 }

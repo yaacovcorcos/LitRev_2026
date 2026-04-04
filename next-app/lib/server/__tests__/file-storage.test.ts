@@ -24,8 +24,7 @@ describe("file-storage", () => {
         publicUrl: "https://malicious.example.com/not-used.pdf",
       }),
     ).toEqual({
-      publicUrl: "https://supabase.example.com/storage/v1/object/public/study-assets/projects/proj-1/studies/study-1/paper.pdf",
-      downloadUrl: "https://supabase.example.com/storage/v1/object/public/study-assets/projects/proj-1/studies/study-1/paper.pdf",
+      downloadUrl: "/api/projects/proj-1/files/file-1",
     });
   });
 
