@@ -5,8 +5,8 @@ Hot-spot chat and copilot files should not grow new `react-hooks/exhaustive-deps
 The completed Phase 2 hot-spot contract keeps this strict in:
 - `/ai`
 - copilot components
-- `ProjectCopilotContext`
-- `useCopilotConversations`
-- `useCopilotStreamActions`
+- `ProjectConversationContext`
+- `useProjectConversationManager`
+- `useProjectConversationStreamActions`
 
 If a dependency list is hard to express cleanly, refactor the ownership boundary instead of suppressing the rule.

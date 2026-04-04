@@ -1,11 +1,11 @@
 "use client";
 
 import { AppShell } from "@/components/AppShell";
-import { CopilotInputCoreClient } from "@/components/copilot/CopilotInputCoreClient";
-import { ComposerActiveProgressBar } from "@/components/copilot/ComposerActiveProgressBar";
-import { ComposerPendingApprovalBar } from "@/components/copilot/ComposerPendingApprovalBar";
-import { ComposerQueuedFollowUpBar } from "@/components/copilot/ComposerQueuedFollowUpBar";
-import { usePendingApprovalBarState } from "@/components/copilot/usePendingApprovalBarState";
+import { ChatComposerCoreClient } from "@/components/chat/ChatComposerCoreClient";
+import { ChatComposerActiveProgressBar } from "@/components/chat/ChatComposerActiveProgressBar";
+import { ChatComposerPendingApprovalBar } from "@/components/chat/ChatComposerPendingApprovalBar";
+import { ChatComposerQueuedFollowUpBar } from "@/components/chat/ChatComposerQueuedFollowUpBar";
+import { useChatPendingApprovalBarState } from "@/components/chat/useChatPendingApprovalBarState";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useIdleTask } from "@/hooks/useIdleTask";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -95,8 +95,8 @@ import { useRouter } from "next/navigation";
 import type { QueuedFollowUp } from "@/types/queued-followup";
 import styles from "./ai-view.module.css";
 
-const AiTimelineRenderer = dynamic(() =>
-  import("@/components/copilot/TimelineRenderer").then((module) => module.TimelineRenderer)
+const AiChatTimeline = dynamic(() =>
+  import("@/components/chat/ChatTimeline").then((module) => module.ChatTimeline)
 );
 const AiHistorySidebarContent = dynamic(() =>
   import("./AiHistorySidebarContent").then((module) => module.AiHistorySidebarContent)
@@ -2591,7 +2591,7 @@ export default function AIView() {
     });
   }, [activeTimeline, activeConversation]);
 
-  const pendingApprovalBar = usePendingApprovalBarState({
+  const pendingApprovalBar = useChatPendingApprovalBarState({
     timeline: activeTimeline,
     conversationId: activeConversationId,
     isLoading: isTyping,
@@ -2691,7 +2691,7 @@ export default function AIView() {
           />
 
           <div className={styles.chatContent}>
-            <AiTimelineRenderer
+            <AiChatTimeline
               variant="page"
               projectId={selectedProjectId ?? undefined}
               items={activeTimeline}
@@ -2727,15 +2727,15 @@ export default function AIView() {
 
             <div className={styles.chatInputContainer}>
               <div className={styles.composerStackLane} data-composer-stack-lane="true">
-                <ComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
-                <ComposerQueuedFollowUpBar
+                <ChatComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
+                <ChatComposerQueuedFollowUpBar
                   queuedFollowUp={queuedFollowUp}
                   stackPosition={queuedStackPosition}
                   onEdit={handleEditQueuedFollowUp}
                   onRemove={handleRemoveQueuedFollowUp}
                 />
                 {pendingApprovalBar.showBar ? (
-                  <ComposerPendingApprovalBar
+                  <ChatComposerPendingApprovalBar
                     pendingCount={pendingApprovalBar.pendingCount}
                     state={pendingApprovalBar.state}
                     progress={pendingApprovalBar.progress}
@@ -2745,7 +2745,7 @@ export default function AIView() {
                     stackPosition={approvalStackPosition}
                   />
                 ) : null}
-                <CopilotInputCoreClient
+                <ChatComposerCoreClient
                   page="ai"
                   inputPlaceholder="Ask anything about your research..."
                   prefillCommand={prefillCommand}

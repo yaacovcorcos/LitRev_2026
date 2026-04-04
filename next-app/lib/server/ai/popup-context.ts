@@ -8,7 +8,7 @@ import {
     buildLocationContext,
     buildStudyContext,
     sanitizeContext,
-} from "@/lib/ai/prompts/copilot-prompts";
+} from "@/lib/ai/prompts/assistant-prompts";
 import { computeLedgerCounts } from "@/lib/server/ledger-utils";
 import type { PopupChatContext } from "@/types/popup-chat";
 import type { ProtocolData } from "@/types/protocol";

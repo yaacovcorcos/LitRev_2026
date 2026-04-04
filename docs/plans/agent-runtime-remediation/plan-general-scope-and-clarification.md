@@ -28,7 +28,7 @@ Reduce the default action surface of `general` mode, remove misleading global de
 - `next-app/lib/agent/router.ts`
 - `next-app/lib/agent/feature-flags.ts`
 - `next-app/lib/server/ai/tools/base.ts`
-- `next-app/lib/ai/prompts/copilot-prompts.ts`
+- `next-app/lib/ai/prompts/assistant-prompts.ts`
 - `next-app/lib/server/ai/ai-service.ts`
 - tool-filtering and prompt-behavior tests
 
@@ -159,7 +159,7 @@ Define the rule clearly in prompts and runtime docs:
 
 Prompt updates:
 
-- tighten base prompt wording in `copilot-prompts.ts`
+- tighten base prompt wording in `assistant-prompts.ts`
 - keep `<choices>` support in `ai-service.ts`, but mark it explicitly optional and non-blocking
 
 ### 5. Tests and guards

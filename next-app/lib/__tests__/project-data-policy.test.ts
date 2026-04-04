@@ -18,7 +18,7 @@ const EXPECTED_RESOURCES: CachePolicyResource[] = [
   "memoryDiagnosticsTabs",
   "aiConversationList",
   "aiConversationTimeline",
-  "projectCopilotConversationState",
+  "projectConversationState",
   "popupTranscript",
 ];
 

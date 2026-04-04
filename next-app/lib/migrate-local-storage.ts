@@ -5,7 +5,7 @@ import { hasProtocolData, loadProtocolData } from "@/lib/protocol-storage";
 import { createProjectAction, getProjectAction } from "@/app/actions/projects";
 import { listStudiesAction, replaceStudiesAction } from "@/app/actions/ledger";
 import { getDraftAction, saveDraftAction } from "@/app/actions/drafts";
-import { getProjectCopilotAction, saveProjectCopilotAction } from "@/app/actions/projectCopilot";
+import { getProjectConversationAction, saveProjectConversationAction } from "@/app/actions/project-conversation";
 import { getProtocolAction, saveProtocolAction } from "@/app/actions/protocols";
 import type { Project } from "@/types/project";
 
@@ -13,7 +13,8 @@ const MIGRATION_KEY = "litrev_migration_v5";
 const MIGRATION_STATUS_KEY = "litrev_migration_status_v1";
 const PROJECTS_KEY = "litrev_projects_v1";
 const DRAFT_KEY_PREFIX = "litrev_draft_v1";
-const PROJECT_COPILOT_PREFIX = "litrev_project_copilot_v1";
+const PROJECT_CONVERSATION_PREFIX = "litrev_project_conversation_v1";
+const LEGACY_PROJECT_COPILOT_PREFIX = "litrev_project_copilot_v1";
 
 function isBrowser() {
   return typeof window !== "undefined";
@@ -25,7 +26,7 @@ type MigrationResult = {
   protocols: number;
   studies: number;
   drafts: number;
-  projectCopilots: number;
+  projectConversations: number;
   status: MigrationStatus;
   error?: string;
 };
@@ -43,7 +44,7 @@ const EMPTY_COUNTS = {
   protocols: 0,
   studies: 0,
   drafts: 0,
-  projectCopilots: 0,
+  projectConversations: 0,
 } as const;
 
 function emptyResult(status: MigrationStatus, error?: string): MigrationResult {
@@ -139,7 +140,7 @@ export async function migrateLocalStorageToBackend(
     let migratedProtocols = 0;
     let migratedStudies = 0;
     let migratedDrafts = 0;
-    let migratedProjectCopilots = 0;
+    let migratedProjectConversations = 0;
     let hadError = false;
     let lastError: string | undefined;
 
@@ -211,17 +212,20 @@ export async function migrateLocalStorageToBackend(
       }
 
       try {
-        const copilotKey = `${PROJECT_COPILOT_PREFIX}:${project.id}`;
-        const copilotRaw = window.localStorage.getItem(copilotKey);
-        if (!copilotRaw) continue;
-        const copilotResult = await getProjectCopilotAction(project.id);
-        if (!copilotResult.success || !copilotResult.data) {
-          const parsed = JSON.parse(copilotRaw);
-          const saveCopilotResult = await saveProjectCopilotAction(project.id, parsed);
-          if (saveCopilotResult.success) migratedProjectCopilots += 1;
+        const projectConversationKey = `${PROJECT_CONVERSATION_PREFIX}:${project.id}`;
+        const legacyProjectCopilotKey = `${LEGACY_PROJECT_COPILOT_PREFIX}:${project.id}`;
+        const projectConversationRaw =
+          window.localStorage.getItem(projectConversationKey)
+          ?? window.localStorage.getItem(legacyProjectCopilotKey);
+        if (!projectConversationRaw) continue;
+        const projectConversationResult = await getProjectConversationAction(project.id);
+        if (!projectConversationResult.success || !projectConversationResult.data) {
+          const parsed = JSON.parse(projectConversationRaw);
+          const saveProjectConversationResult = await saveProjectConversationAction(project.id, parsed);
+          if (saveProjectConversationResult.success) migratedProjectConversations += 1;
         }
       } catch (err) {
-        console.error("Failed to migrate project copilot", project.id, err);
+        console.error("Failed to migrate project conversation", project.id, err);
         hadError = true;
       }
     }
@@ -235,12 +239,12 @@ export async function migrateLocalStorageToBackend(
         migratedProtocols > 0 ||
         migratedStudies > 0 ||
         migratedDrafts > 0 ||
-        migratedProjectCopilots > 0,
+        migratedProjectConversations > 0,
       projects: migratedProjects,
       protocols: migratedProtocols,
       studies: migratedStudies,
       drafts: migratedDrafts,
-      projectCopilots: migratedProjectCopilots,
+      projectConversations: migratedProjectConversations,
       status,
       error: lastError,
     };

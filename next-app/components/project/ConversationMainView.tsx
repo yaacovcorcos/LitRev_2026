@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { useProjectConversation } from "@/contexts/ProjectConversationContext";
 import type { CopilotPage } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type { TimelineItem } from "@/types/timeline";
@@ -10,16 +10,16 @@ import { useProjectState } from "@/hooks/useProjectState";
 import { getSuggestions } from "@/lib/agent/suggestions";
 import { createNoteAction } from "@/app/actions/notes";
 import { selectActiveProgress, normalizeTimelineProgressItems } from "@/lib/ai/active-progress";
-import { TimelineRenderer } from "@/components/copilot/TimelineRenderer";
-import { CopilotInput } from "@/components/copilot/CopilotInput";
-import { ComposerActiveProgressBar } from "@/components/copilot/ComposerActiveProgressBar";
-import { ComposerPendingApprovalBar } from "@/components/copilot/ComposerPendingApprovalBar";
-import { ComposerQueuedFollowUpBar } from "@/components/copilot/ComposerQueuedFollowUpBar";
-import { usePendingApprovalBarState } from "@/components/copilot/usePendingApprovalBarState";
-import { AutonomySettings } from "@/components/copilot/AutonomySettings";
+import { ChatTimeline } from "@/components/chat/ChatTimeline";
+import { ProjectConversationComposer } from "@/components/project/ProjectConversationComposer";
+import { ChatComposerActiveProgressBar } from "@/components/chat/ChatComposerActiveProgressBar";
+import { ChatComposerPendingApprovalBar } from "@/components/chat/ChatComposerPendingApprovalBar";
+import { ChatComposerQueuedFollowUpBar } from "@/components/chat/ChatComposerQueuedFollowUpBar";
+import { useChatPendingApprovalBarState } from "@/components/chat/useChatPendingApprovalBarState";
+import { ProjectConversationAutonomySettings } from "@/components/project/ProjectConversationAutonomySettings";
 import { ConversationPicker } from "@/components/ui/ConversationPicker";
 import { generateChatUnificationRequestKey } from "@/lib/ai/chat-unification-telemetry";
-import { messagesToTimeline } from "@/components/copilot/StreamReducer";
+import { messagesToTimeline } from "@/components/chat/chat-timeline-reducer";
 import { buildProjectConversationPath } from "@/lib/durable-route-state";
 import styles from "./ConversationMainView.module.css";
 
@@ -74,7 +74,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         hasMore,
         isLoadingOlder,
         loadOlderMessages,
-    } = useProjectCopilot();
+    } = useProjectConversation();
 
     const [showDropdown, setShowDropdown] = useState(false);
     const [isBranching, setIsBranching] = useState(false);
@@ -260,7 +260,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         () => selectActiveProgress(normalizeTimelineProgressItems(timelineItems)),
         [timelineItems],
     );
-    const pendingApprovalBar = usePendingApprovalBarState({
+    const pendingApprovalBar = useChatPendingApprovalBarState({
         timeline: timelineItems,
         conversationId: currentConversationId,
         isLoading,
@@ -350,7 +350,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
 
                 {/* Content area — centers when empty */}
                 <div className={`${styles.contentArea} ${!hasMessages ? styles.contentAreaEmpty : ''}`}>
-                    <TimelineRenderer
+                    <ChatTimeline
                         variant="page"
                         messages={messages}
                         isLoading={isLoading}
@@ -384,15 +384,15 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                     {/* Input */}
                     <div className={styles.inputWrapper}>
                         <div className={styles.composerStackLane} data-composer-stack-lane="true">
-                            <ComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
-                            <ComposerQueuedFollowUpBar
+                            <ChatComposerActiveProgressBar activeProgress={activeProgress} stackPosition="top" />
+                            <ChatComposerQueuedFollowUpBar
                                 queuedFollowUp={queuedFollowUp}
                                 stackPosition={queuedStackPosition}
                                 onEdit={handleEditQueuedFollowUp}
                                 onRemove={clearQueuedFollowUp}
                             />
                             {pendingApprovalBar.showBar ? (
-                                <ComposerPendingApprovalBar
+                                <ChatComposerPendingApprovalBar
                                     pendingCount={pendingApprovalBar.pendingCount}
                                     state={pendingApprovalBar.state}
                                     progress={pendingApprovalBar.progress}
@@ -402,7 +402,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                                     stackPosition={approvalStackPosition}
                                 />
                             ) : null}
-                            <CopilotInput
+                            <ProjectConversationComposer
                                 page={"overview" as CopilotPage}
                                 inputPlaceholder="Ask about your project..."
                                 prefillCommand={prefillCommand}
@@ -414,7 +414,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                     </div>
                 </div>
             </div>
-            <AutonomySettings />
+            <ProjectConversationAutonomySettings />
         </div>
     );
 }

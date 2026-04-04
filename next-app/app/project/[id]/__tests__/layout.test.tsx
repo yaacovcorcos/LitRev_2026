@@ -8,7 +8,7 @@ const {
   mockUseParams,
   mockUsePathname,
   mockUseRouter,
-  mockUseProjectCopilot,
+  mockUseProjectConversation,
   mockUseProjects,
   mockGetStudyAction,
   mockDeriveProjectShellBootState,
@@ -16,7 +16,7 @@ const {
   mockUseParams: vi.fn(),
   mockUsePathname: vi.fn(),
   mockUseRouter: vi.fn(),
-  mockUseProjectCopilot: vi.fn(),
+  mockUseProjectConversation: vi.fn(),
   mockUseProjects: vi.fn(),
   mockGetStudyAction: vi.fn(),
   mockDeriveProjectShellBootState: vi.fn(),
@@ -28,9 +28,9 @@ vi.mock("next/navigation", () => ({
   useRouter: () => mockUseRouter(),
 }));
 
-vi.mock("@/contexts/ProjectCopilotContext", () => ({
-  ProjectCopilotProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
-  useProjectCopilot: () => mockUseProjectCopilot(),
+vi.mock("@/contexts/ProjectConversationContext", () => ({
+  ProjectConversationProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useProjectConversation: () => mockUseProjectConversation(),
 }));
 
 vi.mock("@/contexts/ProjectShellContext", () => ({
@@ -59,8 +59,8 @@ vi.mock("@/components/project/ConversationMainView", () => ({
   ConversationMainView: () => <div data-testid="conversation-main-view" />,
 }));
 
-vi.mock("@/components/ProjectCopilot", () => ({
-  ProjectCopilot: ({ contextDisplay }: { contextDisplay: string }) => (
+vi.mock("@/components/project/ProjectCopilotPanel", () => ({
+  ProjectCopilotPanel: ({ contextDisplay }: { contextDisplay: string }) => (
     <div data-testid="project-copilot">{contextDisplay}</div>
   ),
 }));
@@ -106,7 +106,7 @@ describe("ProjectLayout", () => {
       getProjectById: () => ({ id: "proj-1", name: "Alpha", demoKey: null }),
       deleteProject: vi.fn(),
     });
-    mockUseProjectCopilot.mockReturnValue({
+    mockUseProjectConversation.mockReturnValue({
       currentConversationId: null,
       isCollapsed: false,
       panelWidth: 360,

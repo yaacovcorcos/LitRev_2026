@@ -6,8 +6,8 @@ import type { ReasoningMode } from "@/types/ai";
 import type { ReasoningSupportTier } from "@/lib/ai/config";
 import styles from "./ai-view.module.css";
 
-const AiReasoningModeDropdown = dynamic(() =>
-  import("@/components/copilot/ReasoningModeDropdown").then((module) => module.ReasoningModeDropdown)
+const AiChatReasoningModeDropdown = dynamic(() =>
+  import("@/components/chat/ChatReasoningModeDropdown").then((module) => module.ChatReasoningModeDropdown)
 );
 
 type ProjectOption = {
@@ -126,7 +126,7 @@ export function AiChatHeader({
 
       <div className={styles.headerActions}>
         {showReasoningControls ? (
-          <AiReasoningModeDropdown
+          <AiChatReasoningModeDropdown
             reasoningMode={reasoningMode}
             onReasoningModeChange={onReasoningModeChange}
             reasoningSupport={reasoningSupport}
@@ -144,7 +144,7 @@ export function AiChatHeader({
               </span>
               <span className="material-icons-round">expand_more</span>
             </button>
-          </AiReasoningModeDropdown>
+          </AiChatReasoningModeDropdown>
         ) : null}
 
         <button

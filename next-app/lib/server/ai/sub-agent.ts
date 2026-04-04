@@ -24,7 +24,7 @@ import type { AgentMode, RunStatus } from "@/types/agent";
 import { LoopState, type LoopBudget, type StopReason } from "@/lib/agent/loop-controller";
 import { getToolDefinitions } from "./tools/base";
 import { buildModelVisibleToolResultForTool, compactToolResult, type ToolResultWithArtifactState } from "@/lib/agent/compaction";
-import { assembleSystemPrompt } from "@/lib/ai/prompts/copilot-prompts";
+import { assembleSystemPrompt } from "@/lib/ai/prompts/assistant-prompts";
 import { getAIService } from "./ai-service";
 import { startRun, endRun, startRunHeartbeat, type RunHeartbeatController } from "@/lib/server/agent/run";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";

@@ -16,7 +16,7 @@ Historical implementation landed in:
 - `next-app/lib/server/ai/ai-service.ts`
 - `next-app/lib/server/agent/plan-execution.ts`
 - `next-app/lib/server/agent/plan-payloads.ts`
-- `next-app/hooks/useCopilotStreamActions.ts`
+- `next-app/hooks/useProjectConversationStreamActions.ts`
 - `next-app/app/ai/page.tsx`
 - `next-app/lib/ai/error-envelope.ts`
 - related runtime and artifact tests

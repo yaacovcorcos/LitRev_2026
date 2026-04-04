@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockUseCommandPalette = vi.fn();
 const mockUseProjectShell = vi.fn();
-const mockUseProjectCopilotSafe = vi.fn();
+const mockUseProjectConversationSafe = vi.fn();
 const mockUseHydrated = vi.fn();
 
 vi.mock("next/navigation", () => ({
@@ -21,8 +21,8 @@ vi.mock("@/contexts/ProjectShellContext", () => ({
   useProjectShell: () => mockUseProjectShell(),
 }));
 
-vi.mock("@/contexts/ProjectCopilotContext", () => ({
-  useProjectCopilotSafe: () => mockUseProjectCopilotSafe(),
+vi.mock("@/contexts/ProjectConversationContext", () => ({
+  useProjectConversationSafe: () => mockUseProjectConversationSafe(),
 }));
 
 vi.mock("@/hooks/useGlobalShortcuts", () => ({
@@ -59,7 +59,7 @@ describe("CommandPalette", () => {
       setActiveTab: vi.fn(),
       returnToConversation: vi.fn(),
     });
-    mockUseProjectCopilotSafe.mockReturnValue({
+    mockUseProjectConversationSafe.mockReturnValue({
       isCollapsed: false,
       sendMessage: vi.fn(),
     });

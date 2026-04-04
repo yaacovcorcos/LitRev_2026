@@ -4,10 +4,10 @@ import { createAiStreamRuntime } from "@/lib/ai/ai-stream-runtime";
 import { reduceSharedStreamChunk, type SharedStreamIntent } from "@/lib/ai/shared-stream-reducer";
 import {
   createInitialProjectStreamState,
-  handleProjectCopilotStreamChunk,
+  handleProjectConversationStreamChunk,
   type StreamMutableState,
-} from "@/contexts/project-copilot-stream-events";
-import type { CopilotMessage } from "@/lib/projectCopilotStorage";
+} from "@/contexts/project-conversation-stream-events";
+import type { ProjectConversationMessage } from "@/lib/project-conversation-storage";
 import type { ArtifactData } from "@/types/artifacts";
 
 const INITIAL_CONVERSATION_ID = "conv-initial";
@@ -58,7 +58,7 @@ function replayReducerFixture(fixture: ChatStreamFixture): ReplayResult {
 }
 
 function replayProjectAdapterFixture(fixture: ChatStreamFixture): ReplayResult {
-  const messages: CopilotMessage[] = [];
+  const messages: ProjectConversationMessage[] = [];
   const artifacts = new Map<string, ArtifactData>();
   let state = createInitialProjectStreamState({
     effectiveConvId: INITIAL_CONVERSATION_ID,
@@ -69,7 +69,7 @@ function replayProjectAdapterFixture(fixture: ChatStreamFixture): ReplayResult {
 
   for (const chunk of fixture.chunks) {
     const currentChunkIntents: SharedStreamIntent[] = [];
-    state = handleProjectCopilotStreamChunk(chunk, state, {
+    state = handleProjectConversationStreamChunk(chunk, state, {
       aiMessageId: "ai-message",
       page: fixture.page,
       section: fixture.section,

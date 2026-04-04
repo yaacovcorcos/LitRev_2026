@@ -10,7 +10,7 @@ import { classifyError, sanitizeErrorMessage, withValidatedAction, type ActionRe
 import { withAuth } from "@/lib/server/auth/session";
 import { logServerError } from "@/lib/server/logging";
 import { projectIdSchema, studyIdSchema, resourceIdSchema } from "@/lib/schemas/ids";
-import type { PendingAttachmentExtraction } from "@/types/copilot-context";
+import type { PendingAttachmentExtraction } from "@/types/project-conversation-context";
 
 type FilesActionErrorCode =
   | "ACCESS_DENIED"

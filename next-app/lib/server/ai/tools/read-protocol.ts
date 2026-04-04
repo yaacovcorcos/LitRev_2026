@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
-import { buildProtocolContext } from "@/lib/ai/prompts/copilot-prompts";
+import { buildProtocolContext } from "@/lib/ai/prompts/assistant-prompts";
 import { createDefaultProtocolData, type ProtocolData } from "@/types/protocol";
 
 const inputSchema = z.object({});

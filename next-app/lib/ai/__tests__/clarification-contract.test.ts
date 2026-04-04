@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 describe("clarification contract prompt guards", () => {
   it("keeps ask_user as the only blocking clarification primitive in BASE_PROMPT", () => {
-    const source = readFileSync(resolve(process.cwd(), "lib/ai/prompts/copilot-prompts.ts"), "utf8");
+    const source = readFileSync(resolve(process.cwd(), "lib/ai/prompts/assistant-prompts.ts"), "utf8");
 
     expect(source).toContain("use the ask_user tool to ask one structured blocking question");
     expect(source).toContain("materially different outcomes that would mislead the work or force an irreversible branch");

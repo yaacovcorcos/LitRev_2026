@@ -133,7 +133,7 @@ model Project {
   statusText     String
   papers         Int?
   progress       Json?
-  projectCopilot Json?
+  projectConversation Json? @map("projectCopilot")
   created        DateTime @default(now())
   modified       DateTime @updatedAt
 

@@ -7,7 +7,7 @@ import type { ScopeInput } from "@/lib/server/scope";
 import type { FileAsset } from "@/types/files";
 import type { Study } from "@/types/ledger";
 import type { SearchResult } from "@/types/search";
-import type { PendingAttachmentExtraction } from "@/types/copilot-context";
+import type { PendingAttachmentExtraction } from "@/types/project-conversation-context";
 import { findDuplicates } from "@/lib/server/search/dedup";
 import { listStudies } from "@/lib/server/ledger";
 import { randomUUID } from "crypto";
@@ -292,7 +292,7 @@ export async function deleteFileAsset(
 }
 
 /**
- * Upload a PDF attachment for a copilot conversation.
+ * Upload a PDF attachment for a project conversation.
  * Uploads to Supabase, creates a FileAsset with kind="attachment",
  * and extracts text for AI injection.
  */

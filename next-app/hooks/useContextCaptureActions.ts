@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { useProjectConversation } from "@/contexts/ProjectConversationContext";
 import { usePopupChat } from "@/contexts/PopupChatContext";
 import { getContextCaptureAction } from "@/lib/context-capture/actions";
 import { isContextCaptureV1Enabled } from "@/lib/context-capture/feature-flags";
@@ -39,7 +39,7 @@ export function useContextCaptureActions() {
         queuePrefillCommand,
         sendMessage,
         recordContextHistory,
-    } = useProjectCopilot();
+    } = useProjectConversation();
 
     const revealCopilot = useCallback(() => {
         setCollapsed(false);

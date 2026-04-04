@@ -255,7 +255,7 @@ Work should proceed in this order unless a production incident forces reprioriti
 
 - General mode should remain a coordination surface, not a raw superuser mode.
 - New capability should prefer specialist routing and bounded tool envelopes over growing `general`.
-- Shared files such as `ai-service.ts`, `router.ts`, `tools/base.ts`, and `copilot-prompts.ts` should have one owner at a time during multi-agent work.
+- Shared files such as `ai-service.ts`, `router.ts`, `tools/base.ts`, and `assistant-prompts.ts` should have one owner at a time during multi-agent work.
 
 ### Progressive Context and Search Quality
 
@@ -276,7 +276,7 @@ Use these rules when more than one agent/engineer is working the domain in paral
    - `next-app/lib/server/ai/ai-service.ts`
    - `next-app/lib/server/ai/tools/base.ts`
    - `next-app/lib/agent/router.ts`
-   - `next-app/lib/ai/prompts/copilot-prompts.ts`
+   - `next-app/lib/ai/prompts/assistant-prompts.ts`
 4. Do not run parallel edits on shared runtime files across waves.
 5. Merge gates must pass before the next wave starts.
 

@@ -7,7 +7,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { usePopupChat } from "@/contexts/PopupChatContext";
-import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { useProjectConversation } from "@/contexts/ProjectConversationContext";
 import { createNoteAction } from "@/app/actions/notes";
 import { createConversation, addMessage } from "@/app/actions/conversations";
 import { processAIStream } from "@/lib/ai/stream-processor";
@@ -133,7 +133,7 @@ type PopupChatProps = {
 export function PopupChat({ projectId }: PopupChatProps) {
     const mobilePopupV2Enabled = isMobilePopupV2Enabled();
     const { isOpen, context, closePopupChat } = usePopupChat();
-    const { selectConversation, setCollapsed, refreshConversations } = useProjectCopilot();
+    const { selectConversation, setCollapsed, refreshConversations } = useProjectConversation();
 
     if (!context) return null;
 

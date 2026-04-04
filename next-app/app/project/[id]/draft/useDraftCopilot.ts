@@ -18,7 +18,7 @@ type UseDraftCopilotDeps = {
 export function useDraftCopilot(deps: UseDraftCopilotDeps) {
   const { draft, activeSectionLabel, projectName, updateDraft, activeEditorRef } = deps;
 
-  const [copilotInput, setCopilotInput] = useState("");
+  const [copilotInput, setProjectConversationComposer] = useState("");
   const copilotListRef = useRef<HTMLDivElement | null>(null);
   const copilotAutoScrollRef = useRef(true);
 
@@ -57,7 +57,7 @@ export function useDraftCopilot(deps: UseDraftCopilotDeps) {
         },
       };
     });
-    setCopilotInput("");
+    setProjectConversationComposer("");
 
     const aiText = buildCopilotResponse(text);
     await new Promise((resolve) => setTimeout(resolve, 700));
@@ -98,7 +98,7 @@ export function useDraftCopilot(deps: UseDraftCopilotDeps) {
 
   return {
     copilotInput,
-    setCopilotInput,
+    setProjectConversationComposer,
     copilotListRef,
     copilotAutoScrollRef,
     handleCopilotSend,

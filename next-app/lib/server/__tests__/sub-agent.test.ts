@@ -39,7 +39,7 @@ vi.mock("@/lib/server/prisma", () => ({
   },
 }));
 
-vi.mock("@/lib/ai/prompts/copilot-prompts", () => ({
+vi.mock("@/lib/ai/prompts/assistant-prompts", () => ({
   assembleSystemPrompt: mocks.assembleSystemPrompt,
 }));
 

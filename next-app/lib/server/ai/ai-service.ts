@@ -72,7 +72,7 @@ import {
     buildAutonomyContext,
     buildLocationContext,
     buildStudyContext,
-} from "@/lib/ai/prompts/copilot-prompts";
+} from "@/lib/ai/prompts/assistant-prompts";
 import { normalizeAgentMode } from "@/lib/agent/feature-flags";
 import { detectScopingEntryIntent } from "@/lib/agent/router";
 import { LoopState, type StopReason } from "@/lib/agent/loop-controller";
