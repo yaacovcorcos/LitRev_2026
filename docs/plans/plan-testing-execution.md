@@ -27,7 +27,10 @@ This plan does not own:
   - `perf:budget-check`, `perf:generate-results`, and related performance tooling
 - The current command surface is broad but still partially historical rather than conceptual; names mix tool identity, local history, and lane purpose.
 - There is no thin repo-root wrapper layer such as a `justfile`; contributors and agents still need to remember or rediscover the right `next-app/` commands from docs and local knowledge.
-- There is no short canonical testing/CI strategy doc that explains, in one place, what is expected locally before push versus what runs as required PR validation versus what runs as informational or scheduled heavy coverage.
+- `docs/runbooks/testing-ci-strategy.md` now provides the short cross-cutting execution reference for:
+  - what contributors should run locally before push beyond route-specific `AGENTS.md` requirements
+  - what the required `check` gate guarantees versus what remains outside it
+  - first-owner triage, local reproduction, changed-scope discipline, and lane-promotion rules
 - Required `check` in `.github/workflows/ci.yml` already provides a meaningful base lane:
   - Prisma migrate deploy + schema-drift check
   - `npx tsc --noEmit`
@@ -44,7 +47,7 @@ This plan does not own:
   - path filtering for the mobile foundation workflow
   - `next-app/scripts/check-runtime-test-impact.mjs` for governed runtime test-impact enforcement
 - `docs/reviews/repo-health.md` currently records raw `npm run lint` at `0` errors and `0` warnings on `main`, and raw lint now runs inside the protected `check` contract through `governance:ci-required`.
-- LitRev already has several good execution ideas shipped in pieces, but they are not yet presented as one coherent testing operating system.
+- LitRev now has a coherent shared testing execution reference, but command ergonomics and historical lane naming still lag behind the underlying doctrine.
 
 ## External Pattern Position
 
@@ -94,47 +97,49 @@ Missing:
 - A backward-compatible alias policy so historical script names can be retired intentionally rather than abruptly
 
 ### Phase 2 — CI Strategy and Lane Ownership Clarity
-Status: Active
+Status: Done
 
 Shipped:
 - Required `check` is already meaningful and branch-protection-backed
 - Mobile foundation and performance certification are already separate from the core `check` lane
+- `docs/runbooks/testing-ci-strategy.md` now explains:
+  - what contributors should run locally before push beyond route-specific `AGENTS.md` rules
+  - what `check` guarantees
+  - what remains informational or scheduled
+  - the first-owner triage and local reproduction path for current shared lanes
 
 Missing:
-- One short canonical CI/testing strategy doc that explains:
-  - what contributors should run locally before push
-  - what `check` guarantees
-  - what remains informational
-  - what runs only on `main` or on schedule
-- An owner matrix for each cross-cutting lane so failures have an obvious first owner
-- Local reproduction guidance for non-`check` lanes that currently live mostly in workflow files or scattered docs
+- Nothing material for the current CI clarity scope
 
 ### Phase 3 — Changed-Scope and Smoke Discipline
-Status: Active
+Status: Done
 
 Shipped:
 - Workflow path filtering for the mobile foundation lane
 - Changed-file runtime test-impact enforcement for governed runtime domains
 - Existing smoke-like scripts in selected domains such as citation and mobile entry
+- `docs/runbooks/testing-ci-strategy.md` now defines:
+  - where changed-scope execution is currently allowed
+  - the first small cross-cutting smoke inventory
+  - failure-inspection rules for the current browser foundation lane
 
 Missing:
-- One explicit policy for where changed-scope execution is allowed and where full execution remains required
-- A curated, small cross-cutting smoke inventory for historically fragile high-signal flows
-- Artifact and debugging-output expectations for browser smoke and foundation lanes
-- An explicit rule that changed-scope optimization is for expensive lanes only, not a blanket CI shortcut
+- Nothing material for the current shared-lane discipline scope
 
 ### Phase 4 — Current-State Reporting and Promotion Rules
-Status: Active
+Status: Done
 
 Shipped:
 - `docs/reviews/repo-health.md` already summarizes current testing/lint posture concisely
 - `docs/plans/plan-lint-governance.md` already owns the raw-lint-versus-protected-check policy
 - `docs/plans/plan-speed-performance.md` already owns performance artifact and budget authority
+- `docs/runbooks/testing-ci-strategy.md` now defines:
+  - when shared testing summaries and lane docs must be updated
+  - how major testing-execution shifts should record detailed evidence without bloating plan files
+  - the promotion rule for moving a shared lane into protected CI
 
 Missing:
-- One durable rule for updating current-state testing summaries whenever lane inventory, baseline posture, or required-check scope changes materially
-- Promotion criteria for moving future shared lanes into protected CI without creating drift between workflows, docs, and local reproduction commands
-- A light evidence pattern for major testing-execution shifts so repo-health stays concise while dated reviews carry the bulk detail
+- Nothing material for the current promotion/reporting scope
 
 ### Phase 5 — Advanced Expansion After Execution Clarity
 Status: Deferred
@@ -148,18 +153,15 @@ Missing:
 - Additional install/startup/perf smoke layers that do not yet have a clear first owner or maintenance budget
 
 ## Active Tasks
-- [ ] Add a thin repo-root wrapper layer, likely `justfile` or equivalent, that wraps canonical `next-app/` commands without creating a second source of truth.
+- [ ] Decide whether a thin repo-root wrapper layer is still worth the maintenance cost now that lane inventory, local reproduction, and promotion rules are documented in one place; if yes, keep it minimal and canonical.
 - [ ] Introduce a stable shared test taxonomy in `next-app/package.json` with backwards-compatible aliases for the current historically named scripts.
-- [ ] Add one short canonical testing/CI strategy doc and link it from the relevant plan and runbook surfaces.
-- [ ] Define the first small cross-cutting smoke inventory, limited to historically fragile flows with strong user-facing signal and a clear owning team.
-- [ ] Add artifact and failure-inspection rules for browser smoke/foundation lanes before expanding those lanes further.
-- [ ] Define the shared promotion criteria for moving a testing lane into protected CI so the workflow, docs, and local reproduction contract change together.
 
 ## Recently Completed
 - [x] Established a durable repo-wide testing doctrine in `docs/agents/testing-agent-contract.md` and linked it from Tier 3 retrieval.
 - [x] Landed a stable governance-required versus governance-informational split so cross-cutting testing policy can evolve without making broad warning debt an accidental merge blocker.
 - [x] Closed the raw lint baseline from broadly red to `0` errors / `0` warnings on `main` and promoted raw lint into the protected `check` contract through `governance:ci-required`.
 - [x] Added high-signal direct regression coverage for recent cleanup-sensitive flows such as timeline anchoring, streamed tool-call delta assembly, conversation JSON serialization, and hydration/body-scroll behavior.
+- [x] Added `docs/runbooks/testing-ci-strategy.md` as the canonical shared execution reference for local-before-push expectations, CI lane meaning, first-owner triage, changed-scope rules, smoke inventory, and protected-lane promotion discipline.
 
 ## Implementation Rules
 - Wrapper commands must call canonical package or script entrypoints; they must never become a second hidden implementation layer.

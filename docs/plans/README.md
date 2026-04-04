@@ -45,6 +45,7 @@ This file is the active plan registry and the canonical owner for plan-maintenan
 - [**Agentic UI Glossary**](../architecture/agentic-ui-glossary.md): Canonical vocabulary bridge for chat timeline items, transparency/process UI, artifacts, composer controls, and clarification flow.
 - [**Repo Review Baseline**](../runbooks/repo-review-baseline.md): Canonical baseline for comparing repeated deep repo reviews against current in-repo findings and shipped review-driven fixes.
 - [**Internal Advisory Reviews**](../runbooks/internal-advisory-reviews.md): Internal review-lens map for security, runtime-boundary, and soft-signal advisory reviews without creating a second source of truth.
+- [**Testing and CI Strategy**](../runbooks/testing-ci-strategy.md): Cross-cutting execution contract for shared local validation, CI lane meaning, local reproduction, changed-scope rules, and lane-promotion discipline.
 - [**Security Baseline**](../runbooks/security-baseline.md): Repo-local security operating baseline covering auth, authorization, storage, AI/tool boundaries, secrets handling, and the primary external canon for this stack.
 - [**Frontend Review Loop**](../runbooks/frontend-review-loop.md): Repeatable frontend implementation and review procedure, including thesis framing and QA checklists.
 - [**Admin Access Runbook**](../runbooks/admin-access.md): Platform admin bootstrap, guard boundaries, mutation safety, and audit/analytics incident procedures.
