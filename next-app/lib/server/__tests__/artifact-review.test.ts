@@ -5,6 +5,7 @@ type Store = {
     protocolData: Record<string, unknown>;
     draftState: { contentBySection: Record<string, unknown> } | null;
     draftVersions: Array<Record<string, unknown>>;
+    draftCheckpoints: Array<Record<string, unknown>>;
     notes: Array<Record<string, unknown>>;
     userMemories: Array<Record<string, unknown>>;
     projectMemories: Array<Record<string, unknown>>;
@@ -38,6 +39,7 @@ const mocks = vi.hoisted(() => ({
     createDraftVersionTrusted: vi.fn(),
     getDraftTrusted: vi.fn(),
     saveDraftTrusted: vi.fn(),
+    draftCheckpointCreate: vi.fn(),
     onStudyAccepted: vi.fn(),
     onStudyExcluded: vi.fn(),
     onDraftAccepted: vi.fn(),
@@ -127,20 +129,29 @@ vi.mock("@/lib/server/drafts", () => ({
     saveDraftTrusted: mocks.saveDraftTrusted,
 }));
 
-vi.mock("@/lib/draft-storage", () => ({
-    createDefaultDraftState: vi.fn(() => ({
-        contentBySection: {},
-    })),
-}));
+vi.mock("@/lib/draft-storage", async (importOriginal) => {
+    const original = await importOriginal<typeof import("@/lib/draft-storage")>();
+    return {
+        ...original,
+        createDefaultDraftState: vi.fn(() => ({
+            ...original.createDefaultDraftState(),
+            contentBySection: {},
+        })),
+    };
+});
 
-vi.mock("@/types/draft", () => ({
-    DRAFT_SECTIONS: [
-        { key: "introduction", label: "Introduction" },
-        { key: "methods", label: "Methods" },
-        { key: "results", label: "Results" },
-        { key: "discussion", label: "Discussion" },
-    ],
-}));
+vi.mock("@/types/draft", async (importOriginal) => {
+    const original = await importOriginal<typeof import("@/types/draft")>();
+    return {
+        ...original,
+        DRAFT_SECTIONS: [
+            { key: "introduction", label: "Introduction" },
+            { key: "methods", label: "Methods" },
+            { key: "results", label: "Results" },
+            { key: "discussion", label: "Discussion" },
+        ],
+    };
+});
 
 vi.mock("@/types/artifacts", async (importOriginal) => {
     const original = await importOriginal<typeof import("@/types/artifacts")>();
@@ -206,6 +217,7 @@ function makeStore(overrides: Partial<Store> = {}): Store {
             },
         },
         draftVersions: [],
+        draftCheckpoints: [],
         notes: [],
         userMemories: [],
         projectMemories: [],
@@ -267,6 +279,17 @@ function createTx(store: Store) {
                     : null
             ),
         },
+        draftCheckpoint: {
+            create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+                const checkpoint = {
+                    id: `checkpoint-${store.draftCheckpoints.length + 1}`,
+                    createdAt: new Date("2026-03-20T10:01:30.000Z"),
+                    ...cloneStore(data),
+                };
+                store.draftCheckpoints.push(checkpoint);
+                return cloneStore(checkpoint);
+            }),
+        },
         userMemory: {
             updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
                 const ids = (where.id as { in?: string[] } | undefined)?.in ?? [];
@@ -323,6 +346,7 @@ function installTransactionalStore(store: Store) {
             store.protocolData = txStore.protocolData;
             store.draftState = txStore.draftState;
             store.draftVersions = txStore.draftVersions;
+            store.draftCheckpoints = txStore.draftCheckpoints;
             store.notes = txStore.notes;
             store.userMemories = txStore.userMemories;
             store.projectMemories = txStore.projectMemories;
@@ -361,6 +385,7 @@ describe("artifact review/apply hardening", () => {
             draftState: { contentBySection: Record<string, unknown> },
         ) => {
             getStoreFromDb(db).draftState = cloneStore(draftState);
+            return cloneStore(draftState);
         });
         mocks.createDraftVersionTrusted.mockImplementation(async (db: unknown, input: Record<string, unknown>) => {
             getStoreFromDb(db).draftVersions.push({ id: `dv-${getStoreFromDb(db).draftVersions.length + 1}`, ...cloneStore(input) });
@@ -502,6 +527,7 @@ describe("artifact review/apply hardening", () => {
 
         expect(store.draftState?.contentBySection.introduction).toEqual({ type: "doc", markdown: "Old introduction" });
         expect(store.draftVersions).toHaveLength(0);
+        expect(store.draftCheckpoints).toHaveLength(0);
         expect(store.artifact.status).toBe("proposed");
         expect(mocks.markRunDurabilityDegraded).toHaveBeenCalledWith(
             "run-1",
@@ -514,7 +540,14 @@ describe("artifact review/apply hardening", () => {
             artifact: makeArtifact({
                 type: "draft_diff",
                 title: "Draft revision",
-                payload: { section: "Introduction", content: "New introduction", citations: [], wordCount: 2 },
+                payload: {
+                    section: "Introduction",
+                    sectionKey: "introduction",
+                    content: "New introduction",
+                    citations: [],
+                    wordCount: 2,
+                    baseSectionContent: { type: "doc", markdown: "Old introduction" },
+                },
             }),
         });
         installTransactionalStore(store);
@@ -533,8 +566,60 @@ describe("artifact review/apply hardening", () => {
             type: "doc",
             markdown: "New introduction",
         });
+        expect(store.draftCheckpoints).toHaveLength(1);
+        expect(store.draftCheckpoints[0]).toMatchObject({
+            projectId: "proj-1",
+            workspaceId: "workspace-1",
+            kind: "ai_apply",
+            artifactId: "art-1",
+            conversationId: "conv-1",
+            label: "Accepted AI draft proposal: Introduction",
+        });
         expect(store.artifact.status).toBe("accepted");
         expect(store.artifact.appliedByUserId).toBe("user-1");
+    });
+
+    it("rejects stale draft diffs when the target section changed after proposal creation", async () => {
+        const store = makeStore({
+            artifact: makeArtifact({
+                type: "draft_diff",
+                title: "Draft revision",
+                payload: {
+                    section: "Introduction",
+                    sectionKey: "introduction",
+                    content: "New introduction",
+                    citations: [],
+                    wordCount: 2,
+                    baseSectionContent: { type: "doc", markdown: "Even older introduction" },
+                },
+            }),
+        });
+        installTransactionalStore(store);
+
+        await expect(
+            reviewArtifact("art-1", "accepted", undefined, undefined, { actorUserId: "user-1" }),
+        ).rejects.toMatchObject({
+            errorCode: "ARTIFACT_APPLY_FAILED",
+            message: expect.stringContaining("changed after this proposal was created"),
+        });
+
+        expect(store.draftState?.contentBySection.introduction).toEqual({
+            type: "doc",
+            markdown: "Old introduction",
+        });
+        expect(store.draftVersions).toHaveLength(0);
+        expect(store.draftCheckpoints).toHaveLength(0);
+        expect(store.artifact.status).toBe("proposed");
+        expect(mocks.logServerWarn).toHaveBeenCalledWith(
+            "draft_diff",
+            "rejected stale draft proposal apply because the target section changed",
+            expect.objectContaining({
+                artifactId: "art-1",
+                projectId: "proj-1",
+                section: "Introduction",
+                sectionKey: "introduction",
+            }),
+        );
     });
 
     it("updates an existing evidence-table note on acceptance", async () => {

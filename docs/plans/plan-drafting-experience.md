@@ -125,8 +125,8 @@ LitRev drafting becomes a manuscript operating system with:
 - `next-app/app/project/[id]/draft/DraftEditors.tsx`
   - Current editor is Tiptap `StarterKit` + `Underline` + custom `Citation` node + paragraph direction.
   - No native comments, suggestion mode, headings UI, tables, figures, equations, links, footnotes, or outline tooling.
-- `next-app/app/project/[id]/draft/useDraftWorkspaceController.ts`
-  - Canonical route orchestration now owns section add/remove/drag behavior, whole-draft targeting, ledger collapse state, and save/export wiring against the normalized draft state.
+- `next-app/app/project/[id]/draft/useDraftSections.ts` and nearby draft hooks
+  - The live route currently composes section behavior, export state, and copilot wiring through smaller extracted hooks plus `page.tsx`; `useDraftWorkspaceController.ts` exists as a parallel controller but is not the canonical entrypoint today.
 - `next-app/app/project/[id]/draft/useDraftExport.ts`
   - Export now calls the server-owned compiler pipeline and prepends real stored `FileAsset` results back into the current route history UI.
 - `next-app/components/ExportModal.tsx`
@@ -137,6 +137,8 @@ LitRev drafting becomes a manuscript operating system with:
   - Whole-draft immutable checkpoints now exist as a backend-only foundation for compare/restore and export provenance, while the draft page still lacks first-class history UI.
 - `next-app/lib/server/agent/artifacts.ts`
   - Confirmed accepted `draft_diff` artifacts already create immutable `DraftVersion` entries through the canonical apply path, while failed apply leaves the proposal pending review instead of persisting a false accepted state.
+- `next-app/lib/server/agent/artifact-handler-registrations.ts`
+  - Accepted `draft_diff` applies are now stale-base aware at the target-section level and successful apply also records a whole-draft `ai_apply` checkpoint for restore-grade provenance.
 - `next-app/lib/citation-compiler.ts`
   - Citation normalization and reference generation already exist and should be reused, not replaced.
 
@@ -510,6 +512,7 @@ These are implementation tracks for one target state, not separate product versi
 - Move AI assistance from generic side actions toward inline draft operations and proposal review.
 - Reuse artifacts for propose/apply/undo and make draft-page review first-class.
 - Blast radius: medium/high; touches artifact UX, context capture, and draft interactions.
+- Implementation note (April 5, 2026): the backend proposal contract is now safer even before the draft page gets a native inline review lane. Fresh `draft_diff` artifacts capture deterministic section metadata plus base-section state, accepted apply rejects stale target-section changes instead of silently overwriting newer draft text, and accepted proposals also create whole-draft `ai_apply` checkpoints alongside per-section `DraftVersion` provenance.
 
 ### `DRX-007` Compiler-grade export and submission packaging
 - Replace placeholder DOCX flow with real compiler output and truthful export history.
@@ -625,6 +628,7 @@ These are implementation tracks for one target state, not separate product versi
 - Journal-specific export rules are profile-driven and additive; the manuscript model itself should stay journal-agnostic.
 
 ## Recently Completed
+- `DRX-006A` hardened the backend draft proposal contract: fresh `draft_diff` artifacts now carry deterministic section metadata plus base-section state, accepted apply rejects stale target-section changes instead of overwriting newer draft text, and accepted proposals now create whole-draft `ai_apply` checkpoints in addition to per-section `DraftVersion` provenance.
 - `DRX-005A` shipped the backend-first diagnostics contract: draft/export warning derivation now compiles from one canonical normalized diagnostics report, citation-derived issues reuse the existing citation taxonomy, section-level coverage signals are advisory warnings only, and strict export blocking still tracks only current citation-integrity failures.
 - `DRX-007` replaced the placeholder draft export path with a real server-owned compiler pipeline: DOCX and Markdown now compile from normalized manuscript state, generated exports store real file assets, and visible export history stays truthful and DOCX-only in the current UI.
 - `DRX-004A` shipped the backend-only checkpoint foundation: immutable whole-draft `DraftCheckpoint` records now capture authoring-state snapshots, export-created checkpoints link back to generated files, restore rebuilds a valid `DraftState v2` without reviving route/UI state, the draft page UI remains unchanged, and no user-facing checkpoint action surface is shipped yet.
