@@ -8,6 +8,8 @@ Use this procedure when a repo review, experiment, or outside recommendation sug
 
 The goal is to learn quickly without importing unclear ownership, weakly-tested abstractions, or external policy drift into LitRev.
 
+When a current owner doc or retained review artifact depends on a specific upstream GitHub repository, record or refresh that upstream in `OPEN_SOURCE_REFERENCES.md` in the same task.
+
 ## Core Rule
 
 External material is reference input, not repo truth.

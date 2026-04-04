@@ -58,6 +58,8 @@ The current intended upstream lessons are:
 - OpenClaw: stronger named test-surface taxonomy, limited changed-scope execution for expensive lanes, and intentional smoke/perf lanes
 - OpenCode: clearer ownership of where tests run, cleaner unit-versus-e2e separation, and stronger CI artifact discipline
 
+Use `OPEN_SOURCE_REFERENCES.md` for the current GitHub URLs behind those named upstreams.
+
 LitRev should adapt those ideas to its existing owner model, not import a foreign CI matrix or duplicate truth across multiple wrapper layers.
 
 ## Program Status
