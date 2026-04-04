@@ -2634,7 +2634,6 @@ export default function AIView() {
                   clearChoices={() => { setPendingChoices([]); setPendingUserInput(null); }}
                   selectedModel={selectedModel}
                   onModelChange={setSelectedModel}
-                  modelStorageKey="litrev_ai_model"
                   showAutonomyPreset={false}
                   showAttachments={false}
                   showVoice

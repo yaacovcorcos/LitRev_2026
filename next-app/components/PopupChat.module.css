@@ -513,6 +513,27 @@
     color: var(--accent-primary);
 }
 
+.footerLink:disabled {
+    color: var(--text-muted);
+    cursor: default;
+    opacity: 0.72;
+}
+
+.footerStatus {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.footerStatusSuccess {
+    color: var(--accent-secondary);
+}
+
+.footerStatusError {
+    color: var(--color-danger);
+}
+
 /* ---- Responsive ---- */
 
 /* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */

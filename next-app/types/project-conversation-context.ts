@@ -20,12 +20,23 @@ import type { RetryModelExpectation } from "@/types/chat-unification";
 import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
 import type { QueuedFollowUp } from "@/types/queued-followup";
 
+export type PendingAttachmentExtraction =
+    | {
+        status: "ready";
+        text: string;
+    }
+    | {
+        status: "failed";
+        reason: "pdf_parse_failed" | "storage_fetch_failed" | "unknown";
+        message: string;
+    };
+
 export type PendingAttachment = {
     fileAssetId: string;
     filename: string;
     size: number;
     mimeType: string;
-    extractedText: string;
+    extraction: PendingAttachmentExtraction;
     isExisting: boolean;
 };
 

@@ -131,7 +131,10 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
     }, []);
 
     const handleSaveToNotes = useCallback(async (content: string, messageId: string) => {
-        await createNoteAction(projectId, content, "conversation", currentConversationId ?? undefined, messageId);
+        const result = await createNoteAction(projectId, content, "conversation", currentConversationId ?? undefined, messageId);
+        if (!result.success) {
+            throw new Error(result.error || "Unable to save note.");
+        }
     }, [projectId, currentConversationId]);
 
     const navigateToConversation = useCallback((conversationId: string) => {

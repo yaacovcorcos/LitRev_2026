@@ -16,6 +16,7 @@ import type {
     UserInputRequest,
     UserInputResolutionKind,
 } from "@/types/ai";
+import type { PendingAttachment as InputAttachment } from "@/types/project-conversation-context";
 import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
 import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
 import { useVoiceInput, type VoiceTranscriptionSettlement } from "@/hooks/useVoiceInput";
@@ -47,15 +48,6 @@ const ChatComposerActionsMenuButton = dynamic(() =>
 const ChatAutonomyPresetButton = dynamic(() =>
     import("./ChatAutonomyPresetButton").then((module) => module.ChatAutonomyPresetButton)
 );
-
-export type InputAttachment = {
-    fileAssetId: string;
-    filename: string;
-    size: number;
-    mimeType: string;
-    extractedText: string;
-    isExisting: boolean;
-};
 
 export type ChatComposerCoreProps = {
     page: CopilotPage;
@@ -113,8 +105,6 @@ export type ChatComposerCoreProps = {
     selectedModel?: SelectableModelId;
     /** Callback when user changes the model */
     onModelChange?: (modelId: SelectableModelId) => void;
-    /** @deprecated Use selectedModel/onModelChange instead. Only used for fallback local state. */
-    modelStorageKey?: string;
     showAutonomyPreset?: boolean;
     showAttachments?: boolean;
     showVoice?: boolean;
@@ -151,16 +141,6 @@ function resizeTextareaToFit(el: HTMLTextAreaElement | null) {
     el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_HEIGHT_PX)}px`;
 }
 
-function readStoredSelectedModel(modelStorageKey: string): SelectableModelId {
-    if (typeof window === "undefined") {
-        return DEFAULT_SELECTABLE_MODEL_ID;
-    }
-
-    const stored = window.localStorage.getItem(modelStorageKey);
-    const valid = USER_SELECTABLE_MODELS.some((model) => model.id === stored);
-    return valid ? (stored as SelectableModelId) : DEFAULT_SELECTABLE_MODEL_ID;
-}
-
 export function ChatComposerCore({
     page,
     section,
@@ -194,7 +174,6 @@ export function ChatComposerCore({
     clearChoices,
     selectedModel: selectedModelProp,
     onModelChange,
-    modelStorageKey = "litrev_copilot_model",
     showAutonomyPreset,
     showAttachments,
     showVoice = true,
@@ -209,9 +188,6 @@ export function ChatComposerCore({
     const inputBoxRef = useRef<HTMLFormElement | null>(null);
     const hasMounted = useHydrated();
     const [input, setInput] = useState("");
-    const [uncontrolledSelectedModel, setUncontrolledSelectedModel] = useState<SelectableModelId>(
-        () => readStoredSelectedModel(modelStorageKey),
-    );
     const [answeredUserInput, setAnsweredUserInput] = useState<{
         request: UserInputRequest;
         answer: string;
@@ -223,8 +199,7 @@ export function ChatComposerCore({
         onReady?.();
     }, [hasMounted, onReady]);
 
-    const selectedModel = selectedModelProp ?? uncontrolledSelectedModel;
-    const isModelControlled = typeof selectedModelProp !== "undefined";
+    const selectedModel = selectedModelProp ?? DEFAULT_SELECTABLE_MODEL_ID;
 
     const sendLockRef = useRef(false);
 
@@ -294,6 +269,7 @@ export function ChatComposerCore({
         const text = rawText.trim();
         const activeAttachment = pendingAttachment;
         if (!text && !activeAttachment) return false;
+        if (activeAttachment?.extraction.status === "failed") return false;
 
         const nextContextTargets = attachedContextTargets.length > 0
             ? attachedContextTargets
@@ -386,19 +362,9 @@ export function ChatComposerCore({
         clearError: clearVoiceError,
     } = useVoiceInput(handleTranscription, handleTranscriptionSettled);
 
-    useEffect(() => {
-        if (isModelControlled) return;
-        if (typeof window !== "undefined") {
-            window.localStorage.setItem(modelStorageKey, selectedModel);
-        }
-    }, [isModelControlled, selectedModel, modelStorageKey]);
-
     const setSelectedModel = useCallback((modelId: SelectableModelId) => {
         onModelChange?.(modelId);
-        if (!isModelControlled) {
-            setUncontrolledSelectedModel(modelId);
-        }
-    }, [isModelControlled, onModelChange]);
+    }, [onModelChange]);
 
     const consumePrefill = useEffectEvent(() => {
         onPrefillConsumed?.();
@@ -431,9 +397,13 @@ export function ChatComposerCore({
 
     const hasSecondaryActions = canShowAttachments || !!onCompress;
     const isVoiceBusy = voiceState !== "idle";
+    const hasAttachmentExtractionFailure = pendingAttachment?.extraction.status === "failed";
     const canSubmit = voiceState === "recording"
         ? !queuedVoiceSend
-        : !interactionLocked && voiceState === "idle" && (!!input.trim() || !!pendingAttachment);
+        : !interactionLocked
+            && voiceState === "idle"
+            && !hasAttachmentExtractionFailure
+            && (!!input.trim() || !!pendingAttachment);
     const showVoiceStatusPresentation = showVoice && isVoiceBusy;
     const canQueueNext = !interactionLocked
         && isLoading
@@ -745,13 +715,25 @@ export function ChatComposerCore({
                 )}
 
                 {(pendingAttachment || isAttaching) && (
-                    <div className={styles.pendingAttachment}>
-                        <span className="material-icons-round" style={{ fontSize: 16 }}>description</span>
+                    <div
+                        className={`${styles.pendingAttachment} ${hasAttachmentExtractionFailure ? styles.pendingAttachmentFailed : ""}`}
+                        aria-live={hasAttachmentExtractionFailure ? "polite" : undefined}
+                    >
+                        <span className="material-icons-round" style={{ fontSize: 16 }}>
+                            {hasAttachmentExtractionFailure ? "error_outline" : "description"}
+                        </span>
                         {isAttaching ? (
                             <span className={styles.pendingAttachmentName}>Uploading...</span>
                         ) : pendingAttachment ? (
                             <>
-                                <span className={styles.pendingAttachmentName}>{pendingAttachment.filename}</span>
+                                <div className={styles.pendingAttachmentText}>
+                                    <span className={styles.pendingAttachmentName}>{pendingAttachment.filename}</span>
+                                    {pendingAttachment.extraction.status === "failed" ? (
+                                        <span className={styles.pendingAttachmentStatus}>
+                                            {pendingAttachment.extraction.message}
+                                        </span>
+                                    ) : null}
+                                </div>
                                 <button
                                     type="button"
                                     className={styles.pendingAttachmentRemove}

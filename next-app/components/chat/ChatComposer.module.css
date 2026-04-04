@@ -655,13 +655,37 @@
     color: var(--color-info);
 }
 
-.pendingAttachmentName {
+.pendingAttachmentFailed {
+    background: rgba(var(--rgb-color-danger), 0.08);
+    border-bottom-color: rgba(var(--rgb-color-danger), 0.22);
+    color: var(--text-primary);
+}
+
+.pendingAttachmentFailed .material-icons-round {
+    color: var(--color-danger);
+}
+
+.pendingAttachmentText {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.pendingAttachmentName {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 500;
+}
+
+.pendingAttachmentStatus {
+    font-size: 11px;
+    line-height: 1.4;
+    color: inherit;
+    white-space: normal;
 }
 
 .pendingAttachmentRemove {

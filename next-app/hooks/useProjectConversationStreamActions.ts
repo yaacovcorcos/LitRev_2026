@@ -1232,6 +1232,10 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
             const explicitUserInputResolution = runtimeOverrides?.userInputResolution ?? null;
             const attachment = pendingAttachment;
             if (!trimmed && !attachment && !explicitUserInputResolution) return;
+            if (attachment?.extraction.status === "failed") {
+                console.error("Blocking send because the attached PDF could not be read for chat.");
+                return;
+            }
             const continueFromRunId = runtimeOverrides?.continueFromRunId ?? null;
             const suppressUserMessageAppend = runtimeOverrides?.suppressUserMessageAppend === true;
             const replaceRunId = runtimeOverrides?.replaceRunId
@@ -1293,7 +1297,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                     ? `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`
                     : `${Math.round(attachment.size / 1024)} KB`;
                 const userText = trimmed || "I've attached a PDF. Please review it and summarize the key points.";
-                messageForAI = `<attached_document filename="${attachment.filename}" size="${sizeStr}">\n${attachment.extractedText}\n</attached_document>\n\n${userText}`;
+                messageForAI = `<attached_document filename="${attachment.filename}" size="${sizeStr}">\n${attachment.extraction.text}\n</attached_document>\n\n${userText}`;
                 attachmentsMeta = [{
                     fileAssetId: attachment.fileAssetId,
                     filename: attachment.filename,

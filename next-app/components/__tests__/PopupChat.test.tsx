@@ -6,10 +6,11 @@ import { AIErrorWithEnvelope } from "@/lib/ai/error-envelope";
 import type { PopupChatContext } from "@/types/popup-chat";
 import { PopupChat } from "../PopupChat";
 
-const { mockUsePopupChat, mockUseProjectConversation, mockProcessAIStream } = vi.hoisted(() => ({
+const { mockUsePopupChat, mockUseProjectConversation, mockProcessAIStream, mockCreateNoteAction } = vi.hoisted(() => ({
     mockUsePopupChat: vi.fn(),
     mockUseProjectConversation: vi.fn(),
     mockProcessAIStream: vi.fn(),
+    mockCreateNoteAction: vi.fn(),
 }));
 
 vi.mock("@/contexts/PopupChatContext", () => ({
@@ -21,7 +22,7 @@ vi.mock("@/contexts/ProjectConversationContext", () => ({
 }));
 
 vi.mock("@/app/actions/notes", () => ({
-    createNoteAction: vi.fn(async () => ({ success: true })),
+    createNoteAction: (...args: unknown[]) => mockCreateNoteAction(...args),
 }));
 
 vi.mock("@/app/actions/conversations", () => ({
@@ -79,6 +80,7 @@ function createMockReader(): ReadableStreamDefaultReader<Uint8Array> {
 describe("PopupChat failure handling", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockCreateNoteAction.mockResolvedValue({ success: true });
         mockUsePopupChat.mockReturnValue({
             isOpen: true,
             context: {
@@ -291,5 +293,60 @@ describe("PopupChat failure handling", () => {
 
         const nextInput = screen.getByPlaceholderText("Ask a question about Results...") as HTMLTextAreaElement;
         expect(nextInput.value).toBe("");
+    });
+
+    it("surfaces save-to-notes failures and lets the user retry from the popup footer", async () => {
+        mockProcessAIStream.mockImplementationOnce(async ({ onChunk }) => {
+            await onChunk({ type: "content", content: "Helpful answer" });
+            return {
+                runStatus: "completed",
+                stopReason: "done",
+                errorMessage: null,
+                errorMeta: null,
+                conversationId: "conv-1",
+                actualModel: null,
+                actualModelSource: "unknown",
+                terminalReason: "completed",
+            };
+        });
+        mockCreateNoteAction
+            .mockResolvedValueOnce({ success: false, error: "Unable to save note." })
+            .mockResolvedValueOnce({ success: true });
+
+        render(<PopupChat projectId="project-1" />);
+
+        fireEvent.change(screen.getByPlaceholderText("Ask a question about Eligibility..."), {
+            target: { value: "Save this chat" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+        await waitFor(() => {
+            expect(screen.getByText("Helpful answer")).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "Save to Notes" }));
+
+        await waitFor(() => {
+            expect(screen.getByText("Unable to save note.")).toBeTruthy();
+        });
+
+        expect(mockCreateNoteAction).toHaveBeenNthCalledWith(
+            1,
+            "project-1",
+            expect.stringContaining("**You:** Save this chat"),
+            "conversation",
+        );
+        expect(mockCreateNoteAction).toHaveBeenNthCalledWith(
+            1,
+            "project-1",
+            expect.stringContaining("**AI:** Helpful answer"),
+            "conversation",
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "Retry Save to Notes" }));
+
+        await waitFor(() => {
+            expect(screen.getByText("Saved to notes.")).toBeTruthy();
+        });
     });
 });

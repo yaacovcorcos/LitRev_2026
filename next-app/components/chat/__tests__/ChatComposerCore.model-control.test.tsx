@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatComposerCore } from "../ChatComposerCore";
 
 vi.mock("@/hooks/useVoiceInput", () => ({
@@ -20,6 +20,10 @@ vi.mock("@/app/actions/files", () => ({
 }));
 
 describe("ChatComposerCore model control", () => {
+    beforeEach(() => {
+        window.localStorage.clear();
+    });
+
     it("signals readiness once the textarea is mounted", () => {
         const onReady = vi.fn();
         render(
@@ -66,6 +70,74 @@ describe("ChatComposerCore model control", () => {
             undefined,
             undefined,
         );
+    });
+
+    it("does not revive deprecated localStorage model persistence when uncontrolled", () => {
+        window.localStorage.setItem("litrev_ai_model", "grok-4-1-fast");
+        const sendMessage = vi.fn();
+
+        render(
+            <ChatComposerCore
+                page="overview"
+                inputPlaceholder="Ask"
+                isLoading={false}
+                sendMessage={sendMessage}
+                cancelStream={vi.fn()}
+                showVoice={false}
+            />,
+        );
+
+        const input = screen.getByLabelText("Copilot prompt");
+        fireEvent.change(input, { target: { value: "Test message" } });
+        fireEvent.keyDown(input, { key: "Enter" });
+
+        expect(sendMessage).toHaveBeenCalledWith(
+            "Test message",
+            "overview",
+            undefined,
+            "gpt-5.2",
+            "general",
+            undefined,
+            undefined,
+            undefined,
+        );
+    });
+
+    it("shows unreadable attachment status and blocks send while the failed PDF is attached", () => {
+        const sendMessage = vi.fn();
+
+        render(
+            <ChatComposerCore
+                page="overview"
+                inputPlaceholder="Ask"
+                isLoading={false}
+                sendMessage={sendMessage}
+                cancelStream={vi.fn()}
+                showVoice={false}
+                pendingAttachment={{
+                    fileAssetId: "file-1",
+                    filename: "unreadable.pdf",
+                    size: 1024,
+                    mimeType: "application/pdf",
+                    isExisting: false,
+                    extraction: {
+                        status: "failed",
+                        reason: "pdf_parse_failed",
+                        message: "LitRev uploaded the PDF, but could not read usable text from it. Remove it or attach a different PDF.",
+                    },
+                }}
+                clearAttachment={vi.fn()}
+            />,
+        );
+
+        const input = screen.getByLabelText("Copilot prompt");
+        fireEvent.change(input, { target: { value: "Please summarize this" } });
+        fireEvent.keyDown(input, { key: "Enter" });
+
+        const sendButton = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+        expect(sendButton.disabled).toBe(true);
+        expect(sendMessage).not.toHaveBeenCalled();
+        expect(screen.getByText(/could not read usable text from it/i)).toBeTruthy();
     });
 
     it("keeps ask-user overlay hidden by default to avoid duplicate rendering", () => {

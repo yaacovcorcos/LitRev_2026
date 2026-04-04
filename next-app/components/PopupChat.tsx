@@ -179,12 +179,17 @@ function PopupChatRuntime({
     const [isStreaming, setIsStreaming] = useState(false);
     const [showTurnHint, setShowTurnHint] = useState(false);
     const [turnHintDismissed, setTurnHintDismissed] = useState(false);
+    const [saveToNotesState, setSaveToNotesState] = useState<{
+        status: "idle" | "saving" | "saved" | "error";
+        message: string | null;
+    }>({ status: "idle", message: null });
     const streamStateRef = useRef<PopupStreamRuntimeState>(createInitialPopupStreamRuntimeState());
 
     const abortRef = useRef<AbortController | null>(null);
     const userStopRequestedRef = useRef(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const cardRef = useRef<HTMLDivElement>(null);
+    const saveToNotesResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Drag state (refs to avoid re-renders during drag)
     const isDragging = useRef(false);
@@ -208,6 +213,12 @@ function PopupChatRuntime({
             setShowTurnHint(true);
         }
     }, [userTurnCount, turnHintDismissed]);
+
+    useEffect(() => () => {
+        if (saveToNotesResetRef.current) {
+            clearTimeout(saveToNotesResetRef.current);
+        }
+    }, []);
 
     // Shared scroll hook for auto-scroll
     const {
@@ -565,15 +576,36 @@ function PopupChatRuntime({
     }, [context, projectId, refreshConversations, selectConversation, setCollapsed, streamState.items.length, closePopupChat]);
 
     const handleSaveToNotes = useCallback(async () => {
-        if (streamState.items.length === 0) return;
+        if (streamState.items.length === 0 || saveToNotesState.status === "saving") return;
 
         const markdown = getPopupTranscriptEntries(streamStateRef.current.items)
             .filter((entry) => entry.content.trim().length > 0)
             .map((entry) => (entry.role === "user" ? `**You:** ${entry.content}` : `**AI:** ${entry.content}`))
             .join("\n\n---\n\n");
 
-        await createNoteAction(projectId, markdown, "conversation");
-    }, [projectId, streamState.items.length]);
+        setSaveToNotesState({ status: "saving", message: null });
+        try {
+            const result = await createNoteAction(projectId, markdown, "conversation");
+            if (!result.success) {
+                throw new Error(result.error || "Unable to save note.");
+            }
+            if (saveToNotesResetRef.current) {
+                clearTimeout(saveToNotesResetRef.current);
+            }
+            setSaveToNotesState({ status: "saved", message: null });
+            saveToNotesResetRef.current = setTimeout(() => {
+                setSaveToNotesState((current) => (
+                    current.status === "saved" ? { status: "idle", message: null } : current
+                ));
+                saveToNotesResetRef.current = null;
+            }, 2000);
+        } catch (error) {
+            setSaveToNotesState({
+                status: "error",
+                message: error instanceof Error ? error.message : "Unable to save note.",
+            });
+        }
+    }, [projectId, saveToNotesState.status, streamState.items.length]);
 
     const label = getContextLabel(context);
     const preview = getContextPreview(context);
@@ -792,8 +824,24 @@ function PopupChatRuntime({
                     {/* Footer */}
                     {renderedItems.length > 0 && (
                         <div className={styles.footer}>
-                            <button type="button" className={styles.footerLink} onClick={handleSaveToNotes}>
-                                Save to Notes
+                            {saveToNotesState.status === "saved" ? (
+                                <span className={`${styles.footerStatus} ${styles.footerStatusSuccess}`}>Saved to notes.</span>
+                            ) : saveToNotesState.status === "error" ? (
+                                <span className={`${styles.footerStatus} ${styles.footerStatusError}`}>
+                                    {saveToNotesState.message ?? "Could not save note. Retry."}
+                                </span>
+                            ) : null}
+                            <button
+                                type="button"
+                                className={styles.footerLink}
+                                onClick={handleSaveToNotes}
+                                disabled={saveToNotesState.status === "saving"}
+                            >
+                                {saveToNotesState.status === "saving"
+                                    ? "Saving..."
+                                    : saveToNotesState.status === "error"
+                                        ? "Retry Save to Notes"
+                                        : "Save to Notes"}
                             </button>
                             <button type="button" className={styles.footerLink} onClick={handleContinueInCopilot}>
                                 Continue in Copilot
