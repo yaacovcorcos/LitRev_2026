@@ -136,6 +136,12 @@ Required Day-0 outcomes:
 4. Baseline scenario pack is recorded in the live report.
 5. Raw validator JSON is preserved in or alongside the live report.
 
+Scoped zero-row diagnosis rule:
+
+1. If the scoped Day-0 validator returns zero rows, run one informational unscoped validator probe for the same window or a recent comparable window before concluding telemetry is missing.
+2. If unscoped `metricVersion=3` data exists while the scoped run remains empty, treat the chosen `workspaceIds` / `userIds` filters as stale evidence scope rather than as proof of a new runtime regression.
+3. Refresh the cohort scope, record that scope change in the live report, and rerun Day-0 before treating the active window as blocked.
+
 ## Phase 3 - Daily Progress Checks (Days 1-6)
 
 Run once daily:
