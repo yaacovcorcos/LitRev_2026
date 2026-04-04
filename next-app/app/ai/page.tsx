@@ -16,15 +16,13 @@ import type {
   AIErrorEnvelope,
   ChoiceOption,
   ConversationContext,
-  ConversationContextAttachment,
-  ConversationMessageAttachment,
   CopilotPage,
   ReasoningMode,
   UserInputRequest,
   UserInputResolution,
   UserInputResolutionKind,
 } from "@/types/ai";
-import type { ArtifactStatus, ArtifactType } from "@/types/artifacts";
+import type { ArtifactStatus } from "@/types/artifacts";
 import type { TimelineItem } from "@/types/timeline";
 import { processAIStream } from "@/lib/ai/stream-processor";
 import { routeToAgent } from "@/lib/agent/router";
@@ -93,6 +91,11 @@ import {
 import { isProgressiveAnswerStreamingEnabled } from "@/lib/feature-flags";
 import { useRouter } from "next/navigation";
 import type { QueuedFollowUp } from "@/types/queued-followup";
+import { type ChatConversation, groupConversationsByDate } from "./conversation-history";
+import {
+  mapDbMessagesToTimeline,
+  stripReservedAssistantTimelineItems,
+} from "./conversation-timeline";
 import styles from "./ai-view.module.css";
 
 const AiChatTimeline = dynamic(() =>
@@ -150,140 +153,6 @@ const makeId = (prefix: string) =>
     : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const AI_HISTORY_COLLAPSED_KEY = "litrev_ai_history_collapsed";
-const stripReservedAssistantTimelineItems = (items: TimelineItem[], assistantMessageId: string) =>
-  items.filter((item) => !(
-    item.type === "assistant_message"
-    && item.id === assistantMessageId
-    && item.deliveryState === "reserved"
-    && !item.content
-    && !item.reasoning?.text
-  ));
-
-type ChatConversation = {
-  id: string;
-  title: string | null;
-  projectId?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-function groupConversationsByDate(conversations: ChatConversation[]): {
-  title: string;
-  items: ChatConversation[];
-}[] {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  const lastWeek = new Date(today);
-  lastWeek.setDate(lastWeek.getDate() - 7);
-
-  const groups: { title: string; items: ChatConversation[] }[] = [
-    { title: "Today", items: [] },
-    { title: "Yesterday", items: [] },
-    { title: "This Week", items: [] },
-    { title: "Older", items: [] },
-  ];
-
-  for (const conv of conversations) {
-    const date = new Date(conv.updatedAt);
-    date.setHours(0, 0, 0, 0);
-
-    if (date >= today) {
-      groups[0].items.push(conv);
-    } else if (date >= yesterday) {
-      groups[1].items.push(conv);
-    } else if (date >= lastWeek) {
-      groups[2].items.push(conv);
-    } else {
-      groups[3].items.push(conv);
-    }
-  }
-
-  return groups.filter((g) => g.items.length > 0);
-}
-
-function mapDbMessagesToTimeline(
-  messages: Array<{
-  id: string;
-  role: string;
-  content: string;
-  createdAt: string;
-  attachments?: ConversationMessageAttachment[];
-}>,
-  artifacts: Array<{
-    id: string;
-    type: string;
-    status: string;
-    title: string;
-    payload: unknown;
-    version: number;
-    createdAt: string;
-  }> = [],
-): TimelineItem[] {
-  const messageItems: TimelineItem[] = [];
-  const isContextAttachment = (attachment: ConversationMessageAttachment): attachment is ConversationContextAttachment =>
-    "type" in attachment && attachment.type === "context_capture";
-  for (const msg of messages) {
-    if (msg.role === "user") {
-      messageItems.push({
-        type: "user_message",
-        id: msg.id,
-        content: msg.content,
-        createdAt: msg.createdAt,
-        attachments: msg.attachments?.map((a) => (
-          isContextAttachment(a)
-            ? a
-            : {
-              fileAssetId: a.fileAssetId,
-              filename: a.filename,
-              mimeType: a.mimeType,
-              size: a.size,
-            }
-        )),
-      });
-      continue;
-    }
-    if (msg.role === "assistant") {
-      messageItems.push({
-        type: "assistant_message",
-        id: msg.id,
-        content: msg.content,
-        createdAt: msg.createdAt,
-      });
-    }
-  }
-  const artifactItems: TimelineItem[] = artifacts.map((artifact) => ({
-    type: "artifact",
-    id: `artifact-${artifact.id}`,
-    artifactId: artifact.id,
-    artifactType: artifact.type as ArtifactType,
-    status: artifact.status as ArtifactStatus,
-    title: artifact.title,
-    payload: artifact.payload ?? {},
-    version: artifact.version,
-    createdAt: artifact.createdAt,
-  }));
-  const getCreatedAt = (item: TimelineItem): string => {
-    if (
-      item.type === "user_message"
-      || item.type === "assistant_message"
-      || item.type === "artifact"
-      || item.type === "tool_activity"
-      || item.type === "checkpoint"
-      || item.type === "error"
-    ) {
-      return item.createdAt;
-    }
-    return "";
-  };
-
-  return [...messageItems, ...artifactItems].sort(
-    (a, b) => new Date(getCreatedAt(a)).getTime() - new Date(getCreatedAt(b)).getTime(),
-  );
-}
 
 export default function AIView() {
   const router = useRouter();
