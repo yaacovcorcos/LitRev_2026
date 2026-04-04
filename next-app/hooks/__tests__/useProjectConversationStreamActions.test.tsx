@@ -8,15 +8,31 @@ import type { ArtifactData } from "@/types/artifacts";
 import type { ChoiceOption, StreamPhase, UserInputRequest } from "@/types/ai";
 import type { PendingAttachment } from "@/types/project-conversation-context";
 
-const { mockReviewArtifactAction, mockUndoArtifactAction, mockDispatchProjectDataChanged } = vi.hoisted(() => ({
+const {
+    mockReviewArtifactAction,
+    mockUndoArtifactAction,
+    mockDispatchProjectDataChanged,
+    mockCreateConversation,
+    mockProcessAIStream,
+} = vi.hoisted(() => ({
     mockReviewArtifactAction: vi.fn(),
     mockUndoArtifactAction: vi.fn(),
     mockDispatchProjectDataChanged: vi.fn(),
+    mockCreateConversation: vi.fn(),
+    mockProcessAIStream: vi.fn(),
 }));
 
 vi.mock("@/app/actions/agent", () => ({
     reviewArtifactAction: (...args: unknown[]) => mockReviewArtifactAction(...args),
     undoArtifactAction: (...args: unknown[]) => mockUndoArtifactAction(...args),
+}));
+
+vi.mock("@/app/actions/conversations", () => ({
+    createConversation: (...args: unknown[]) => mockCreateConversation(...args),
+}));
+
+vi.mock("@/lib/ai/stream-processor", () => ({
+    processAIStream: (...args: unknown[]) => mockProcessAIStream(...args),
 }));
 
 vi.mock("@/lib/project-data-events", () => ({
@@ -138,6 +154,7 @@ function useHarness() {
         state,
         artifacts,
         streamPhase,
+        pendingAttachment,
         setPendingAttachment,
     };
 }
@@ -148,11 +165,27 @@ describe("useProjectConversationStreamActions artifact review path", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockUndoArtifactAction.mockResolvedValue({ success: true, artifact: buildArtifact("rejected") });
+        mockCreateConversation.mockResolvedValue({ success: true, data: { id: "conv-1" } });
+        mockProcessAIStream.mockResolvedValue({
+            runStatus: "completed",
+            stopReason: "done",
+            errorMessage: null,
+            actualModel: null,
+            actualModelSource: "unknown",
+            terminalReason: "completed",
+        });
         consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+        vi.stubGlobal("fetch", vi.fn(async () => ({
+            ok: true,
+            body: {
+                getReader: () => ({} as ReadableStreamDefaultReader<Uint8Array>),
+            },
+        })));
     });
 
     afterEach(() => {
         consoleErrorSpy.mockRestore();
+        vi.unstubAllGlobals();
     });
 
     it("keeps artifact state proposed until review succeeds on the shared project path", async () => {
@@ -261,5 +294,66 @@ describe("useProjectConversationStreamActions artifact review path", () => {
             "Blocking send because the attached PDF could not be read for chat.",
         );
         expect(result.current.state.messages).toHaveLength(1);
+    });
+
+    it("sends a readable PDF attachment through the truthful shared chat payload and clears local attachment state", async () => {
+        const { result } = renderHook(() => useHarness());
+
+        act(() => {
+            result.current.setPendingAttachment({
+                fileAssetId: "file-7",
+                filename: "readable.pdf",
+                size: 2048,
+                mimeType: "application/pdf",
+                isExisting: true,
+                extraction: {
+                    status: "ready",
+                    text: "Extracted PDF text",
+                },
+            });
+        });
+
+        await act(async () => {
+            await result.current.sendMessage("Please summarize this", "overview", undefined, "gpt-5.2");
+        });
+
+        const fetchMock = vi.mocked(fetch);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const [, requestInit] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+        const body = JSON.parse(String(requestInit.body));
+
+        expect(body.userMessage).toContain('<attached_document filename="readable.pdf" size="2 KB">');
+        expect(body.userMessage).toContain("Extracted PDF text");
+        expect(body.userMessage).toContain("Please summarize this");
+        expect(body.options).toMatchObject({
+            conversationId: "conv-1",
+            projectId: "project-1",
+            model: "gpt-5.2",
+            page: "overview",
+        });
+        expect(body.options.userMessageAttachments).toEqual([
+            {
+                fileAssetId: "file-7",
+                filename: "readable.pdf",
+                size: 2048,
+                mimeType: "application/pdf",
+                isExisting: true,
+            },
+        ]);
+        expect(result.current.pendingAttachment).toBeNull();
+        const userMessage = [...result.current.state.messages].reverse().find((message) => message.sender === "user");
+        expect(userMessage).toMatchObject({
+            sender: "user",
+            text: "Please summarize this",
+            attachments: [
+                {
+                    fileAssetId: "file-7",
+                    filename: "readable.pdf",
+                    size: 2048,
+                    mimeType: "application/pdf",
+                    isExisting: true,
+                },
+            ],
+        });
     });
 });
