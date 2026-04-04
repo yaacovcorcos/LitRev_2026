@@ -71,8 +71,9 @@ All run from `next-app/` except deploy.
 
 ## Quality Bar (Required)
 
+- Start from first principles: understand the real behavior, constraints, and failure mode before changing code.
 - Optimize for long-term correctness and maintainability, not the fastest superficial patch.
-- Do the harder durable fix when the alternative is a brittle workaround, misleading shim, or trust-eroding band-aid.
+- Fix root causes. If the honest fix is a redesign or deeper refactor, prefer that over stacking brittle workarounds.
 - Do not ship knowingly low-quality "small fixes" that leave the underlying problem in place unless the user explicitly asks for a temporary stopgap.
 
 ## Routing Trigger Table (Mandatory)
