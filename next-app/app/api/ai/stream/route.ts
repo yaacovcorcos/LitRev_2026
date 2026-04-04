@@ -5,6 +5,7 @@
  */
 
 import { NextRequest } from "next/server";
+import { resolveUserInputQuestionId } from "@/lib/ai/user-input";
 import { AIService, getAIService } from "@/lib/server/ai";
 import type { AIMessage, ChatOptions, ConversationContext } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
@@ -345,6 +346,11 @@ export async function POST(request: NextRequest) {
                                 ...runtimeOptions.userInputResolution,
                                 sourceRunId: pendingUserInputSource.sourceRunId,
                                 callId: pendingUserInputSource.request.callId,
+                                questionId: resolveUserInputQuestionId(
+                                    runtimeOptions.userInputResolution.questionId
+                                        ?? pendingUserInputSource.request.questionId,
+                                    pendingUserInputSource.request.callId,
+                                ),
                                 decisionBoundaryKey: runtimeOptions.userInputResolution.decisionBoundaryKey
                                     ?? resolveDecisionBoundaryKey({
                                         decisionBoundaryKey: pendingUserInputSource.request.decisionBoundaryKey ?? null,

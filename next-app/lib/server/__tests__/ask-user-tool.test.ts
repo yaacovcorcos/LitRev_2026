@@ -30,6 +30,7 @@ describe("askUserTool", () => {
         });
         expect(result.userInputRequest).toEqual({
             callId: result.callId,
+            questionId: `${result.callId}:question-1`,
             question: "Which database to use?",
             questionType: "single_choice",
             options: [
@@ -131,6 +132,7 @@ describe("askUserTool", () => {
         });
 
         expect(result1.callId).not.toBe(result2.callId);
+        expect(result1.userInputRequest?.questionId).not.toBe(result2.userInputRequest?.questionId);
     });
 
     it("validates input schema rejects empty question", () => {

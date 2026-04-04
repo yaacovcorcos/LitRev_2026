@@ -129,6 +129,7 @@ export interface TimelineUserInputRequest {
     type: "user_input_request";
     id: string;
     callId: string;
+    questionId?: string;
     sourceRunId?: string;
     page?: CopilotPage;
     section?: string;

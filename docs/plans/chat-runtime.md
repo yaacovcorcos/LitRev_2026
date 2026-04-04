@@ -29,6 +29,7 @@ This plan does not own:
 - `/ai`, main conversation, and side-panel copilot now also share the queued-follow-up contract on top of that runtime: one explicit text-only next message may be queued while a run is active, rendered as an attached composer cap, and auto-dispatched only after the surface returns to true idle/sendable state.
 - `/ai`, main conversation, and side-panel copilot now also consume phase-backed recovery truth from persisted `AgentRun.runPhase` / `phaseEnteredAt`, so paused-input and stale-finalize cases converge through the shared runtime contract instead of per-surface reconnect heuristics.
 - `/ai`, main conversation, and side-panel copilot now also resolve blocking clarification through the shared runtime contract: pending requests carry canonical identity (`sourceRunId + callId`), answer/default continue through the structured continuation path, blocked-card cancel resolves as a structured terminal dismissal, freeform composer sends while blocked remain cancel-and-new-run, and cancelled clarifications stay visible as cancelled transcript state instead of disappearing.
+- The current shipped single-question clarification payload also carries additive `questionId` support through live events, persisted replay, and shared main-surface answer entry. Request identity remains `sourceRunId + callId`; `questionId` is preserved as question-level structure for compatibility with the future decision-system redesign.
 - Shared main-surface clarification now also uses one runtime-owned controller for identity, durable-progress accounting, repeat suppression, safe fallback order, and runtime-authored clarification telemetry. Scoping may apply stricter policy on top, but it no longer owns a separate blocked-state model.
 - `/ai` now also restores recent recoverable run identity within bounded local scope: boot restore may reopen the last recoverable conversation and invoke the existing recovery path, but it does not reconstruct runtime state itself and it does not imply reload-time durable trace replay.
 - Project conversation bootstrap now treats the first created conversation id as immediately authoritative in both state and bootstrap refs, so the initial project send cannot be auto-reselected as a fresh conversation and have its in-flight stream aborted by the restore/bootstrap path.
@@ -131,13 +132,14 @@ Shell responsibilities:
 ### Ask-User Continuation Invariant
 1. Every `user_input_required` event must preserve `page` and optional `section`.
 2. Every pending clarification must be identified canonically by `sourceRunId + callId`; loop-control metadata such as `decisionBoundaryKey` is not identity.
-3. Answering or accepting a recommended default from a blocked card must continue the same contextual flow through the structured resolution path, not by appending a plain user turn.
-4. Cancelling from a blocked card must resolve the pending clarification as a visible terminal cancelled state without starting or resuming a run.
-5. Freeform composer sends while blocked must cancel the pending clarification truthfully and start a fresh user turn; recovery/reload must preserve that cancelled state.
-6. `/ai` boot restore may restore only recent recoverable conversation/run identity and must hand off all recoverability truth to the existing shared recovery path rather than inventing a second restore state machine.
-7. Shared runtime policy, not surface heuristics, owns repeat-clarification suppression, durable-progress gating, and safe fallback order.
-8. Cross-surface tests must continue validating this invariant.
-9. Clarification telemetry is authored from the shared resolution/runtime path; surface analytics may exist, but they are not clarification truth.
+3. Question-level identity may also be present as `questionId`, but it does not replace the canonical request identity.
+4. Answering or accepting a recommended default from a blocked card must continue the same contextual flow through the structured resolution path, not by appending a plain user turn.
+5. Cancelling from a blocked card must resolve the pending clarification as a visible terminal cancelled state without starting or resuming a run.
+6. Freeform composer sends while blocked must cancel the pending clarification truthfully and start a fresh user turn; recovery/reload must preserve that cancelled state.
+7. `/ai` boot restore may restore only recent recoverable conversation/run identity and must hand off all recoverability truth to the existing shared recovery path rather than inventing a second restore state machine.
+8. Shared runtime policy, not surface heuristics, owns repeat-clarification suppression, durable-progress gating, and safe fallback order.
+9. Cross-surface tests must continue validating this invariant.
+10. Clarification telemetry is authored from the shared resolution/runtime path; surface analytics may exist, but they are not clarification truth.
 
 ### Context Contract V2
 Canonical fields:

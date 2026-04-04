@@ -1,5 +1,6 @@
 import "server-only";
 
+import { resolveUserInputQuestionId } from "@/lib/ai/user-input";
 import { prisma } from "@/lib/server/prisma";
 import { DEFAULT_CONVERSATION_RUN_STALE_MS } from "@/lib/server/chat-runtime/conversation-run-lock";
 import { assessRunConvergence } from "@/lib/server/agent/run-convergence";
@@ -146,7 +147,10 @@ function toReplayableChunk(
                 sequence: event.sequence,
                 chunk: {
                     type: "user_input_required",
-                    userInputRequest: payload,
+                    userInputRequest: {
+                        ...payload,
+                        questionId: resolveUserInputQuestionId(payload.questionId, payload.callId),
+                    },
                     replay: true,
                     conversationId: run.conversationId ?? undefined,
                 },
@@ -159,7 +163,10 @@ function toReplayableChunk(
                 sequence: event.sequence,
                 chunk: {
                     type: "user_input_resolved",
-                    userInputResolution: payload,
+                    userInputResolution: {
+                        ...payload,
+                        questionId: resolveUserInputQuestionId(payload.questionId, payload.callId),
+                    },
                     replay: true,
                     conversationId: run.conversationId ?? undefined,
                 },

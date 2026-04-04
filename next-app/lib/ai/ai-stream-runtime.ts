@@ -388,6 +388,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
           type: "user_input_request",
           id: requestId,
           callId: intent.request.callId,
+          questionId: intent.request.questionId,
           sourceRunId: intent.request.sourceRunId,
           question: intent.request.question,
           questionType: intent.request.questionType,
@@ -416,6 +417,7 @@ export function createAiStreamRuntime(deps: AiStreamRuntimeDeps): AiStreamRuntim
         const isCancelled = intent.resolution.resolution === "cancelled";
         return {
           ...item,
+          questionId: intent.resolution.questionId ?? item.questionId,
           answered: !isCancelled,
           answer: intent.resolution.answerText ?? item.answer,
           resolution: intent.resolution.resolution,

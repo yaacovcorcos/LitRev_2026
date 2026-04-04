@@ -12,6 +12,7 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { AITool } from "./base";
+import { buildPrimaryUserInputQuestionId } from "@/lib/ai/user-input";
 import type { UserInputOption } from "@/types/ai";
 
 const MAX_HEADER_LENGTH = 20;
@@ -154,6 +155,7 @@ export const askUserTool: AITool = {
         }
 
         const callId = `ask_user_${randomUUID()}`;
+        const questionId = buildPrimaryUserInputQuestionId(callId);
 
         return {
             callId,
@@ -161,6 +163,7 @@ export const askUserTool: AITool = {
             requiresUserInput: true,
             userInputRequest: {
                 callId,
+                questionId,
                 question,
                 questionType: resolvedQuestionType,
                 options: resolvedOptions,

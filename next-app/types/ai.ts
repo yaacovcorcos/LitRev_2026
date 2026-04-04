@@ -75,6 +75,8 @@ export type ClarificationFallbackAction =
 
 export type UserInputRequest = {
     callId: string;
+    /** Stable identity for the current single-question request payload. */
+    questionId?: string;
     sourceRunId?: string;
     question: string;
     questionType: UserInputQuestionType;
@@ -99,6 +101,8 @@ export type UserInputRequest = {
 export type UserInputResolution = {
     sourceRunId: string;
     callId: string;
+    /** Stable question identity carried forward from the blocked request when available. */
+    questionId?: string;
     resolution: UserInputResolutionKind;
     answerText?: string;
     selectedOptions?: string[];
