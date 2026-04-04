@@ -106,6 +106,8 @@ The systems below are optional architectural references only.
 
 They are not required dependencies or normative implementations. Implementers may study them to borrow ideas, compare tradeoffs, and adapt patterns. All final design choices must be justified against LitRev's own runtime, plans, and constraints.
 
+Use `OPEN_SOURCE_REFERENCES.md` for the current GitHub URLs behind the named upstreams that are still tracked as active inputs.
+
 - Temporal-style durable execution / AgentState systems: workflow state, activity boundaries, heartbeat vs real progress, retry/compensation
 - LangGraph: explicit state transitions, human-in-the-loop pause/resume, graph-state recovery
 - OpenHands: preserving useful intermediate work and continuing from durable action history

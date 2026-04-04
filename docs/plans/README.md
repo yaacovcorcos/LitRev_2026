@@ -41,6 +41,7 @@ This file is the active plan registry and the canonical owner for plan-maintenan
 - [**Diagnosis Report**](../reports/diagnosis-03-02.md): Canonical diagnosis and quality-tracking report; supersedes the removed `QUALITY_REPORT.md`.
 - [**Repo Health**](../reviews/repo-health.md): Living summary for whole-repo review findings, regressions, repeated mistakes, and improvements.
 - [**Architecture Decision Log**](../architecture/decision-log.md): Canonical record of intentional technical tradeoffs that reviewers should preserve unless assumptions change.
+- [**Open Source References**](../../OPEN_SOURCE_REFERENCES.md): Active registry of upstream GitHub repositories that current owner docs or retained review artifacts still cite for adaptation or benchmark comparison.
 - [**Frontend Quality Bar**](../architecture/frontend-quality-bar.md): Durable frontend doctrine, control hierarchy, and anti-patterns for LitRev UI work.
 - [**Agentic UI Glossary**](../architecture/agentic-ui-glossary.md): Canonical vocabulary bridge for chat timeline items, transparency/process UI, artifacts, composer controls, and clarification flow.
 - [**Repo Review Baseline**](../runbooks/repo-review-baseline.md): Canonical baseline for comparing repeated deep repo reviews against current in-repo findings and shipped review-driven fixes.
