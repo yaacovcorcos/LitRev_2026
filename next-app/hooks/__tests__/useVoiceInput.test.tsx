@@ -204,6 +204,67 @@ describe("useVoiceInput", () => {
         );
     });
 
+    it("passes optional page and project attribution to the transcription route", async () => {
+        let capturedBody: FormData | undefined;
+        fetchMock.mockImplementation(async (_url, init) => {
+            capturedBody = init?.body as FormData;
+            return {
+                ok: true,
+                json: async () => ({ text: "with attribution" }),
+            };
+        });
+
+        const onTranscription = vi.fn();
+        const { result } = renderHook(() => useVoiceInput(onTranscription, undefined, {
+            page: "overview",
+            projectId: "proj_1",
+        }));
+
+        await act(async () => {
+            result.current.toggleRecording();
+            await Promise.resolve();
+        });
+
+        await act(async () => {
+            result.current.stopRecording();
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(capturedBody).toBeInstanceOf(FormData);
+        expect(capturedBody?.get("page")).toBe("overview");
+        expect(capturedBody?.get("projectId")).toBe("proj_1");
+        expect(onTranscription).toHaveBeenCalledWith("with attribution");
+    });
+
+    it("surfaces route governance failures through the settlement callback", async () => {
+        fetchMock.mockResolvedValue({
+            ok: false,
+            json: async () => ({ error: "Rate limit exceeded. Maximum 20 requests per minute." }),
+        });
+
+        const onTranscriptionSettled = vi.fn();
+        const { result } = renderHook(() => useVoiceInput(vi.fn(), onTranscriptionSettled));
+
+        await act(async () => {
+            result.current.toggleRecording();
+            await Promise.resolve();
+        });
+
+        await act(async () => {
+            result.current.stopRecording();
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(result.current.state).toBe("idle");
+        expect(result.current.error).toBe("Rate limit exceeded. Maximum 20 requests per minute.");
+        expect(onTranscriptionSettled).toHaveBeenCalledWith({
+            status: "error",
+            message: "Rate limit exceeded. Maximum 20 requests per minute.",
+        });
+    });
+
     it("shows a short-recording error and skips transcription for tiny blobs", async () => {
         recordingBlobSize = 10;
         const onTranscriptionSettled = vi.fn();

@@ -49,6 +49,7 @@ const LEGACY_UNKNOWN = "legacy_unknown" as const;
 export type AIUsageSource =
     | "project_copilot"
     | "ai_page"
+    | "voice_transcription"
     | typeof LEGACY_UNKNOWN;
 
 export type AIUsageContextPage =
@@ -63,7 +64,12 @@ export type AIUsageContextPage =
     | typeof LEGACY_UNKNOWN;
 
 function normalizeUsageSource(source?: string | null, projectId?: string | null): AIUsageSource {
-    if (source === "project_copilot" || source === "ai_page" || source === LEGACY_UNKNOWN) {
+    if (
+        source === "project_copilot"
+        || source === "ai_page"
+        || source === "voice_transcription"
+        || source === LEGACY_UNKNOWN
+    ) {
         return source;
     }
     return projectId ? "project_copilot" : "ai_page";
@@ -114,6 +120,23 @@ function usageWhere(scope: UsageScope, createdAtGte: Date) {
         projectId: scope.projectId,
         createdAt: { gte: createdAtGte },
     };
+}
+
+export async function countUsageRequestsSince(
+    scopeInput: UsageScopeInput,
+    createdAtGte: Date,
+    options?: {
+        source?: string | null;
+    },
+): Promise<number> {
+    const scope = normalizeScope(scopeInput);
+
+    return prisma.aIUsage.count({
+        where: {
+            ...usageWhere(scope, createdAtGte),
+            ...(options?.source ? { source: options.source } : {}),
+        },
+    });
 }
 
 function clampCachedTokens(inputTokens: number, cachedInputTokens: number): number {
@@ -176,12 +199,8 @@ export function resetCacheMetricsForTests(): void {
  * Returns true if the request should be allowed
  */
 export async function checkRateLimit(scopeInput: UsageScopeInput): Promise<boolean> {
-    const scope = normalizeScope(scopeInput);
     const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
-
-    const recentRequests = await prisma.aIUsage.count({
-        where: usageWhere(scope, oneMinuteAgo),
-    });
+    const recentRequests = await countUsageRequestsSince(scopeInput, oneMinuteAgo);
 
     return recentRequests < AI_CONFIG.maxRequestsPerMinute;
 }

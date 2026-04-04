@@ -384,7 +384,10 @@ export function ChatComposerCore({
         toggleRecording,
         stopRecording,
         clearError: clearVoiceError,
-    } = useVoiceInput(handleTranscription, handleTranscriptionSettled);
+    } = useVoiceInput(handleTranscription, handleTranscriptionSettled, {
+        page,
+        projectId,
+    });
 
     useEffect(() => {
         if (isModelControlled) return;

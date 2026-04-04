@@ -129,6 +129,9 @@ For LitRev specifically, review:
 - protocol / ledger mutation scope
 - prompt-injection resistance at tool boundaries
 
+Paid provider-backed AI endpoints must pass through shared backend governance before provider calls.
+At minimum, that means validated actor scope, server-enforced abuse controls, and truthful usage attribution or another explicit accounting boundary.
+
 Primary references:
 - OWASP Top 10 for LLM Applications
 - OpenAI agent safety guidance

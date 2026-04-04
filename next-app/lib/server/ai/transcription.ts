@@ -6,6 +6,8 @@ import "server-only";
 
 import OpenAI from "openai";
 
+export const TRANSCRIPTION_MODEL = "whisper-large-v3-turbo" as const;
+
 let groqClient: OpenAI | null = null;
 
 function getGroqClient(): OpenAI {
@@ -33,7 +35,7 @@ export async function transcribeAudio(
 
     const transcription = await client.audio.transcriptions.create({
         file: audioFile,
-        model: "whisper-large-v3-turbo",
+        model: TRANSCRIPTION_MODEL,
         response_format: "json",
         ...(options?.language ? { language: options.language } : {}),
         ...(options?.prompt ? { prompt: options.prompt } : {}),
