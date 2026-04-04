@@ -151,8 +151,8 @@ Every fix entry must include:
 
 - **`FIX-011b` Runtime stabilization, convergence, and durable continuation**
   - **Severity:** P0 trust/reliability
-  - **Symptom:** the major convergence primitives are already shipped, but `FIX-011b` is still open because the repo has not yet finished the final delta audit against the shared recovery/convergence path or completed the later-stage `U1.6` sign-off needed to prove there is no remaining cross-surface runtime gap.
-  - **Desired end state:** with `FIX-012` retired, either patch the one narrow remaining shared runtime delta if the audit or burn-in reveals one, or confirm that no additional shared-runtime code delta remains and retire `FIX-011b` through the existing `U1.6` burn-in authority without reopening settled recovery design.
+  - **Symptom:** the major convergence primitives are already shipped, and the latest closeout audit on `2026-04-05` revalidated the shared recovery/convergence battery without finding a new code-path gap, but `FIX-011b` is still open because the repo has not yet completed a sign-offable `U1.6` burn-in window on current production truth.
+  - **Desired end state:** with `FIX-012` retired, keep the shared runtime code closed unless a fresh burn-in window reveals one narrow remaining delta; otherwise finish `U1.6` on a valid current deployment/cohort window and retire `FIX-011b` without reopening settled recovery design.
   - **Supporting plans:** `docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md` for supporting closeout detail, `docs/plans/transparency-ui.md` for durable execution-trace truth, and `docs/plans/chat-runtime.md` plus `docs/runbooks/chat-runtime-burn-in.md` for the operational `U1.6` sign-off path.
   - **Exit criteria:**
     - baseline rescue remains retired and burn-in can serve as sign-off instead of bug discovery
