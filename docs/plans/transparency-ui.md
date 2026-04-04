@@ -363,7 +363,7 @@ Visible assistant prose and machine-readable UI state must not share one channel
 Keep the current architectural split:
 - `shared-stream-reducer.ts` owns normalized event/state reduction
 - `ai-stream-runtime.ts` owns shared client-side trace application
-- `TimelineRenderer.tsx` owns display
+- `ChatTimeline.tsx` owns display
 
 Do not fork per-surface semantics unless a surface is explicitly reduced and documented as such.
 

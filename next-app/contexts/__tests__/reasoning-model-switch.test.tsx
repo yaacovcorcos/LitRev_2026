@@ -1,7 +1,7 @@
  // @vitest-environment jsdom
  import { act, renderHook } from "@testing-library/react";
  import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
- import { ProjectCopilotProvider, useProjectCopilot } from "../ProjectCopilotContext";
+ import { ProjectConversationProvider, useProjectConversation } from "../ProjectConversationContext";
  import type { ReactNode } from "react";
  
  // Mock all external dependencies
@@ -13,13 +13,13 @@
      }),
  }));
  
- vi.mock("@/lib/projectCopilotStorage", () => ({
-     loadProjectCopilotState: () => ({
+ vi.mock("@/lib/project-conversation-storage", () => ({
+     loadProjectConversationState: () => ({
          messages: [],
          panel: { collapsed: false, width: 400 },
      }),
-     saveProjectCopilotState: vi.fn(),
-     createDefaultProjectCopilotState: () => ({
+     saveProjectConversationState: vi.fn(),
+     createDefaultProjectConversationState: () => ({
          messages: [],
          panel: { collapsed: false, width: 400 },
      }),
@@ -38,8 +38,8 @@
      updateAutonomyAction: vi.fn(),
  }));
  
- vi.mock("@/hooks/useCopilotConversations", () => ({
-     useCopilotConversations: () => ({
+ vi.mock("@/hooks/useProjectConversationManager", () => ({
+     useProjectConversationManager: () => ({
          conversations: [],
          currentConversationId: null,
          isLoadingConversations: false,
@@ -62,8 +62,8 @@
      }),
  }));
  
- vi.mock("@/hooks/useCopilotStreamActions", () => ({
-     useCopilotStreamActions: () => ({
+ vi.mock("@/hooks/useProjectConversationStreamActions", () => ({
+     useProjectConversationStreamActions: () => ({
          sendMessage: vi.fn(),
          cancelStream: vi.fn(),
          handleReviewArtifact: vi.fn(),
@@ -79,9 +79,9 @@
  
  function wrapper({ children }: { children: ReactNode }) {
      return (
-         <ProjectCopilotProvider projectId="test-project">
+         <ProjectConversationProvider projectId="test-project">
              {children}
-         </ProjectCopilotProvider>
+         </ProjectConversationProvider>
      );
  }
  
@@ -96,7 +96,7 @@ describe("Reasoning mode reset on model switch", () => {
      });
  
     it("preserves reasoning mode when switching between best_effort models", async () => {
-        const { result } = renderHook(() => useProjectCopilot(), { wrapper });
+        const { result } = renderHook(() => useProjectConversation(), { wrapper });
 
         // Set reasoning mode to summary first
         await act(async () => {
@@ -114,7 +114,7 @@ describe("Reasoning mode reset on model switch", () => {
     });
  
      it("preserves reasoning mode when switching to a best_effort model", async () => {
-         const { result } = renderHook(() => useProjectCopilot(), { wrapper });
+         const { result } = renderHook(() => useProjectConversation(), { wrapper });
  
          // Switch to grok (best_effort support)
          await act(async () => {
@@ -127,7 +127,7 @@ describe("Reasoning mode reset on model switch", () => {
      });
  
     it("returns correct reasoningSupport tier for selectable models", async () => {
-        const { result } = renderHook(() => useProjectCopilot(), { wrapper });
+        const { result } = renderHook(() => useProjectConversation(), { wrapper });
 
         await act(async () => {
             result.current.setSelectedModel("gpt-5.2");

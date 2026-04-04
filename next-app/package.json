@@ -10,7 +10,7 @@
     "lint": "eslint && npm run check:theme-primitives",
     "lint:governance": "eslint -c eslint-governance.config.mjs app components contexts hooks lib scripts",
     "lint:governance:phase1": "eslint -c eslint-governance-phase1.config.mjs app components contexts hooks lib scripts",
-    "lint:governance:phase2-hotspots": "eslint -c eslint-governance-phase2-hotspots.config.mjs app/ai components/copilot contexts/ProjectCopilotContext.tsx hooks/useCopilotConversations.ts hooks/useCopilotStreamActions.ts app/project/[id]/layout.tsx",
+    "lint:governance:phase2-hotspots": "eslint -c eslint-governance-phase2-hotspots.config.mjs app/ai components/chat components/project/ConversationMainView.tsx components/project/ProjectCopilotPanel.tsx components/project/ProjectConversationComposer.tsx components/project/ProjectConversationAutonomySettings.tsx components/project/project-copilot-panel-scroll-containment.ts contexts/ProjectConversationContext.tsx hooks/useProjectConversationManager.ts hooks/useProjectConversationStreamActions.ts app/project/[id]/layout.tsx",
     "lint:governance:phase3-searchability": "eslint -c eslint-governance-phase3-searchability.config.mjs app components contexts hooks",
     "lint:governance:phase4-async": "eslint -c eslint-governance-phase4-async.config.mjs app components contexts hooks",
     "lint:governance:phase4-tests": "eslint -c eslint-governance-phase4-tests.config.mjs lib/agent lib/server/agent lib/server/ai/tools",

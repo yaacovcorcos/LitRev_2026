@@ -6,9 +6,9 @@ import { AIErrorWithEnvelope } from "@/lib/ai/error-envelope";
 import type { PopupChatContext } from "@/types/popup-chat";
 import { PopupChat } from "../PopupChat";
 
-const { mockUsePopupChat, mockUseProjectCopilot, mockProcessAIStream } = vi.hoisted(() => ({
+const { mockUsePopupChat, mockUseProjectConversation, mockProcessAIStream } = vi.hoisted(() => ({
     mockUsePopupChat: vi.fn(),
-    mockUseProjectCopilot: vi.fn(),
+    mockUseProjectConversation: vi.fn(),
     mockProcessAIStream: vi.fn(),
 }));
 
@@ -16,8 +16,8 @@ vi.mock("@/contexts/PopupChatContext", () => ({
     usePopupChat: mockUsePopupChat,
 }));
 
-vi.mock("@/contexts/ProjectCopilotContext", () => ({
-    useProjectCopilot: mockUseProjectCopilot,
+vi.mock("@/contexts/ProjectConversationContext", () => ({
+    useProjectConversation: mockUseProjectConversation,
 }));
 
 vi.mock("@/app/actions/notes", () => ({
@@ -89,7 +89,7 @@ describe("PopupChat failure handling", () => {
             },
             closePopupChat: vi.fn(),
         });
-        mockUseProjectCopilot.mockReturnValue({
+        mockUseProjectConversation.mockReturnValue({
             selectConversation: vi.fn(),
             setCollapsed: vi.fn(),
             refreshConversations: vi.fn(),

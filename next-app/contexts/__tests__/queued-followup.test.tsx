@@ -3,7 +3,7 @@ import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-li
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ProjectCopilotProvider, useProjectCopilot } from "../ProjectCopilotContext";
+import { ProjectConversationProvider, useProjectConversation } from "../ProjectConversationContext";
 import { createQueuedFollowUp } from "@/lib/ai/queued-followup";
 
 const {
@@ -22,13 +22,13 @@ vi.mock("next/navigation", () => ({
     }),
 }));
 
-vi.mock("@/lib/projectCopilotStorage", () => ({
-    loadProjectCopilotState: () => ({
+vi.mock("@/lib/project-conversation-storage", () => ({
+    loadProjectConversationState: () => ({
         messages: [],
         panel: { collapsed: false, width: 400 },
     }),
-    saveProjectCopilotState: vi.fn(),
-    createDefaultProjectCopilotState: () => ({
+    saveProjectConversationState: vi.fn(),
+    createDefaultProjectConversationState: () => ({
         messages: [],
         panel: { collapsed: false, width: 400 },
     }),
@@ -47,8 +47,8 @@ vi.mock("@/app/actions/agent", () => ({
     updateAutonomyAction: vi.fn(),
 }));
 
-vi.mock("@/hooks/useCopilotConversations", () => ({
-    useCopilotConversations: () => ({
+vi.mock("@/hooks/useProjectConversationManager", () => ({
+    useProjectConversationManager: () => ({
         conversations: [],
         currentConversationId: mockCurrentConversationIdRef.current,
         isLoadingConversations: false,
@@ -72,8 +72,8 @@ vi.mock("@/hooks/useCopilotConversations", () => ({
     }),
 }));
 
-vi.mock("@/hooks/useCopilotStreamActions", () => ({
-    useCopilotStreamActions: () => ({
+vi.mock("@/hooks/useProjectConversationStreamActions", () => ({
+    useProjectConversationStreamActions: () => ({
         sendMessage: mockSendMessage,
         cancelStream: vi.fn(),
         handleReviewArtifact: vi.fn(),
@@ -90,21 +90,21 @@ vi.mock("@/lib/ai/reasoning-visibility", () => ({
 
 function wrapper({ children }: { children: ReactNode }) {
     return (
-        <ProjectCopilotProvider projectId="test-project">
+        <ProjectConversationProvider projectId="test-project">
             {children}
-        </ProjectCopilotProvider>
+        </ProjectConversationProvider>
     );
 }
 
 function QueueProbe() {
-    const projectCopilot = useProjectCopilot();
+    const projectConversation = useProjectConversation();
 
     return (
         <div>
             <button
                 type="button"
                 onClick={() => {
-                    projectCopilot.queueQueuedFollowUp(createQueuedFollowUp({
+                    projectConversation.queueQueuedFollowUp(createQueuedFollowUp({
                         text: "Persist until the project changes",
                         conversationId: "conv-2",
                         page: "overview",
@@ -114,12 +114,12 @@ function QueueProbe() {
             >
                 queue scoped follow-up
             </button>
-            <span data-testid="queued-text">{projectCopilot.queuedFollowUp?.text ?? ""}</span>
+            <span data-testid="queued-text">{projectConversation.queuedFollowUp?.text ?? ""}</span>
         </div>
     );
 }
 
-describe("ProjectCopilot queued follow-up behavior", () => {
+describe("ProjectConversation queued follow-up behavior", () => {
     beforeEach(() => {
         window.localStorage.clear();
         mockCurrentConversationIdRef.current = "conv-1";
@@ -131,7 +131,7 @@ describe("ProjectCopilot queued follow-up behavior", () => {
     });
 
     it("auto-dispatches a queued follow-up once the host is already idle and sendable", async () => {
-        const { result } = renderHook(() => useProjectCopilot(), { wrapper });
+        const { result } = renderHook(() => useProjectConversation(), { wrapper });
 
         await act(async () => {
             result.current.queueQueuedFollowUp(createQueuedFollowUp({
@@ -162,7 +162,7 @@ describe("ProjectCopilot queued follow-up behavior", () => {
     });
 
     it("stores and clears queued follow-up state explicitly", async () => {
-        const { result } = renderHook(() => useProjectCopilot(), { wrapper });
+        const { result } = renderHook(() => useProjectConversation(), { wrapper });
 
         await act(async () => {
             result.current.queueQueuedFollowUp(createQueuedFollowUp({
@@ -197,7 +197,7 @@ describe("ProjectCopilot queued follow-up behavior", () => {
 
     it("binds an unscoped queued follow-up after the first conversation resolves and dispatches it once idle", async () => {
         mockCurrentConversationIdRef.current = null;
-        const { result, rerender } = renderHook(() => useProjectCopilot(), { wrapper });
+        const { result, rerender } = renderHook(() => useProjectConversation(), { wrapper });
 
         await act(async () => {
             result.current.queueQueuedFollowUp(createQueuedFollowUp({
@@ -233,9 +233,9 @@ describe("ProjectCopilot queued follow-up behavior", () => {
 
     it("clears project-scoped queued follow-up state when the provider project changes", async () => {
         const { rerender } = render(
-            <ProjectCopilotProvider projectId="project-a">
+            <ProjectConversationProvider projectId="project-a">
                 <QueueProbe />
-            </ProjectCopilotProvider>
+            </ProjectConversationProvider>
         );
 
         await act(async () => {
@@ -245,9 +245,9 @@ describe("ProjectCopilot queued follow-up behavior", () => {
 
         await act(async () => {
             rerender(
-                <ProjectCopilotProvider projectId="project-b">
+                <ProjectConversationProvider projectId="project-b">
                     <QueueProbe />
-                </ProjectCopilotProvider>
+                </ProjectConversationProvider>
             );
         });
 

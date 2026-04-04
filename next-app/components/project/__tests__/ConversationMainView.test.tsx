@@ -4,15 +4,15 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationMainView } from "../ConversationMainView";
 
-const { mockUseProjectCopilot, mockTimelineRenderer } = vi.hoisted(() => ({
-  mockUseProjectCopilot: vi.fn(),
-  mockTimelineRenderer: vi.fn(),
+const { mockUseProjectConversation, mockChatTimeline } = vi.hoisted(() => ({
+  mockUseProjectConversation: vi.fn(),
+  mockChatTimeline: vi.fn(),
 }));
 
 const mockRouterPush = vi.fn();
 
-vi.mock("@/contexts/ProjectCopilotContext", () => ({
-  useProjectCopilot: mockUseProjectCopilot,
+vi.mock("@/contexts/ProjectConversationContext", () => ({
+  useProjectConversation: mockUseProjectConversation,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -36,15 +36,15 @@ vi.mock("@/app/actions/notes", () => ({
   createNoteAction: vi.fn(),
 }));
 
-vi.mock("../../copilot/TimelineRenderer", () => ({
-  TimelineRenderer: (props: unknown) => {
-    mockTimelineRenderer(props);
+vi.mock("../../chat/ChatTimeline", () => ({
+  ChatTimeline: (props: unknown) => {
+    mockChatTimeline(props);
     return <div data-testid="timeline-renderer" />;
   },
 }));
 
-vi.mock("../../copilot/CopilotInput", () => ({
-  CopilotInput: ({
+vi.mock("../ProjectConversationComposer", () => ({
+  ProjectConversationComposer: ({
     hasQueuedFollowUp,
     attachedStack,
     interactionLocked,
@@ -62,8 +62,8 @@ vi.mock("../../copilot/CopilotInput", () => ({
   ),
 }));
 
-vi.mock("../../copilot/AutonomySettings", () => ({
-  AutonomySettings: () => <div data-testid="autonomy-settings" />,
+vi.mock("../ProjectConversationAutonomySettings", () => ({
+  ProjectConversationAutonomySettings: () => <div data-testid="autonomy-settings" />,
 }));
 
 vi.mock("../../ui/ConversationPicker", () => ({
@@ -155,7 +155,7 @@ describe("ConversationMainView parity", () => {
       isLoadingOlder: false,
       loadOlderMessages: vi.fn(),
     };
-    mockUseProjectCopilot.mockReturnValue(baseContextValue);
+    mockUseProjectConversation.mockReturnValue(baseContextValue);
   });
 
   it("passes structured timeline-capable messages through to the shared renderer unchanged", () => {
@@ -172,10 +172,10 @@ describe("ConversationMainView parity", () => {
     expect(screen.getByText("Waiting for your answer")).toBeTruthy();
     expect(screen.queryByRole("progressbar")).toBeNull();
     expect(status.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(mockTimelineRenderer.mock.calls.length).toBeGreaterThanOrEqual(1);
-    const props = mockTimelineRenderer.mock.calls.at(-1)?.[0] as { messages: unknown[]; suppressedProgressId?: string | null };
+    expect(mockChatTimeline.mock.calls.length).toBeGreaterThanOrEqual(1);
+    const props = mockChatTimeline.mock.calls.at(-1)?.[0] as { messages: unknown[]; suppressedProgressId?: string | null };
     expect(props.messages).toHaveLength(5);
-    expect(props.messages).toEqual(mockUseProjectCopilot.mock.results[0]?.value.messages);
+    expect(props.messages).toEqual(mockUseProjectConversation.mock.results[0]?.value.messages);
     expect(props.suppressedProgressId).toBe("progress-1");
     const checkpoint = props.messages.find((message) => (message as { checkpoint?: unknown }).checkpoint) as {
       checkpoint?: { runId?: string; checkpointKind?: string };
@@ -186,7 +186,7 @@ describe("ConversationMainView parity", () => {
   it("targets reconnect, continue, and stop-and-retry actions to the clicked run", () => {
     render(<ConversationMainView projectId="project-1" />);
 
-    const props = mockTimelineRenderer.mock.calls[0]?.[0] as {
+    const props = mockChatTimeline.mock.calls[0]?.[0] as {
       onReconnectRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
       onContinueFromDurableStateRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
       onStopAndRetryRun?: (item: { type: "error"; errorMeta?: { runId?: string | null; activeRunId?: string | null } }) => void;
@@ -205,7 +205,7 @@ describe("ConversationMainView parity", () => {
       errorMeta: { runId: "run-clicked", activeRunId: "run-newer" },
     });
 
-    const contextValue = mockUseProjectCopilot.mock.results[0]?.value as {
+    const contextValue = mockUseProjectConversation.mock.results[0]?.value as {
       reconnectRun: ReturnType<typeof vi.fn>;
       sendMessage: ReturnType<typeof vi.fn>;
     };
@@ -246,13 +246,13 @@ describe("ConversationMainView parity", () => {
   it("routes clarification answers back through the provider-owned answer handler", () => {
     render(<ConversationMainView projectId="project-1" />);
 
-    const props = mockTimelineRenderer.mock.calls[0]?.[0] as {
+    const props = mockChatTimeline.mock.calls[0]?.[0] as {
       onAnswerUserInput?: (callId: string, answer: string, page?: "overview", section?: string, resolution?: "answered") => void;
     };
 
     props.onAnswerUserInput?.("ask-1", "Start with the strongest RCT", "overview");
 
-    const contextValue = mockUseProjectCopilot.mock.results[0]?.value as {
+    const contextValue = mockUseProjectConversation.mock.results[0]?.value as {
       answerUserInput: ReturnType<typeof vi.fn>;
     };
 
@@ -264,7 +264,7 @@ describe("ConversationMainView parity", () => {
   });
 
   it("renders a queued follow-up cap above the composer when one is present", () => {
-    mockUseProjectCopilot.mockReturnValue({
+    mockUseProjectConversation.mockReturnValue({
       ...baseContextValue,
       messages: [],
       queuedFollowUp: {
@@ -293,7 +293,7 @@ describe("ConversationMainView parity", () => {
   });
 
   it("keeps the composer standalone when no attached caps are present", () => {
-    mockUseProjectCopilot.mockReturnValue({
+    mockUseProjectConversation.mockReturnValue({
       ...baseContextValue,
       messages: [],
     });
@@ -314,7 +314,7 @@ describe("ConversationMainView parity", () => {
       stopped: false,
     }));
 
-    mockUseProjectCopilot.mockReturnValue({
+    mockUseProjectConversation.mockReturnValue({
       ...baseContextValue,
       messages: [
         {

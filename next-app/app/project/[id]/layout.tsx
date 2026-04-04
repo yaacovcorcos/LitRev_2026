@@ -2,14 +2,14 @@
 
 import { CSSProperties, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, usePathname } from "next/navigation";
-import { ProjectCopilotProvider, useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { ProjectConversationProvider, useProjectConversation } from "@/contexts/ProjectConversationContext";
 import { ProjectShellProvider, type FocusMode, type ViewTab } from "@/contexts/ProjectShellContext";
 import { useCommandPalette } from "@/contexts/CommandPaletteContext";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { AppShell } from "@/components/AppShell";
 import { ProjectTabBar } from "@/components/project/ProjectTabBar";
 import { ConversationMainView } from "@/components/project/ConversationMainView";
-import { ProjectCopilot } from "@/components/ProjectCopilot";
+import { ProjectCopilotPanel } from "@/components/project/ProjectCopilotPanel";
 import { ResizableSplitter } from "@/components/ui/ResizableSplitter";
 import { PopupChat } from "@/components/PopupChat";
 import { PopupChatProvider } from "@/contexts/PopupChatContext";
@@ -70,7 +70,7 @@ function ProjectShellInner({
         setStudyFilter,
         selectConversation,
         newConversation,
-    } = useProjectCopilot();
+    } = useProjectConversation();
     const { registerCopilotToggle } = useCommandPalette();
     const { getProjectById, deleteProject } = useProjects();
     const project = projectId ? getProjectById(projectId) : undefined;
@@ -489,7 +489,7 @@ function ProjectShellInner({
                                     onChange={setPanelWidth}
                                 />
                                 <div className={styles.copilotPane}>
-                                    <ProjectCopilot
+                                    <ProjectCopilotPanel
                                         page={copilotPage as CopilotPage}
                                         studyId={copilotStudyId}
                                         contextDisplay={copilotContextDisplay}
@@ -553,7 +553,7 @@ export default function ProjectLayout({ children }: ProjectLayoutProps) {
     }, [pathname, projectEntryRestoreEnabled, projectId, routeConversationId, router]);
 
     return (
-        <ProjectCopilotProvider
+        <ProjectConversationProvider
             projectId={projectId}
             routeConversationId={routeConversationId}
         >
@@ -569,6 +569,6 @@ export default function ProjectLayout({ children }: ProjectLayoutProps) {
                 </ProjectDataProvider>
                 <PopupChat projectId={projectId} />
             </PopupChatProvider>
-        </ProjectCopilotProvider>
+        </ProjectConversationProvider>
     );
 }

@@ -6,7 +6,7 @@ import { Command } from "cmdk";
 import { useRouter, useParams } from "next/navigation";
 import { useCommandPalette } from "@/contexts/CommandPaletteContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
-import { useProjectCopilotSafe } from "@/contexts/ProjectCopilotContext";
+import { useProjectConversationSafe } from "@/contexts/ProjectConversationContext";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { useGlobalShortcuts } from "@/hooks/useGlobalShortcuts";
 import { useHydrated } from "@/hooks/useHydrated";
@@ -33,7 +33,7 @@ export function CommandPalette() {
     const router = useRouter();
     const params = useParams<{ id?: string }>();
     const shell = useProjectShell();
-    const copilot = useProjectCopilotSafe();
+    const copilot = useProjectConversationSafe();
     const hydrated = useHydrated();
     useBodyScrollLock(isOpen && hydrated);
 

@@ -1,0 +1,169 @@
+/* ========================================
+   AUTONOMY SETTINGS MODAL (Phase 7.3)
+   Extracted from ProjectCopilotPanel.module.css
+   ======================================== */
+
+.autonomyHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.autonomyTitle {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.autonomyCloseBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.autonomyCloseBtn:hover {
+    background: rgba(var(--rgb-ui-contrast), 0.06);
+    color: var(--text-secondary);
+}
+
+.autonomyPresetRow {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.autonomyPresetBtn {
+    flex: 1;
+    padding: 8px 12px;
+    background: rgba(var(--rgb-ui-contrast), 0.04);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.autonomyPresetBtn:hover {
+    background: rgba(var(--rgb-ui-contrast), 0.06);
+}
+
+.autonomyPresetBtnActive {
+    background: rgba(var(--rgb-accent-primary), 0.1);
+    border-color: rgba(var(--rgb-accent-primary), 0.3);
+    color: var(--accent-primary);
+}
+
+.autonomyToolTable {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 360px;
+    overflow-y: auto;
+}
+
+.autonomyToolRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 8px;
+    transition: background 0.1s ease;
+}
+
+.autonomyToolRow:hover {
+    background: rgba(var(--rgb-ui-contrast), 0.02);
+}
+
+.autonomyToolInfo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+.autonomyToolIcon {
+    font-size: 18px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.autonomyToolName {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.autonomyToolDesc {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.autonomyLevelSelector {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.autonomyLevelBtn {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.1s ease;
+}
+
+.autonomyLevelBtn:hover:not(:disabled) {
+    background: rgba(var(--rgb-ui-contrast), 0.04);
+    color: var(--text-secondary);
+}
+
+.autonomyLevelBtnActive {
+    background: rgba(var(--rgb-accent-primary), 0.15);
+    border-color: rgba(var(--rgb-accent-primary), 0.3);
+    color: var(--accent-primary);
+}
+
+.autonomyLevelBtn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.autonomyLegend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--glass-border);
+}
+
+.autonomyLegendItem {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.autonomyLegendItem strong {
+    color: var(--text-secondary);
+    margin-right: 2px;
+}

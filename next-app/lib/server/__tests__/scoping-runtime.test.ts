@@ -124,7 +124,7 @@ vi.mock("@/lib/server/agent/plan-execution", () => ({
   resolvePlanExecutionToolNames: vi.fn(),
 }));
 
-vi.mock("@/lib/ai/prompts/copilot-prompts", () => ({
+vi.mock("@/lib/ai/prompts/assistant-prompts", () => ({
   assembleSystemPrompt: vi.fn(() => "system"),
   buildProjectContext: vi.fn(() => ""),
   buildProtocolContext: vi.fn(() => ""),

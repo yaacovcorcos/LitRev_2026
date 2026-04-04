@@ -15,9 +15,9 @@ import { BaseBackButton } from "@/components/BaseBackButton";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { useLedger } from "@/contexts/LedgerContext";
-import { ProjectCopilot } from "@/components/ProjectCopilot";
+import { ProjectCopilotPanel } from "@/components/project/ProjectCopilotPanel";
 import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
-import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { useProjectConversation } from "@/contexts/ProjectConversationContext";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
 import { OPTIONAL_SECTION_KEYS, UNSECTIONED_DRAFT_ID, type DraftMode, DraftSectionId } from "@/types/draft";
 import {
@@ -128,7 +128,7 @@ function DraftContent() {
   const { getStudiesByProject } = useLedger();
   const project = getProjectById(id);
   const studies = useMemo(() => (id ? getStudiesByProject(id) : []), [id, getStudiesByProject]);
-  const { isCollapsed: copilotCollapsed, panelWidth: copilotPanelWidth, setPanelWidth: setCopilotPanelWidth } = useProjectCopilot();
+  const { isCollapsed: copilotCollapsed, panelWidth: copilotPanelWidth, setPanelWidth: setCopilotPanelWidth } = useProjectConversation();
   const { isEmbeddedInProjectShell } = useProjectShell();
   const { openPopupChat } = usePopupChat();
   const { captureEnabled, openPopupForTarget, runAction } = useContextCaptureActions();
@@ -1362,7 +1362,7 @@ function DraftContent() {
                 }}
               />
 
-              <ProjectCopilot
+              <ProjectCopilotPanel
                 page="draft"
                 section={activeSectionLabel}
                 contextDisplay={`${activeSectionLabel} · ${usedEvidence.length} evidence`}

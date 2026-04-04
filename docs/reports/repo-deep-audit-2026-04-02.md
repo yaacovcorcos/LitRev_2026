@@ -80,11 +80,11 @@ Pass 3:
 
 - `next-app/lib/server/ai/ai-service.ts` — `2817` lines
 - `next-app/app/ai/page.tsx` — `2776` lines
-- `next-app/components/copilot/TimelineRenderer.tsx` — `1851` lines
-- `next-app/hooks/useCopilotStreamActions.ts` — `1778` lines
+- `next-app/components/chat/ChatTimeline.tsx` — `1851` lines
+- `next-app/hooks/useProjectConversationStreamActions.ts` — `1778` lines
 - `next-app/app/project/[id]/draft/page.tsx` — `1417` lines
 - `next-app/contexts/ProjectDataContext.tsx` — `780` lines
-- `next-app/contexts/ProjectCopilotContext.tsx` — `752` lines
+- `next-app/contexts/ProjectConversationContext.tsx` — `752` lines
 - `next-app/lib/server/study-processing.ts` — `774` lines
 - `next-app/lib/server/ledger.ts` — `923` lines
 - `next-app/prisma/schema.prisma` — `763` lines
@@ -278,8 +278,8 @@ Assessment:
 Evidence:
 - `next-app/lib/server/ai/ai-service.ts` — `2817` lines, centralizing provider selection, context assembly, retry logic, tool execution, runtime bookkeeping, tracing, autonomy, clarification, and recovery
 - `next-app/app/ai/page.tsx` — `2776` lines, centralizing route UI, local persistence, perf tracking, history logic, model controls, recovery, routing, and stream state
-- `next-app/components/copilot/TimelineRenderer.tsx` — `1851` lines, centralizing artifact rendering, markdown rendering, tool receipts, scroll/windowing behavior, error boundaries, and inline actions
-- `next-app/hooks/useCopilotStreamActions.ts` — `1778` lines, centralizing stream mutation, recovery, artifact actions, navigation, telemetry, and abnormal-end handling
+- `next-app/components/chat/ChatTimeline.tsx` — `1851` lines, centralizing artifact rendering, markdown rendering, tool receipts, scroll/windowing behavior, error boundaries, and inline actions
+- `next-app/hooks/useProjectConversationStreamActions.ts` — `1778` lines, centralizing stream mutation, recovery, artifact actions, navigation, telemetry, and abnormal-end handling
 - `next-app/app/project/[id]/draft/page.tsx` — `1417` lines
 - `next-app/app/project/[id]/draft/useDraftWorkspaceController.ts` — `913` lines
 
@@ -364,21 +364,21 @@ Assessment:
 Strengths:
 - project-scoped providers exist for real reasons
 - domain slices in `ProjectDataContext` are sensible
-- `ProjectCopilotContext` is at least partially extracting logic into hooks
+- `ProjectConversationContext` is at least partially extracting logic into hooks
 
 Weaknesses:
-- `ProjectDataContext` and `ProjectCopilotContext` still mix storage, server I/O, timers, UI-facing state, and orchestration concerns
+- `ProjectDataContext` and `ProjectConversationContext` still mix storage, server I/O, timers, UI-facing state, and orchestration concerns
 - controllers and contexts are still doing too much direct lifecycle coordination
 - the repo’s direct-effect burden is primarily a client-surface problem, not a server-surface problem
 
 Evidence:
 - `next-app/contexts/ProjectDataContext.tsx`
-- `next-app/contexts/ProjectCopilotContext.tsx`
-- `next-app/hooks/useCopilotStreamActions.ts`
+- `next-app/contexts/ProjectConversationContext.tsx`
+- `next-app/hooks/useProjectConversationStreamActions.ts`
 - `next-app/contexts/ProjectDataContext.tsx:456`
 - `next-app/contexts/ProjectDataContext.tsx:677`
-- `next-app/contexts/ProjectCopilotContext.tsx:171`
-- `next-app/contexts/ProjectCopilotContext.tsx:237`
+- `next-app/contexts/ProjectConversationContext.tsx:171`
+- `next-app/contexts/ProjectConversationContext.tsx:237`
 
 Assessment:
 - The repo has started extracting logic into hooks, but several hooks are now “portable god objects” rather than cleanly bounded behavior modules.
@@ -502,7 +502,7 @@ Assessment:
 - valuable abstractions, but still acting as lifecycle and persistence junction boxes
 
 Notes:
-- `ProjectDataContext`, `ProjectCopilotContext`, and conversation/draft hooks remain major integration hubs.
+- `ProjectDataContext`, `ProjectConversationContext`, and conversation/draft hooks remain major integration hubs.
 - these are the most likely places for future regressions when product programs overlap.
 
 ### Database/schema layer
@@ -543,7 +543,7 @@ Assessment:
 
 ### Timeline renderer
 
-`next-app/components/copilot/TimelineRenderer.tsx` is doing too many jobs for a render surface.
+`next-app/components/chat/ChatTimeline.tsx` is doing too many jobs for a render surface.
 
 Observed responsibilities include:
 - markdown rendering
@@ -654,12 +654,12 @@ Assessment:
 
 - `next-app/lib/server/ai/ai-service.ts`
 - `next-app/app/ai/page.tsx`
-- `next-app/components/copilot/TimelineRenderer.tsx`
-- `next-app/hooks/useCopilotStreamActions.ts`
+- `next-app/components/chat/ChatTimeline.tsx`
+- `next-app/hooks/useProjectConversationStreamActions.ts`
 - `next-app/app/project/[id]/draft/page.tsx`
 - `next-app/app/project/[id]/draft/useDraftWorkspaceController.ts`
 - `next-app/contexts/ProjectDataContext.tsx`
-- `next-app/contexts/ProjectCopilotContext.tsx`
+- `next-app/contexts/ProjectConversationContext.tsx`
 
 Reason:
 - size + orchestration density + cross-cutting behavior + active roadmap pressure

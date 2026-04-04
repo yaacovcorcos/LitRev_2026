@@ -14,9 +14,9 @@ describe("abnormal-end generation guards", () => {
   });
 
   it("guards project copilot abnormal-end cleanup behind current generation ownership", () => {
-    const projectCopilotSource = readFileSync(resolve(process.cwd(), "hooks/useCopilotStreamActions.ts"), "utf8");
+    const projectConversationSource = readFileSync(resolve(process.cwd(), "hooks/useProjectConversationStreamActions.ts"), "utf8");
 
-    expect(projectCopilotSource).toContain(
+    expect(projectConversationSource).toContain(
       `streamGenRef.current === myGen
                 && !aborted
                 && shouldFailRunningToolsOnAbnormalEnd(terminalReason)`,

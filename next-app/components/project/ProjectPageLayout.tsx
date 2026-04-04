@@ -2,10 +2,10 @@
 
 import { CSSProperties, ReactNode, useMemo, useSyncExternalStore } from "react";
 import { AppShell } from "@/components/AppShell";
-import { ProjectCopilot, type ProjectCopilotProps } from "@/components/ProjectCopilot";
+import { ProjectCopilotPanel, type ProjectCopilotPanelProps } from "@/components/project/ProjectCopilotPanel";
 import { ResizableSplitter } from "@/components/ui/ResizableSplitter";
 import { useProjectShell } from "@/contexts/ProjectShellContext";
-import { useProjectCopilot } from "@/contexts/ProjectCopilotContext";
+import { useProjectConversation } from "@/contexts/ProjectConversationContext";
 import { getViewportClass, type ResponsiveViewportClass } from "@/lib/mobile/tiers";
 import styles from "./ProjectPageLayout.module.css";
 
@@ -41,7 +41,7 @@ function getServerViewportClassSnapshot(): ResponsiveViewportClass {
 export type ProjectPageLayoutProps = {
     children: ReactNode;
     /** If provided, renders a standalone copilot panel with resize handle in non-embedded mode */
-    copilot?: ProjectCopilotProps;
+    copilot?: ProjectCopilotPanelProps;
     /** AppShell passthrough: removes default main padding */
     noMainPadding?: boolean;
     /** AppShell passthrough: start with sidebar collapsed */
@@ -118,7 +118,7 @@ export function ProjectPageLayout({
 }
 
 // ── Internal: grid layout with copilot + resize handle ───────────────────
-// Extracted so the useProjectCopilot() hook is only called when needed.
+// Extracted so the useProjectConversation() hook is only called when needed.
 
 function StandaloneCopilotGrid({
     children,
@@ -127,11 +127,11 @@ function StandaloneCopilotGrid({
     contentScrollMode,
 }: {
     children: ReactNode;
-    copilot: ProjectCopilotProps;
+    copilot: ProjectCopilotPanelProps;
     copilotCollapseMode: "legacy-mobile" | "phone-only";
     contentScrollMode: "wrapper" | "child";
 }) {
-    const { isCollapsed, panelWidth, setPanelWidth } = useProjectCopilot();
+    const { isCollapsed, panelWidth, setPanelWidth } = useProjectConversation();
     const liveViewportClass = useSyncExternalStore(
         subscribeViewportClass,
         getClientViewportClassSnapshot,
@@ -178,7 +178,7 @@ function StandaloneCopilotGrid({
             />
 
             <div className={styles.copilotPane}>
-                <ProjectCopilot {...copilot} />
+                <ProjectCopilotPanel {...copilot} />
             </div>
         </div>
     );

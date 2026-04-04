@@ -25,7 +25,7 @@ Method: `tsc` diagnostics, import/reference scans, duplication spot-checks, and 
 3. The previously identified duplication hotspots are confirmed:
 - `lib/server/ai/tool-helpers.ts` vs `lib/server/ai/sub-agent.ts` (tool->artifact mapping)
 - `lib/server/ledger.ts` vs `lib/ai/mentioned-studies.ts` (DOI/PMID normalization)
-- `components/project/ConversationMainView.tsx` vs `components/ProjectCopilot.tsx` (conversation handlers)
+- `components/project/ConversationMainView.tsx` vs `components/project/ProjectCopilotPanel.tsx` (conversation handlers)
 - `lib/server/ai/tools/delegate-screening.ts` vs `lib/server/ai/tools/delegate-protocol.ts` (delegate tool structure)
 
 Why this matters:
@@ -89,7 +89,7 @@ Influence:
 
 Related files:
 - `components/project/ConversationMainView.tsx`
-- `components/ProjectCopilot.tsx`
+- `components/project/ProjectCopilotPanel.tsx`
 
 ### 3.3 Remove straightforward unused imports/locals across production files
 
@@ -97,7 +97,7 @@ Examples already verified:
 - `app/actions/extraction.ts`
 - `app/actions/onboarding.ts`
 - `components/CommandPalette.tsx`
-- `contexts/ProjectCopilotContext.tsx`
+- `contexts/ProjectConversationContext.tsx`
 - `lib/server/drafts.ts`
 - `lib/server/files.ts`
 - `lib/server/ledger.ts`
@@ -111,7 +111,7 @@ Influence:
 ### 3.4 Treat Copilot model-prop mismatch as behavior bug (not cosmetic cleanup)
 
 Why:
-- `CopilotInput` passes controlled model props, but `CopilotInputCore` currently ignores `selectedModelProp` / `onModelChange`.
+- `ProjectConversationComposer` passes controlled model props, but `ChatComposerCore` currently ignores `selectedModelProp` / `onModelChange`.
 - This can cause model-selection drift between context state and input component state.
 
 Safety:
@@ -121,10 +121,10 @@ Influence:
 - Improves model-selection consistency and predictability.
 
 Related files:
-- `components/copilot/CopilotInput.tsx`
-- `components/copilot/CopilotInputCore.tsx`
-- `components/copilot/CopilotInputCoreClient.tsx`
-- `contexts/ProjectCopilotContext.tsx`
+- `components/project/ProjectConversationComposer.tsx`
+- `components/chat/ChatComposerCore.tsx`
+- `components/chat/ChatComposerCoreClient.tsx`
+- `contexts/ProjectConversationContext.tsx`
 
 ---
 
@@ -254,7 +254,7 @@ Related tests:
 
 Affected files:
 - `components/project/ConversationMainView.tsx`
-- `components/ProjectCopilot.tsx`
+- `components/project/ProjectCopilotPanel.tsx`
 
 Why:
 - Duplicated message/retry/branch/plan-resume handlers invite divergence.
@@ -266,7 +266,7 @@ Influence:
 - Better feature parity between panel and full-page conversation surfaces.
 
 Related tests:
-- Existing: `components/__tests__/ProjectCopilot.test.tsx`
+- Existing: `components/project/__tests__/ProjectCopilotPanel.test.tsx`
 - Add dedicated tests for `ConversationMainView` parity.
 
 ### 6.3 Consider unifying editable components only after interaction contracts are explicit
@@ -310,12 +310,12 @@ Influence:
 - High perceived smoothness improvement during fast streaming.
 
 Related files:
-- `next-app/hooks/useCopilotStreamActions.ts`
+- `next-app/hooks/useProjectConversationStreamActions.ts`
 - `next-app/app/ai/page.tsx`
 - `next-app/components/PopupChat.tsx`
 - `next-app/lib/ai/stream-processor.ts`
 
-### 7.2 Split `ProjectCopilotContext` or adopt selector-based consumption
+### 7.2 Split `ProjectConversationContext` or adopt selector-based consumption
 
 Why:
 - A single broad context value is still used; streaming updates can trigger avoidable re-renders in unrelated consumers.
@@ -327,11 +327,11 @@ Influence:
 - Major reduction in unnecessary render work and better interaction responsiveness.
 
 Related files:
-- `next-app/contexts/ProjectCopilotContext.tsx`
-- `next-app/components/ProjectCopilot.tsx`
+- `next-app/contexts/ProjectConversationContext.tsx`
+- `next-app/components/project/ProjectCopilotPanel.tsx`
 - `next-app/components/project/ConversationMainView.tsx`
-- `next-app/components/copilot/CopilotInput.tsx`
-- `next-app/components/copilot/TimelineRenderer.tsx`
+- `next-app/components/project/ProjectConversationComposer.tsx`
+- `next-app/components/chat/ChatTimeline.tsx`
 
 ### 7.3 Reset staged attachments when switching conversations
 
@@ -346,8 +346,8 @@ Influence:
 - Prevents wrong-context sends and confusing attachment behavior.
 
 Related files:
-- `next-app/hooks/useCopilotConversations.ts`
-- `next-app/contexts/ProjectCopilotContext.tsx`
+- `next-app/hooks/useProjectConversationManager.ts`
+- `next-app/contexts/ProjectConversationContext.tsx`
 
 ### 7.4 Replace `Date.now()` IDs with a collision-safe helper
 
@@ -361,7 +361,7 @@ Influence:
 - Removes a class of hard-to-reproduce key/correlation bugs.
 
 Related files:
-- `next-app/hooks/useCopilotStreamActions.ts`
+- `next-app/hooks/useProjectConversationStreamActions.ts`
 - `next-app/app/ai/page.tsx`
 - `next-app/components/PopupChat.tsx`
 - `next-app/app/project/[id]/draft/page.tsx` (local IDs in draft flow)
@@ -381,11 +381,11 @@ Influence:
 Related files:
 - `next-app/contexts/NotificationContext.tsx`
 - `next-app/components/ui/Toast.tsx`
-- `next-app/hooks/useCopilotConversations.ts`
-- `next-app/hooks/useCopilotStreamActions.ts`
+- `next-app/hooks/useProjectConversationManager.ts`
+- `next-app/hooks/useProjectConversationStreamActions.ts`
 - `next-app/components/PopupChat.tsx`
 - `next-app/app/ai/page.tsx`
-- `next-app/components/copilot/TimelineRenderer.tsx`
+- `next-app/components/chat/ChatTimeline.tsx`
 
 ### 7.6 Add progressive rendering for long conversation timelines
 
@@ -400,9 +400,9 @@ Influence:
 - More stable performance for long-running chats.
 
 Related files:
-- `next-app/components/copilot/TimelineRenderer.tsx`
+- `next-app/components/chat/ChatTimeline.tsx`
 - `next-app/hooks/useStableChatScroll.ts`
-- `next-app/hooks/useCopilotConversations.ts`
+- `next-app/hooks/useProjectConversationManager.ts`
 
 ### 7.7 Keep copilot reachable on mobile/tablet project views
 
@@ -416,8 +416,8 @@ Influence:
 - Restores AI feature access on smaller devices.
 
 Related files:
-- `next-app/components/ProjectCopilot.module.css`
-- `next-app/components/ProjectCopilot.tsx`
+- `next-app/components/project/ProjectCopilotPanel.module.css`
+- `next-app/components/project/ProjectCopilotPanel.tsx`
 - `next-app/components/project/ConversationMainView.tsx`
 
 ### 7.8 Reduce dual artifact state drift risk
@@ -433,10 +433,10 @@ Influence:
 - Better correctness and simpler artifact mutation logic.
 
 Related files:
-- `next-app/hooks/useCopilotConversations.ts`
-- `next-app/hooks/useCopilotStreamActions.ts`
-- `next-app/components/copilot/TimelineRenderer.tsx`
-- `next-app/contexts/project-copilot-stream-events.ts`
+- `next-app/hooks/useProjectConversationManager.ts`
+- `next-app/hooks/useProjectConversationStreamActions.ts`
+- `next-app/components/chat/ChatTimeline.tsx`
+- `next-app/contexts/project-conversation-stream-events.ts`
 
 ### 7.9 Increase approve-all summary visibility timeout
 
@@ -450,7 +450,7 @@ Influence:
 - Better accessibility/readability with minimal code change.
 
 Related files:
-- `next-app/components/copilot/TimelineRenderer.tsx`
+- `next-app/components/chat/ChatTimeline.tsx`
 
 ### 7.10 PopupChat parity follow-up (still open items only)
 
@@ -465,7 +465,7 @@ Influence:
 
 Related files:
 - `next-app/components/PopupChat.tsx`
-- `next-app/hooks/useCopilotStreamActions.ts`
+- `next-app/hooks/useProjectConversationStreamActions.ts`
 - `next-app/app/actions/conversations.ts`
 
 Open parity targets:
@@ -478,11 +478,11 @@ Open parity targets:
 Already fixed in current code:
 - `window.prompt` conversation rename path is replaced by dialog flow in `components/ui/ConversationPicker.tsx`.
 - Dead draft-page local copilot state has been removed from `app/project/[id]/draft/page.tsx`.
-- Chat action visibility includes `:focus-within` in `components/copilot/TimelineMessages.module.css`.
+- Chat action visibility includes `:focus-within` in `components/chat/ChatTimeline.module.css`.
 - Popup has an explicit stop button in `components/PopupChat.tsx`.
 
 Stale framing to avoid carrying forward:
-- "40+ context values / ~1600 lines" no longer matches current `ProjectCopilotContext` size.
+- "40+ context values / ~1600 lines" no longer matches current `ProjectConversationContext` size.
 
 ---
 
@@ -554,7 +554,7 @@ Use this per-fix log format:
 
 `[P0-WITHACTION-IMPORT] | done | 2026-03-02 | next-app/app/actions/memory.ts, docs/reports/diagnosis-03-02.md | tsc: pass; vitest: 2 failing tests in lib/server/__tests__/ai-service-reasoning-policy.test.ts (DB env issue, unrelated to import fix) | Added missing withAction import only; no runtime logic change.`
 
-`[P1-CLEANUP-WAVE1] | done | 2026-03-02 | next-app/app/actions/extraction.ts, next-app/app/actions/onboarding.ts, next-app/components/CommandPalette.tsx, next-app/contexts/ProjectMemoryContext.tsx, next-app/lib/schemas/memory.ts, next-app/lib/seedLocalStorage.ts, next-app/lib/server/activity.ts, next-app/lib/server/ai/tools/bulk-screening.ts, next-app/lib/server/ai/tools/update-criteria.ts, next-app/lib/server/ai/tools/update-protocol.ts, next-app/lib/server/drafts.ts, next-app/lib/server/files.ts, next-app/lib/server/ledger.ts, next-app/lib/server/onboarding.ts, next-app/lib/server/projectCopilot.ts, next-app/lib/server/projects.ts, next-app/lib/server/protocols.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 61->48, TS6196 12->6; tsc: pass; vitest: unchanged 2 failing tests in lib/server/__tests__/ai-service-reasoning-policy.test.ts due missing local DB | Low-risk import/unused cleanup only; high-churn copilot runtime files intentionally deferred.`
+`[P1-CLEANUP-WAVE1] | done | 2026-03-02 | next-app/app/actions/extraction.ts, next-app/app/actions/onboarding.ts, next-app/components/CommandPalette.tsx, next-app/contexts/ProjectMemoryContext.tsx, next-app/lib/schemas/memory.ts, next-app/lib/seedLocalStorage.ts, next-app/lib/server/activity.ts, next-app/lib/server/ai/tools/bulk-screening.ts, next-app/lib/server/ai/tools/update-criteria.ts, next-app/lib/server/ai/tools/update-protocol.ts, next-app/lib/server/drafts.ts, next-app/lib/server/files.ts, next-app/lib/server/ledger.ts, next-app/lib/server/onboarding.ts, next-app/lib/server/project-conversation.ts, next-app/lib/server/projects.ts, next-app/lib/server/protocols.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 61->48, TS6196 12->6; tsc: pass; vitest: unchanged 2 failing tests in lib/server/__tests__/ai-service-reasoning-policy.test.ts due missing local DB | Low-risk import/unused cleanup only; high-churn copilot runtime files intentionally deferred.`
 
 `[P1-CLEANUP-WAVE2A] | done | 2026-03-02 | next-app/app/project/[id]/draft/draft-helpers.ts, next-app/app/project/[id]/draft/useDraftCopilot.ts, next-app/app/project/[id]/draft/useDraftSections.ts, next-app/components/EditableChips.tsx, next-app/components/EditableList.tsx, next-app/lib/agent/__tests__/compaction.test.ts, next-app/lib/agent/__tests__/router.test.ts, next-app/lib/server/__tests__/memory-maintenance.test.ts, next-app/lib/server/__tests__/normalize.test.ts, next-app/lib/server/__tests__/pdf-extraction.test.ts, next-app/lib/server/__tests__/planner-validation.test.ts, next-app/lib/server/__tests__/protocol-sync.test.ts, next-app/lib/server/__tests__/tracing.test.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 48->29, TS6196 6->6; tsc: pass; vitest: unchanged 2 failing tests in lib/server/__tests__/ai-service-reasoning-policy.test.ts due missing local DB | Allowlist-only cleanup; removed unused imports/locals without runtime behavior changes; deferred high-churn/runtime-sensitive files.`
 
@@ -564,7 +564,7 @@ Use this per-fix log format:
 
 `[R0-TRACK1-BASELINE] | done | 2026-03-02 | docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133=14, TS6196=6; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Baseline captured after syncing cleanup worktree main to origin/main and regenerating Prisma client locally.`
 
-`[R1A-LOW-RISK-STRICT-UNUSED] | done | 2026-03-02 | next-app/components/copilot/TimelineRenderer.tsx, next-app/components/project/ConversationMainView.tsx, next-app/components/ProjectCopilot.tsx, next-app/hooks/useCopilotStreamActions.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 14->8, TS6196 6->3; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Removed only unused type imports/destructured values in low-risk UI/hook files; no behavior or signature changes.`
+`[R1A-LOW-RISK-STRICT-UNUSED] | done | 2026-03-02 | next-app/components/chat/ChatTimeline.tsx, next-app/components/project/ConversationMainView.tsx, next-app/components/project/ProjectCopilotPanel.tsx, next-app/hooks/useProjectConversationStreamActions.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 14->8, TS6196 6->3; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Removed only unused type imports/destructured values in low-risk UI/hook files; no behavior or signature changes.`
 
 `[R1B-HIGH-RISK-STRICT-UNUSED] | done | 2026-03-02 | next-app/lib/server/agent/artifacts.ts, next-app/lib/server/ai/ai-service.ts, docs/reports/diagnosis-03-02.md | strict-unused counts: TS6133 8->1, TS6196 3->0; tsc: pass; vitest: pass (153 files, 1169 tests; 11 skipped) | Removed only unused imports/types/local destructured value in high-churn server modules; no runtime logic changes.`
 
@@ -781,7 +781,7 @@ Safety:
 Influence:
 - Reduces injection/control-channel leakage risk in prompt assembly.
 Related files to adapt:
-- `next-app/lib/ai/prompts/copilot-prompts.ts`
+- `next-app/lib/ai/prompts/assistant-prompts.ts`
 - Prompt/context composition call sites.
 
 `[CAF-M1]` Add missing high-value DB indexes (partial gap remains)  
@@ -814,7 +814,7 @@ Safety:
 Influence:
 - Better initial load performance and bundle characteristics.
 Related files to adapt:
-- `next-app/components/copilot/TimelineRenderer.tsx`
+- `next-app/components/chat/ChatTimeline.tsx`
 - `next-app/app/project/[id]/draft/page.tsx`
 
 `[CAF-M4]` Improve doom-loop detection beyond consecutive repeats  
@@ -878,9 +878,9 @@ Safety:
 Influence:
 - Lower stale-closure risk and clearer hook semantics.
 Related files to adapt:
-- `next-app/hooks/useCopilotConversations.ts`
-- `next-app/hooks/useCopilotStreamActions.ts`
-- `next-app/components/copilot/CopilotInputCore.tsx`
+- `next-app/hooks/useProjectConversationManager.ts`
+- `next-app/hooks/useProjectConversationStreamActions.ts`
+- `next-app/components/chat/ChatComposerCore.tsx`
 
 `[CAF-M12]` Add magic-byte upload validation + stricter storage path guard  
 Why keep:
@@ -996,7 +996,7 @@ Safety:
 Influence:
 - Better tool selection reliability and fewer avoidable agent misfires.
 Related files to adapt:
-- `next-app/lib/ai/prompts/copilot-prompts.ts`
+- `next-app/lib/ai/prompts/assistant-prompts.ts`
 
 `[CAF-L2]` Re-check muted-text contrast token against body background  
 Why keep:
@@ -1063,14 +1063,14 @@ Related files to adapt:
 
 `[CAF-L8]` Split large context providers with mixed concerns  
 Why keep:
-- `ProtocolContext` and `ProjectCopilotContext` still combine broad state + effects + derived logic.
+- `ProtocolContext` and `ProjectConversationContext` still combine broad state + effects + derived logic.
 Safety:
 - **Medium-low**.
 Influence:
 - Lower re-render pressure and clearer ownership boundaries.
 Related files to adapt:
 - `next-app/contexts/ProtocolContext.tsx`
-- `next-app/contexts/ProjectCopilotContext.tsx`
+- `next-app/contexts/ProjectConversationContext.tsx`
 
 `[CAF-L9]` Normalize Prisma AI model naming ergonomics (`aIConversation` etc.)  
 Why keep:
@@ -1110,8 +1110,8 @@ Safety:
 Influence:
 - Removes visible input jank with minimal behavioral risk.
 Related files to adapt:
-- `next-app/components/copilot/CopilotInputCore.tsx`
-- `next-app/components/copilot/CopilotInput.module.css`
+- `next-app/components/chat/ChatComposerCore.tsx`
+- `next-app/components/chat/ChatComposer.module.css`
 
 Cross-audit prioritization notes kept from `codex-feedback-claude.md`:
 - Runtime unification remains desirable, but should follow immediate smoothness fixes.

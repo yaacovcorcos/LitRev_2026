@@ -5,22 +5,22 @@ import { describe, expect, it, vi } from "vitest";
 import { ProjectPageLayout } from "../ProjectPageLayout";
 
 const mockUseProjectShell = vi.fn();
-const mockUseProjectCopilot = vi.fn();
+const mockUseProjectConversation = vi.fn();
 
 vi.mock("@/contexts/ProjectShellContext", () => ({
   useProjectShell: () => mockUseProjectShell(),
 }));
 
-vi.mock("@/contexts/ProjectCopilotContext", () => ({
-  useProjectCopilot: () => mockUseProjectCopilot(),
+vi.mock("@/contexts/ProjectConversationContext", () => ({
+  useProjectConversation: () => mockUseProjectConversation(),
 }));
 
 vi.mock("@/components/AppShell", () => ({
   AppShell: ({ children }: { children: ReactNode }) => <div data-testid="app-shell">{children}</div>,
 }));
 
-vi.mock("@/components/ProjectCopilot", () => ({
-  ProjectCopilot: () => <div data-testid="project-copilot">Copilot</div>,
+vi.mock("@/components/project/ProjectCopilotPanel", () => ({
+  ProjectCopilotPanel: () => <div data-testid="project-copilot">Copilot</div>,
 }));
 
 vi.mock("@/components/ui/ResizableSplitter", () => ({
@@ -38,7 +38,7 @@ function setViewportWidth(width: number) {
 describe("ProjectPageLayout", () => {
   it("returns embedded content directly when inside the project shell", () => {
     mockUseProjectShell.mockReturnValue({ isEmbeddedInProjectShell: true });
-    mockUseProjectCopilot.mockReturnValue({ isCollapsed: false, panelWidth: 360, setPanelWidth: vi.fn() });
+    mockUseProjectConversation.mockReturnValue({ isCollapsed: false, panelWidth: 360, setPanelWidth: vi.fn() });
 
     render(
       <ProjectPageLayout>
@@ -53,7 +53,7 @@ describe("ProjectPageLayout", () => {
   it("lets the child route own scroll and collapses the copilot only on phone when requested", async () => {
     setViewportWidth(390);
     mockUseProjectShell.mockReturnValue({ isEmbeddedInProjectShell: false });
-    mockUseProjectCopilot.mockReturnValue({ isCollapsed: false, panelWidth: 360, setPanelWidth: vi.fn() });
+    mockUseProjectConversation.mockReturnValue({ isCollapsed: false, panelWidth: 360, setPanelWidth: vi.fn() });
 
     render(
       <ProjectPageLayout
@@ -82,7 +82,7 @@ describe("ProjectPageLayout", () => {
   it("updates the standalone viewport class when the viewport changes", async () => {
     setViewportWidth(1024);
     mockUseProjectShell.mockReturnValue({ isEmbeddedInProjectShell: false });
-    mockUseProjectCopilot.mockReturnValue({ isCollapsed: false, panelWidth: 360, setPanelWidth: vi.fn() });
+    mockUseProjectConversation.mockReturnValue({ isCollapsed: false, panelWidth: 360, setPanelWidth: vi.fn() });
 
     render(
       <ProjectPageLayout
@@ -113,7 +113,7 @@ describe("ProjectPageLayout", () => {
   it("keeps the viewport class unknown outside phone-only collapse mode", () => {
     setViewportWidth(390);
     mockUseProjectShell.mockReturnValue({ isEmbeddedInProjectShell: false });
-    mockUseProjectCopilot.mockReturnValue({ isCollapsed: false, panelWidth: 360, setPanelWidth: vi.fn() });
+    mockUseProjectConversation.mockReturnValue({ isCollapsed: false, panelWidth: 360, setPanelWidth: vi.fn() });
 
     render(
       <ProjectPageLayout

@@ -5,8 +5,8 @@ It is meant to bridge product language and code language so UI discussions, plan
 
 Primary code references:
 - `next-app/types/timeline.ts`
-- `next-app/components/copilot/TimelineRenderer.tsx`
-- `next-app/components/copilot/CopilotInputCore.tsx`
+- `next-app/components/chat/ChatTimeline.tsx`
+- `next-app/components/chat/ChatComposerCore.tsx`
 - `next-app/lib/ai/shared-stream-reducer.ts`
 
 ## Timeline Items
@@ -71,7 +71,7 @@ In the UI, a tool receipt should feel like a factual execution record: what ran,
 ### PubMed Sequence
 Renderer grouping, not a stored item type.
 This is the grouped display for contiguous `search_pubmed` tool activity rows.
-In code, this is a presentation grouping built in `TimelineRenderer`, not a different stored item type.
+In code, this is a presentation grouping built in `ChatTimeline`, not a different stored item type.
 In the UI, it appears as a compact grouped search sequence rather than a stack of repetitive independent PubMed rows.
 
 ## Artifacts
@@ -94,7 +94,7 @@ In practice, the artifact type determines which artifact card is shown and what 
 
 ## Composer
 
-### `CopilotInputCore`
+### `ChatComposerCore`
 Component name.
 This is the shared implementation owner of the composer across the main chat surfaces.
 In the UI, the composer means the full bottom input area, not just the textarea.
@@ -104,7 +104,7 @@ Product term.
 This is the full input shell: text field, model selector, voice controls, send button, and secondary actions.
 It should not be used to mean only the textarea.
 
-### `CopilotActionsMenuButton`
+### `ChatComposerActionsMenuButton`
 Component name.
 This is the `+` button on the far left of the composer.
 In the UI, it opens the secondary actions menu for actions such as file import and compression.

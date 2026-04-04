@@ -193,8 +193,8 @@ vi.mock("@/components/AppShell", () => ({
   AppShell: ({ children }: { children: ReactNode }) => <div data-testid="app-shell">{children}</div>,
 }));
 
-vi.mock("@/components/copilot/CopilotInputCoreClient", () => ({
-  CopilotInputCoreClient: ({
+vi.mock("@/components/chat/ChatComposerCoreClient", () => ({
+  ChatComposerCoreClient: ({
     onReady,
     sendMessage,
     onQueueFollowUp,

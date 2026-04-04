@@ -27,7 +27,7 @@ Current local grounding:
 - pause/suppress path: [next-app/lib/server/ai/ai-service.ts](../../../next-app/lib/server/ai/ai-service.ts)
 - structured resolution route: [next-app/app/api/ai/stream/route.ts](../../../next-app/app/api/ai/stream/route.ts)
 - shared reducer/runtime: [next-app/lib/ai/shared-stream-reducer.ts](../../../next-app/lib/ai/shared-stream-reducer.ts), [next-app/lib/ai/ai-stream-runtime.ts](../../../next-app/lib/ai/ai-stream-runtime.ts)
-- project adapter: [next-app/contexts/project-copilot-stream-events.ts](../../../next-app/contexts/project-copilot-stream-events.ts)
+- project adapter: [next-app/contexts/project-conversation-stream-events.ts](../../../next-app/contexts/project-conversation-stream-events.ts)
 - UI card: [next-app/components/artifacts/UserInputCard.tsx](../../../next-app/components/artifacts/UserInputCard.tsx)
 - current runtime contract docs: [chat-runtime.md](../chat-runtime.md), [transparency-ui.md](../transparency-ui.md), [plan-agentic.md](../plan-agentic.md)
 

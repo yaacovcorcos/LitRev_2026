@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 describe("search/scoping answer contract guards", () => {
   it("removes visible search-log scaffolding from scoping and search prompts", () => {
-    const source = readFileSync(resolve(process.cwd(), "lib/ai/prompts/copilot-prompts.ts"), "utf8");
+    const source = readFileSync(resolve(process.cwd(), "lib/ai/prompts/assistant-prompts.ts"), "utf8");
 
     expect(source).not.toContain("Searches run (query + source + what each query added)");
     expect(source).not.toContain("Objective, Queries Run, Candidate Studies, Preliminary Quality Signals, Coverage Gaps, Recommended Next Step");

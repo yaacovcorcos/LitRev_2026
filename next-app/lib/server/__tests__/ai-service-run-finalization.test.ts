@@ -129,7 +129,7 @@ vi.mock("@/lib/server/agent/autonomy", () => ({
   getAutonomyConfig: vi.fn(async () => ({ preset: "assisted", toolOverrides: {} })),
 }));
 
-vi.mock("@/lib/ai/prompts/copilot-prompts", () => ({
+vi.mock("@/lib/ai/prompts/assistant-prompts", () => ({
   assembleSystemPrompt: vi.fn(() => "system"),
   buildProjectContext: vi.fn(() => ""),
   buildProtocolContext: vi.fn(() => ""),
