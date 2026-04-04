@@ -61,6 +61,11 @@ import {
     type ExecutionTraceEntry,
 } from "./buildExecutionTraceEntries";
 import { getArtifactInlineActionModel, type ArtifactInlineActionDescriptor } from "@/lib/artifacts/inline-actions";
+import {
+    formatSearchCountDetail,
+    getSearchMagnitude,
+    type SearchMagnitude,
+} from "@/lib/search-contract";
 import styles from "./TimelineMessages.module.css";
 import artifactStyles from "@/styles/artifacts.module.css";
 import markdownStyles from "@/styles/markdown.module.css";
@@ -202,16 +207,10 @@ function isSearchReceipt(item: TimelineToolActivityItem): boolean {
 
 function getSearchResultCountText(item: TimelineToolActivityItem): string | null {
     if (!isSearchReceipt(item)) return null;
-    if (typeof item.returnedCount === "number" && typeof item.totalResults === "number") {
-        return `${item.returnedCount} of ${item.totalResults} results`;
-    }
-    if (typeof item.returnedCount === "number") {
-        return `Returned ${item.returnedCount} results`;
-    }
-    if (typeof item.totalResults === "number") {
-        return `${item.totalResults} results`;
-    }
-    return null;
+    return formatSearchCountDetail({
+        returnedCount: item.returnedCount,
+        totalResults: item.totalResults,
+    });
 }
 
 function getSearchIdentifierText(item: TimelineToolActivityItem): string | null {
@@ -219,10 +218,11 @@ function getSearchIdentifierText(item: TimelineToolActivityItem): string | null 
     return item.resultIdentifiers.join(" · ");
 }
 
-function getPubMedSearchSize(item: TimelineToolActivityItem): number | null {
-    if (typeof item.totalResults === "number") return item.totalResults;
-    if (typeof item.returnedCount === "number") return item.returnedCount;
-    return null;
+function getPubMedSearchMagnitude(item: TimelineToolActivityItem): SearchMagnitude | null {
+    return getSearchMagnitude({
+        returnedCount: item.returnedCount,
+        totalResults: item.totalResults,
+    });
 }
 
 function normalizePubMedQueryPreview(value?: string): string | null {
@@ -238,27 +238,36 @@ function derivePubMedSequenceAnnotation(items: TimelineToolActivityItem[]): stri
         .filter((query): query is string => !!query);
     const queryChanged = new Set(comparableQueries).size > 1;
     const sizedItems = items
-        .map((item) => ({ item, size: getPubMedSearchSize(item) }))
-        .filter((entry): entry is { item: TimelineToolActivityItem; size: number } => entry.size !== null);
+        .map((item) => ({ item, magnitude: getPubMedSearchMagnitude(item) }))
+        .filter((entry): entry is { item: TimelineToolActivityItem; magnitude: SearchMagnitude } => entry.magnitude !== null);
 
     if (!queryChanged && sizedItems.length < 2) return null;
 
-    const firstSize = sizedItems[0]?.size ?? null;
-    const lastSize = sizedItems[sizedItems.length - 1]?.size ?? null;
+    const firstMagnitude = sizedItems[0]?.magnitude ?? null;
+    const lastMagnitude = sizedItems[sizedItems.length - 1]?.magnitude ?? null;
+    const firstSize = firstMagnitude?.value ?? null;
+    const lastSize = lastMagnitude?.value ?? null;
+    const comparableBasis = firstMagnitude?.basis && firstMagnitude.basis === lastMagnitude?.basis;
 
     if (queryChanged && lastSize !== null && lastSize <= 2) {
         return "The latest search may be too narrow and may need broader terms.";
     }
 
-    if (queryChanged && firstSize !== null && lastSize !== null) {
+    if (queryChanged && comparableBasis && firstSize !== null && lastSize !== null) {
         if (lastSize < firstSize) {
-            return "The search is narrowing toward a smaller result set.";
+            return lastMagnitude?.basis === "total"
+                ? "The search is narrowing toward a smaller total result set."
+                : "The search is narrowing toward a smaller returned result page.";
         }
         if (lastSize > firstSize) {
-            return "The search is broadening to explore a larger result set.";
+            return lastMagnitude?.basis === "total"
+                ? "The search is broadening to explore a larger total result set."
+                : "The search is broadening to explore a larger returned result page.";
         }
         if (lastSize >= 25) {
-            return "The search is still broad and is being refined further.";
+            return lastMagnitude?.basis === "total"
+                ? "The total result set is still broad and is being refined further."
+                : "The returned result page is still broad and is being refined further.";
         }
     }
 

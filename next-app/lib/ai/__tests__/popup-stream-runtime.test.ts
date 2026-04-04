@@ -43,7 +43,7 @@ describe("popup stream runtime", () => {
     });
     state = reducePopupStreamChunk(state, {
       type: "checkpoint",
-      checkpointLabel: "PubMed returned 18 results. Reviewing the strongest matches now.",
+      checkpointLabel: "PubMed found 18 total results. Reviewing the strongest matches now.",
     }, {
       aiMessageId: "popup-ai",
       page: "overview",
@@ -64,7 +64,7 @@ describe("popup stream runtime", () => {
 
     expect(getPopupTranscriptEntries(state.items)).toEqual([
       { role: "user", content: "Can you inspect these studies?" },
-      { role: "assistant", content: "PubMed returned 18 results. Reviewing the strongest matches now." },
+      { role: "assistant", content: "PubMed found 18 total results. Reviewing the strongest matches now." },
       { role: "assistant", content: "Need your answer before continuing: Which of these results should I inspect first?" },
       { role: "assistant", content: "Which of these results should I inspect first?" },
     ]);

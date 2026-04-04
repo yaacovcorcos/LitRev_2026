@@ -107,7 +107,7 @@ describe("run recovery", () => {
       {
         sequence: 6,
         type: "checkpoint",
-        payload: { checkpointLabel: "PubMed returned 18 results. Reviewing the strongest matches now." },
+        payload: { checkpointLabel: "PubMed found 18 total results. Reviewing the strongest matches now." },
         toolName: null,
         artifactId: null,
         messageRole: null,
@@ -255,7 +255,7 @@ describe("run recovery", () => {
         sequence: 6,
         chunk: {
           type: "checkpoint",
-          checkpointLabel: "PubMed returned 18 results. Reviewing the strongest matches now.",
+          checkpointLabel: "PubMed found 18 total results. Reviewing the strongest matches now.",
           replay: true,
           conversationId: "conv-1",
         },

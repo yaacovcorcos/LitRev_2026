@@ -208,6 +208,38 @@ describe("searchSemanticScholar", () => {
         expect(response.returnedCount).toBe(1);
         expect(response.results.map((result) => result.title)).toEqual(["Known Year"]);
     });
+
+    it("accepts a continuation cursor and returns the next cursor when more pages remain", async () => {
+        const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+            mockJsonResponse({
+                total: 30,
+                data: [
+                    {
+                        paperId: "continued-paper",
+                        title: "Continued Result",
+                        year: 2023,
+                        authors: [{ name: "Author Cursor" }],
+                    },
+                ],
+            })
+        );
+
+        const response = await searchSemanticScholar("continued", {
+            maxResults: 10,
+            cursor: "10",
+        });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock.mock.calls[0]?.[0]).toContain("offset=10");
+        expect(response.returnedCount).toBe(1);
+        expect(response.nextCursor).toBe("20");
+    });
+
+    it("rejects malformed continuation cursors", async () => {
+        await expect(searchSemanticScholar("continued", { cursor: "abc" })).rejects.toThrow(
+            "Semantic Scholar cursor must be a non-negative integer continuation token.",
+        );
+    });
 });
 
 // ── buildS2PaperIds ──────────────────────────────────────────────────────────

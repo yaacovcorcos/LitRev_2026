@@ -27,6 +27,7 @@ describe("project copilot stream event handlers", () => {
       effectiveConvId: null,
       completedPubmedSearchCount: 0,
       lastPubmedSearchSize: null,
+      lastPubmedSearchSizeBasis: null,
     };
   }
 
@@ -223,7 +224,7 @@ describe("project copilot stream event handlers", () => {
 
     let state = reserveProjectCopilotAssistantTurn(baseState(), deps);
     state = handleProjectCopilotStreamChunk(
-      { type: "checkpoint", checkpointLabel: "PubMed returned 18 results." },
+      { type: "checkpoint", checkpointLabel: "PubMed found 18 total results." },
       state,
       deps,
     );
@@ -277,7 +278,7 @@ describe("project copilot stream event handlers", () => {
     };
 
     handleProjectCopilotStreamChunk(
-      { type: "checkpoint", checkpointLabel: "PubMed returned 18 results. Reviewing the strongest matches now." },
+      { type: "checkpoint", checkpointLabel: "PubMed found 18 total results. Reviewing the strongest matches now." },
       baseState(),
       deps,
     );
@@ -287,7 +288,7 @@ describe("project copilot stream event handlers", () => {
       sender: "ai",
       text: "",
       checkpoint: {
-        label: "PubMed returned 18 results. Reviewing the strongest matches now.",
+        label: "PubMed found 18 total results. Reviewing the strongest matches now.",
       },
     });
   });

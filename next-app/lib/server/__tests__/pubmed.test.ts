@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { parsePubMedXml } from "@/lib/server/search/pubmed";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { parsePubMedXml, searchPubMed } from "@/lib/server/search/pubmed";
 
 const MULTI_AUTHOR_XML = `<?xml version="1.0" ?>
 <PubmedArticleSet>
@@ -275,6 +275,26 @@ const MALFORMED_MEDLINE_DATE_XML = `<?xml version="1.0" ?>
   </PubmedArticle>
 </PubmedArticleSet>`;
 
+function mockJsonResponse(body: unknown, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+    headers: new Headers(),
+  } as unknown as Response;
+}
+
+function mockTextResponse(body: string, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => ({}),
+    text: async () => body,
+    headers: new Headers(),
+  } as unknown as Response;
+}
+
 describe("parsePubMedXml", () => {
   it("parses multi-author article with all fields", () => {
     const results = parsePubMedXml(MULTI_AUTHOR_XML);
@@ -363,5 +383,36 @@ describe("parsePubMedXml", () => {
   it("returns empty array for invalid XML", () => {
     const results = parsePubMedXml("<html><body>Not PubMed</body></html>");
     expect(results).toEqual([]);
+  });
+});
+
+describe("searchPubMed", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("accepts a continuation cursor and returns the next cursor when more pages remain", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(mockJsonResponse({
+        esearchresult: {
+          idlist: ["12345678"],
+          count: "30",
+        },
+      }))
+      .mockResolvedValueOnce(mockTextResponse(MULTI_AUTHOR_XML));
+
+    const response = await searchPubMed("statins", { maxResults: 10, cursor: "10" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("retstart=10");
+    expect(response.returnedCount).toBe(1);
+    expect(response.totalResults).toBe(30);
+    expect(response.nextCursor).toBe("20");
+  });
+
+  it("rejects malformed continuation cursors", async () => {
+    await expect(searchPubMed("statins", { cursor: "abc" })).rejects.toThrow(
+      "PubMed cursor must be a non-negative integer continuation token.",
+    );
   });
 });

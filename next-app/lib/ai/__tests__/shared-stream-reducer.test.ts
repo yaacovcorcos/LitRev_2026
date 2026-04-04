@@ -150,7 +150,7 @@ describe("shared stream reducer", () => {
     });
     expect(toolResultReduced.intents).toContainEqual({
       type: "checkpoint_append",
-      label: "PubMed returned 42 results. The search is broad, so it is being narrowed next.",
+      label: "PubMed found 42 total results. The search is broad, so it is being narrowed next.",
     });
   });
 
@@ -158,6 +158,7 @@ describe("shared stream reducer", () => {
     let state = createInitialSharedStreamState({
       completedPubmedSearchCount: 1,
       lastPubmedSearchSize: 42,
+      lastPubmedSearchSizeBasis: "total",
     });
 
     const secondCall = reduceSharedStreamChunk(
@@ -198,10 +199,11 @@ describe("shared stream reducer", () => {
 
     expect(secondResult.intents).toContainEqual({
       type: "checkpoint_append",
-      label: "The latest PubMed search narrowed the result set from 42 to 9 results. Reviewing the strongest matches now.",
+      label: "The latest PubMed search narrowed the total result set from 42 to 9 results. Reviewing the strongest matches now.",
     });
     expect(secondResult.state.completedPubmedSearchCount).toBe(2);
     expect(secondResult.state.lastPubmedSearchSize).toBe(9);
+    expect(secondResult.state.lastPubmedSearchSizeBasis).toBe("total");
   });
 
   it("replaces assistant content snapshots during replay instead of appending duplicates", () => {

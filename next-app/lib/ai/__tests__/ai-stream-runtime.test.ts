@@ -35,7 +35,7 @@ describe("createAiStreamRuntime", () => {
     runtime.reserveAssistantTurn();
     runtime.handleChunk({
       type: "checkpoint",
-      checkpointLabel: "PubMed returned 10 results.",
+      checkpointLabel: "PubMed found 10 total results.",
     });
 
     expect(getItems("conv-1").map((item) => item.id)).toEqual([

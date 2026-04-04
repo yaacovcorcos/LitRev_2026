@@ -5,6 +5,7 @@ import { searchPubMed } from "@/lib/server/search/pubmed";
 const inputSchema = z.object({
     query: z.string().min(1, "Query is required"),
     maxResults: z.number().int().min(1).max(50).optional().default(10),
+    cursor: z.string().trim().min(1).optional(),
 });
 
 const outputSchema = z.object({
@@ -36,6 +37,10 @@ export const pubmedSearchTool: AITool = {
                     type: "number",
                     description: "Maximum number of results to return (1-50, default 10)",
                 },
+                cursor: {
+                    type: "string",
+                    description: "Opaque continuation token from a previous PubMed search response",
+                },
             },
             required: ["query"],
         },
@@ -58,9 +63,10 @@ export const pubmedSearchTool: AITool = {
         const maxResults = typeof args.maxResults === "number"
             ? Math.min(Math.max(args.maxResults, 1), 50)
             : 10;
+        const cursor = typeof args.cursor === "string" ? args.cursor : undefined;
 
         try {
-            const response = await searchPubMed(query, { maxResults });
+            const response = await searchPubMed(query, { maxResults, cursor });
             return { callId: "", result: response };
         } catch (error) {
             return {

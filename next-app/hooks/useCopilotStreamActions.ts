@@ -500,6 +500,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
         let localRunId = "";
         let completedPubmedSearchCount = 0;
         let lastPubmedSearchSize: number | null = null;
+        let lastPubmedSearchSizeBasis: "returned" | "total" | null = null;
         let runStatus: string | null = null;
         let stopReason: string | null = null;
         let streamErrorMessage: string | null = null;
@@ -689,6 +690,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         effectiveConvId,
                         completedPubmedSearchCount,
                         lastPubmedSearchSize,
+                        lastPubmedSearchSizeBasis,
                     },
                     projectStreamDeps,
                 );
@@ -706,6 +708,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 effectiveConvId = reservedState.effectiveConvId;
                 completedPubmedSearchCount = reservedState.completedPubmedSearchCount;
                 lastPubmedSearchSize = reservedState.lastPubmedSearchSize;
+                lastPubmedSearchSizeBasis = reservedState.lastPubmedSearchSizeBasis;
             }
 
             const applyChunk = (data: import("@/types/ai").AIStreamChunk) => {
@@ -727,6 +730,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                         effectiveConvId,
                         completedPubmedSearchCount,
                         lastPubmedSearchSize,
+                        lastPubmedSearchSizeBasis,
                     },
                     projectStreamDeps
                 );
@@ -745,6 +749,7 @@ export function useCopilotStreamActions(deps: CopilotStreamActionsDeps) {
                 effectiveConvId = nextState.effectiveConvId;
                 completedPubmedSearchCount = nextState.completedPubmedSearchCount;
                 lastPubmedSearchSize = nextState.lastPubmedSearchSize;
+                lastPubmedSearchSizeBasis = nextState.lastPubmedSearchSizeBasis;
                 const deltaChars = Math.max(0, nextState.fullContent.length - previousContentLength);
                 if (deltaChars > 0) {
                     const nowMs = Date.now();

@@ -65,6 +65,33 @@ describe("search tool output contracts", () => {
         expect(logServerWarn).not.toHaveBeenCalled();
     });
 
+    it("accepts a PubMed continuation cursor at the tool boundary", async () => {
+        vi.mocked(searchPubMed).mockResolvedValueOnce({
+            query: "continued pubmed",
+            source: "pubmed",
+            totalResults: 30,
+            returnedCount: 10,
+            results: [],
+            nextCursor: "20",
+        });
+
+        const result = await executeTool(
+            "search_pubmed",
+            { query: "continued pubmed", maxResults: 10, cursor: "10" },
+            "call-cursor-1",
+        );
+
+        expect(result.error).toBeUndefined();
+        expect(searchPubMed).toHaveBeenCalledWith("continued pubmed", {
+            maxResults: 10,
+            cursor: "10",
+        });
+        expect(result.result).toMatchObject({
+            returnedCount: 10,
+            nextCursor: "20",
+        });
+    });
+
     it("accepts a yearless OpenAlex result at the tool boundary", async () => {
         vi.mocked(searchOpenAlex).mockResolvedValueOnce({
             query: "yearless openalex",
@@ -125,6 +152,33 @@ describe("search tool output contracts", () => {
         });
         expect((result.result as { results: Array<{ year?: number }> }).results[0]?.year).toBeUndefined();
         expect(logServerWarn).not.toHaveBeenCalled();
+    });
+
+    it("accepts a Semantic Scholar continuation cursor at the tool boundary", async () => {
+        vi.mocked(searchSemanticScholar).mockResolvedValueOnce({
+            query: "continued semantic scholar",
+            source: "semantic-scholar",
+            returnedCount: 10,
+            results: [],
+            nextCursor: "20",
+        });
+
+        const result = await executeTool(
+            "search_semantic_scholar",
+            { query: "continued semantic scholar", maxResults: 10, cursor: "10", yearRange: "2020-2024" },
+            "call-cursor-2",
+        );
+
+        expect(result.error).toBeUndefined();
+        expect(searchSemanticScholar).toHaveBeenCalledWith("continued semantic scholar", {
+            maxResults: 10,
+            cursor: "10",
+            yearRange: "2020-2024",
+        });
+        expect(result.result).toMatchObject({
+            returnedCount: 10,
+            nextCursor: "20",
+        });
     });
 
     it("accepts yearless recommendation results at the tool boundary", async () => {

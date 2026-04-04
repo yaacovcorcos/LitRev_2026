@@ -2,6 +2,7 @@ import "server-only";
 
 import { XMLParser } from "fast-xml-parser";
 import type { SearchResult, SearchResponse } from "@/types/search";
+import { parseOpaqueOffsetCursor } from "@/lib/search-contract";
 
 const EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 const PMID_BATCH_SIZE = 200;
@@ -54,10 +55,12 @@ function asRecord(value: unknown): XmlRecord | undefined {
  */
 export async function searchPubMed(
   query: string,
-  options?: { maxResults?: number; retstart?: number }
+  options?: { maxResults?: number; cursor?: string; retstart?: number }
 ): Promise<SearchResponse> {
   const maxResults = Math.min(options?.maxResults ?? 10, 50);
-  const retstart = options?.retstart ?? 0;
+  const retstart = options?.cursor !== undefined
+    ? parseOpaqueOffsetCursor(options.cursor, "PubMed") ?? 0
+    : options?.retstart ?? 0;
 
   // Step 1: ESearch to get PMIDs
   const searchParams = buildBaseParams();

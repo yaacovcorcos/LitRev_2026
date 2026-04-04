@@ -140,7 +140,7 @@ describe("messagesToTimeline", () => {
         text: "",
         createdAt: "2026-02-28T00:00:05.000Z",
         checkpoint: {
-          label: "PubMed returned 18 results. Reviewing the strongest matches now.",
+          label: "PubMed found 18 total results. Reviewing the strongest matches now.",
         },
       },
     ];
@@ -149,7 +149,7 @@ describe("messagesToTimeline", () => {
     expect(timeline[0]).toMatchObject({
       type: "checkpoint",
       id: "checkpoint-current",
-      label: "PubMed returned 18 results. Reviewing the strongest matches now.",
+      label: "PubMed found 18 total results. Reviewing the strongest matches now.",
     });
   });
 

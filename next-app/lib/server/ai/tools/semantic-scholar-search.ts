@@ -6,6 +6,7 @@ const inputSchema = z.object({
     query: z.string().min(1, "Query is required"),
     maxResults: z.number().int().min(1).max(100).optional().default(10),
     yearRange: z.string().optional(),
+    cursor: z.string().trim().min(1).optional(),
 });
 
 const outputSchema = z.object({
@@ -41,6 +42,10 @@ export const semanticScholarSearchTool: AITool = {
                     type: "string",
                     description: "Year filter, e.g. '2020-2024', '2020-' (from 2020 onward), '-2023' (up to 2023)",
                 },
+                cursor: {
+                    type: "string",
+                    description: "Opaque continuation token from a previous Semantic Scholar search response",
+                },
             },
             required: ["query"],
         },
@@ -64,9 +69,10 @@ export const semanticScholarSearchTool: AITool = {
             ? Math.min(Math.max(args.maxResults, 1), 100)
             : 10;
         const yearRange = typeof args.yearRange === "string" ? args.yearRange : undefined;
+        const cursor = typeof args.cursor === "string" ? args.cursor : undefined;
 
         try {
-            const response = await searchSemanticScholar(query, { maxResults, yearRange });
+            const response = await searchSemanticScholar(query, { maxResults, yearRange, cursor });
             return { callId: "", result: response };
         } catch (error) {
             return {

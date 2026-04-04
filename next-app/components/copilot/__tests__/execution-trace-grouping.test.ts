@@ -24,7 +24,7 @@ describe("buildExecutionTraceEntries", () => {
       {
         type: "checkpoint",
         id: "checkpoint-1",
-        label: "PubMed returned 10 results.",
+        label: "PubMed found 10 total results.",
         createdAt: "2026-03-11T00:00:03.000Z",
       },
       {
@@ -42,7 +42,7 @@ describe("buildExecutionTraceEntries", () => {
       anchorAssistantMessageId: "assistant-1",
       canCollapse: true,
       defaultCollapsed: true,
-      summaryText: "PubMed returned 10 results.",
+      summaryText: "PubMed found 10 total results.",
     });
     if (entries[0]?.kind !== "execution_trace") throw new Error("expected execution trace");
     expect(entries[0].traceItems).toHaveLength(2);
@@ -134,7 +134,7 @@ describe("buildExecutionTraceEntries", () => {
       {
         type: "checkpoint",
         id: "checkpoint-live-1",
-        label: "PubMed returned 10 results and the strongest matches are being reviewed now for relevance and outcome fit.",
+        label: "PubMed found 10 total results and the strongest matches are being reviewed now for relevance and outcome fit.",
         createdAt: "2026-03-11T00:00:03.000Z",
       },
     ];

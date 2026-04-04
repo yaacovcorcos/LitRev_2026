@@ -585,7 +585,7 @@ describe("/ai page deferred hydration", () => {
     }) => {
       await onReplay({
         type: "checkpoint",
-        checkpointLabel: "PubMed returned 18 results. Reviewing the strongest matches now.",
+        checkpointLabel: "PubMed found 18 total results. Reviewing the strongest matches now.",
       });
       await onReplay({
         type: "user_input_required",
@@ -626,7 +626,7 @@ describe("/ai page deferred hydration", () => {
       expect(screen.getByText("Which study should I inspect first?")).toBeTruthy();
     });
 
-    expect(screen.getByText("PubMed returned 18 results. Reviewing the strongest matches now.")).toBeTruthy();
+    expect(screen.getByText("PubMed found 18 total results. Reviewing the strongest matches now.")).toBeTruthy();
     expect(screen.queryByText("Run interrupted. Reconnecting to the active run…")).toBeNull();
     expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
     expect(screen.queryByText("Run interrupted and recovery failed. You can retry safely now.")).toBeNull();

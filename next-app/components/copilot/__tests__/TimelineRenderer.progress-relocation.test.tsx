@@ -29,7 +29,7 @@ describe("TimelineRenderer progress suppression", () => {
                 updatedAt: "2026-03-11T00:00:00.000Z",
                 createdAt: "2026-03-11T00:00:00.000Z",
             },
-            { type: "checkpoint", id: "checkpoint-1", label: "PubMed returned 18 results", createdAt: "2026-03-11T00:00:01.000Z" },
+            { type: "checkpoint", id: "checkpoint-1", label: "PubMed found 18 total results", createdAt: "2026-03-11T00:00:01.000Z" },
             { type: "progress", id: "progress-2", message: "Reviewing PubMed results", current: 2, total: 3 },
         ];
 
@@ -46,6 +46,6 @@ describe("TimelineRenderer progress suppression", () => {
         expect(screen.getAllByText("Searching PubMed").length).toBeGreaterThanOrEqual(1);
         expect(screen.queryByText("Reviewing PubMed results")).toBeNull();
         expect(screen.getByText("PubMed")).toBeTruthy();
-        expect(screen.getByText("PubMed returned 18 results")).toBeTruthy();
+        expect(screen.getByText("PubMed found 18 total results")).toBeTruthy();
     });
 });
