@@ -19,9 +19,7 @@ import { runWithActorContext } from "@/lib/server/actor";
 import { requireApiSession } from "@/lib/server/auth/session";
 import { assertProjectAccess } from "@/lib/server/access";
 import {
-    AIErrorWithEnvelope,
     buildStreamErrorChunk,
-    createContinuationUnavailableErrorEnvelope,
     extractAIErrorEnvelope,
 } from "@/lib/ai/error-envelope";
 import type { PopupChatContext } from "@/types/popup-chat";
@@ -40,14 +38,7 @@ import {
 import type { ContextCaptureTarget } from "@/types/context-capture";
 import { buildContextCapturePromptBlock } from "@/lib/server/ai/context-capture";
 import { logServerError } from "@/lib/server/logging";
-import {
-    buildDurableContinuationContext,
-    resolveDurableContinuationSource,
-} from "@/lib/server/agent/durable-continuation";
-import {
-    buildCheckpointContinuationContext,
-    resolveLatestValidRunCheckpoint,
-} from "@/lib/server/agent/run-checkpoints";
+import { resolveRequestedContinuation } from "@/lib/server/agent/requested-continuation";
 import {
     buildClarificationResolutionUserMessage,
     buildUserInputResolutionContinuationContext,
@@ -124,9 +115,34 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        if (options?.preferContinueFromRunId !== undefined && typeof options.preferContinueFromRunId !== "string") {
+            return new Response(
+                JSON.stringify({ error: "preferContinueFromRunId must be a string when provided" }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+        }
+
         if (options?.continueFromRunId && !options.conversationId) {
             return new Response(
                 JSON.stringify({ error: "continueFromRunId requires conversationId" }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+        }
+
+        if (options?.preferContinueFromRunId && !options.conversationId) {
+            return new Response(
+                JSON.stringify({ error: "preferContinueFromRunId requires conversationId" }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+        }
+
+        if (
+            options?.continueFromRunId
+            && options?.preferContinueFromRunId
+            && options.continueFromRunId !== options.preferContinueFromRunId
+        ) {
+            return new Response(
+                JSON.stringify({ error: "continueFromRunId and preferContinueFromRunId must match when both are provided" }),
                 { status: 400, headers: { "Content-Type": "application/json" } },
             );
         }
@@ -398,6 +414,7 @@ export async function POST(request: NextRequest) {
                                 runtimeOptions = {
                                     ...runtimeOptions,
                                     continueFromRunId: undefined,
+                                    preferContinueFromRunId: undefined,
                                     replaceRunId: undefined,
                                     parentRunId: undefined,
                                     userInputResolution: undefined,
@@ -422,6 +439,7 @@ export async function POST(request: NextRequest) {
                                 runtimeOptions = {
                                     ...runtimeOptions,
                                     continueFromRunId: undefined,
+                                    preferContinueFromRunId: undefined,
                                     replaceRunId: undefined,
                                     parentRunId: undefined,
                                     userInputResolution: undefined,
@@ -479,35 +497,23 @@ export async function POST(request: NextRequest) {
                         }
 
                         if (!handledClarificationResolutionWithoutStream) {
-                            const continuationSourceRunId =
-                                runtimeOptions.continueFromRunId ?? scopedOptions.continueFromRunId;
-                            const continuationContext = continuationSourceRunId
-                                ? (resolutionContinuationContext ?? await (async () => {
-                                    const checkpointSource = await resolveLatestValidRunCheckpoint({
-                                        runId: continuationSourceRunId,
-                                        conversationId: scopedOptions.conversationId ?? null,
-                                    });
-                                    if (checkpointSource) {
-                                        return buildCheckpointContinuationContext(checkpointSource);
-                                    }
-
-                                    const source = await resolveDurableContinuationSource({
-                                        runId: continuationSourceRunId,
-                                        conversationId: scopedOptions.conversationId ?? null,
-                                    });
-                                    if (!source) {
-                                        throw new AIErrorWithEnvelope(
-                                            createContinuationUnavailableErrorEnvelope({
-                                                runId: continuationSourceRunId,
-                                            }),
-                                        );
-                                    }
-                                    return buildDurableContinuationContext(source);
-                                })())
-                                : undefined;
+                            const resolvedRequestedContinuation = resolutionContinuationContext
+                                ? {
+                                    sourceRunId: runtimeOptions.continueFromRunId ?? scopedOptions.continueFromRunId ?? null,
+                                    continuationContext: resolutionContinuationContext,
+                                  }
+                                : await resolveRequestedContinuation({
+                                    conversationId: scopedOptions.conversationId ?? null,
+                                    continueFromRunId:
+                                        runtimeOptions.continueFromRunId ?? scopedOptions.continueFromRunId,
+                                    preferContinueFromRunId:
+                                        runtimeOptions.preferContinueFromRunId ?? scopedOptions.preferContinueFromRunId,
+                                  });
                             runtimeOptions = {
                                 ...runtimeOptions,
-                                continuationContext,
+                                continueFromRunId: resolvedRequestedContinuation.sourceRunId ?? undefined,
+                                preferContinueFromRunId: undefined,
+                                continuationContext: resolvedRequestedContinuation.continuationContext,
                             };
                         }
                         surface = deriveChatUnificationSurface(runtimeOptions);

@@ -18,8 +18,8 @@ import type {
   ConversationContext,
   CopilotPage,
   ReasoningMode,
+  RuntimeSendOverrides,
   UserInputRequest,
-  UserInputResolution,
   UserInputResolutionKind,
 } from "@/types/ai";
 import type { ArtifactStatus } from "@/types/artifacts";
@@ -1149,12 +1149,7 @@ export default function AIView() {
     _studyId?: string,
     retryModelExpectation?: RetryModelExpectation,
     _contextTargets?: unknown,
-    runtimeOverrides?: string | {
-      replaceRunId?: string | null;
-      continueFromRunId?: string | null;
-      suppressUserMessageAppend?: boolean;
-      userInputResolution?: UserInputResolution;
-    },
+    runtimeOverrides?: string | RuntimeSendOverrides,
   ) => {
     const msgText = rawText.trim();
     const replaceRunIdOverride = typeof runtimeOverrides === "string"
@@ -1163,6 +1158,9 @@ export default function AIView() {
     const continueFromRunId = typeof runtimeOverrides === "string"
       ? null
       : (runtimeOverrides?.continueFromRunId ?? null);
+    const preferContinueFromRunId = typeof runtimeOverrides === "string"
+      ? null
+      : (runtimeOverrides?.preferContinueFromRunId ?? null);
     const suppressUserMessageAppend = typeof runtimeOverrides === "object"
       && runtimeOverrides?.suppressUserMessageAppend === true;
     const explicitUserInputResolution = typeof runtimeOverrides === "object"
@@ -1413,6 +1411,7 @@ export default function AIView() {
             conversationId: convId,
             replaceRunId: replaceRunId ?? undefined,
             continueFromRunId: continueFromRunId ?? undefined,
+            preferContinueFromRunId: preferContinueFromRunId ?? undefined,
             persistUserMessage: suppressUserMessageAppend ? false : undefined,
             persistedUserMessageContent: suppressUserMessageAppend ? undefined : msgText,
             userInputResolution: userInputResolution ?? undefined,
@@ -2322,7 +2321,12 @@ export default function AIView() {
         source: "retry_action",
       },
       undefined,
-      replaceRunId ?? undefined,
+      replaceRunId
+        ? {
+            replaceRunId,
+            preferContinueFromRunId: replaceRunId,
+          }
+        : undefined,
     );
   }, [activeConversationId, timelineByConversation, handleSend, selectedModel, selectedProjectId]);
 

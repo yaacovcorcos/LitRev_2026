@@ -300,6 +300,95 @@ describe("/api/ai/stream route", () => {
     });
   });
 
+  it("reuses a checkpoint for best-effort retry continuation when available", async () => {
+    mocks.resolveLatestValidRunCheckpoint.mockResolvedValue({
+      checkpointId: "checkpoint-1",
+      kind: "tool_result_ready",
+      conversationId: "conv-1",
+      nextStep: "reason_from_tool_result",
+      sourceRunId: "run-old",
+      sourceEventSequence: 7,
+      toolCallId: "call-1",
+      toolName: "search_pubmed",
+      toolResult: {
+        callId: "call-1",
+        result: { studies: [{ title: "Study A" }] },
+      },
+    });
+    mocks.streamChatWithArtifacts.mockImplementation(async function* () {
+      yield { type: "run_start", runId: "run-continued", conversationId: "conv-1" };
+      yield { type: "run_end", runId: "run-continued", conversationId: "conv-1", runStatus: "completed", stopReason: null };
+    });
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "Retry the interrupted work",
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          replaceRunId: "run-old",
+          preferContinueFromRunId: "run-old",
+          agentMode: "general",
+          page: "ai",
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    await response.text();
+
+    expect(mocks.resolveLatestValidRunCheckpoint).toHaveBeenCalledWith({
+      runId: "run-old",
+      conversationId: "conv-1",
+    });
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]).toMatchObject({
+      conversationId: "conv-1",
+      replaceRunId: "run-old",
+      continueFromRunId: "run-old",
+      continuationContext: "[CONTINUATION_CONTEXT]\nPersisted checkpoint",
+    });
+  });
+
+  it("falls back to a fresh retry when best-effort retry continuation has no safe source", async () => {
+    mocks.resolveLatestValidRunCheckpoint.mockResolvedValue(null);
+    mocks.resolveDurableContinuationSource.mockResolvedValue(null);
+    mocks.streamChatWithArtifacts.mockImplementation(async function* () {
+      yield { type: "run_start", runId: "run-fresh", conversationId: "conv-1" };
+      yield { type: "run_end", runId: "run-fresh", conversationId: "conv-1", runStatus: "completed", stopReason: null };
+    });
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "Retry the interrupted work",
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          replaceRunId: "run-old",
+          preferContinueFromRunId: "run-old",
+          agentMode: "general",
+          page: "ai",
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    await response.text();
+
+    expect(mocks.streamChatWithArtifacts).toHaveBeenCalledTimes(1);
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]).toMatchObject({
+      conversationId: "conv-1",
+      replaceRunId: "run-old",
+    });
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]?.continueFromRunId).toBeUndefined();
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]?.continuationContext).toBeUndefined();
+  });
+
   it("emits a typed continuation-unavailable error chunk when the source is no longer valid", async () => {
     mocks.resolveLatestValidRunCheckpoint.mockResolvedValue(null);
     mocks.resolveDurableContinuationSource.mockResolvedValue(null);

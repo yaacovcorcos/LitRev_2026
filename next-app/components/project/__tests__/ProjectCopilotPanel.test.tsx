@@ -384,7 +384,10 @@ describe("ProjectCopilotPanel suggestion wiring", () => {
         source: "retry_action",
       }),
       undefined,
-      { replaceRunId: "run-clicked" },
+      {
+        replaceRunId: "run-clicked",
+        preferContinueFromRunId: "run-clicked",
+      },
     );
     expect(contextValue.sendMessage).toHaveBeenCalledWith(
       "Recover this search",

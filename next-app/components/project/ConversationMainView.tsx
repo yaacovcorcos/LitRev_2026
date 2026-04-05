@@ -190,7 +190,12 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                 source: "retry_action",
             },
             undefined,
-            replaceRunId ? { replaceRunId } : undefined,
+            replaceRunId
+                ? {
+                    replaceRunId,
+                    preferContinueFromRunId: replaceRunId,
+                }
+                : undefined,
         );
     }, [isLoading, messages, sendMessage, selectedModel]);
 

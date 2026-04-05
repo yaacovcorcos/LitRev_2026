@@ -10,9 +10,9 @@ import type {
     ChoiceOption,
     CopilotPage,
     ReasoningMode,
+    RuntimeSendOverrides,
     StreamPhase,
     UserInputRequest,
-    UserInputResolution,
     UserInputResolutionKind,
 } from "@/types/ai";
 import type { SelectableModelId, ReasoningSupportTier } from "@/lib/ai/config";
@@ -97,12 +97,7 @@ export type ProjectConversationContextValue = {
         studyId?: string,
         retryModelExpectation?: RetryModelExpectation,
         contextTargets?: ContextCaptureTarget[],
-        runtimeOverrides?: {
-            replaceRunId?: string | null;
-            continueFromRunId?: string | null;
-            suppressUserMessageAppend?: boolean;
-            userInputResolution?: UserInputResolution;
-        },
+        runtimeOverrides?: RuntimeSendOverrides,
     ) => void;
     /** Update global reasoning visibility mode */
     setReasoningMode: (mode: ReasoningMode) => void;
