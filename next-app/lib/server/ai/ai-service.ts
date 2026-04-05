@@ -2803,12 +2803,18 @@ function stopReasonMessage(reason: StopReason): string {
 // Singleton instance
 let aiServiceInstance: AIService | null = null;
 
+export function createAIService(config?: { toolMiddlewares?: ToolMiddleware[] }): AIService {
+    return new AIService({
+        toolMiddlewares: [
+            createToolPrerequisiteMiddleware(),
+            createIdempotencyMiddleware(),
+            ...(config?.toolMiddlewares ?? []),
+        ],
+    });
+}
+
 export function getAIService(): AIService {
-    if (!aiServiceInstance) {
-        aiServiceInstance = new AIService({
-            toolMiddlewares: [createToolPrerequisiteMiddleware(), createIdempotencyMiddleware()],
-        });
-    }
+    aiServiceInstance ??= createAIService();
     return aiServiceInstance;
 }
 

@@ -259,9 +259,45 @@ export function contextTargetToPopupContext(target: ContextCaptureTarget): Popup
                 projectId: target.projectId,
                 text: target.text,
                 criterionType: target.criterionType,
+                criterionIndex: target.criterionIndex,
             };
         default:
             return null;
+    }
+}
+
+export function popupContextToContextTarget(context: PopupChatContext): ContextCaptureTarget {
+    switch (context.type) {
+        case "study":
+            return buildStudyTarget({
+                projectId: context.projectId,
+                study: {
+                    studyId: context.studyId,
+                    title: context.title,
+                    authors: context.authors,
+                    abstract: context.abstract,
+                },
+            });
+        case "draft_selection":
+            return buildDraftSelectionTarget({
+                projectId: context.projectId,
+                section: context.section,
+                selectedText: context.selectedText,
+            });
+        case "protocol_section":
+            return buildProtocolSectionTarget({
+                projectId: context.projectId,
+                section: context.section,
+                sectionKey: context.sectionKey,
+                currentContent: context.currentContent,
+            });
+        case "criterion":
+            return buildProtocolCriterionTarget({
+                projectId: context.projectId,
+                criterionType: context.criterionType,
+                criterionIndex: context.criterionIndex,
+                text: context.text,
+            });
     }
 }
 

@@ -6,7 +6,7 @@
 
 import { NextRequest } from "next/server";
 import { resolveUserInputQuestionId } from "@/lib/ai/user-input";
-import { AIService, getAIService } from "@/lib/server/ai";
+import { createAIService, getAIService } from "@/lib/server/ai";
 import type { AIMessage, ChatOptions, ConversationContext } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type { ChatUnificationMetricType, ClarificationRuntimePayload } from "@/types/chat-unification";
@@ -25,8 +25,6 @@ import {
 import type { PopupChatContext } from "@/types/popup-chat";
 import { buildPopupSystemPrompt } from "@/lib/server/ai/popup-context";
 import { createPopupToolGuard, getAllowedPopupToolNames } from "@/lib/server/ai/popup-tool-contract";
-import { createIdempotencyMiddleware } from "@/lib/server/ai/tool-middleware";
-import { createToolPrerequisiteMiddleware } from "@/lib/server/ai/tool-prerequisites";
 import { getToolDefinitions } from "@/lib/server/ai/tools";
 import { isPopupToolsEnabled } from "@/lib/ai/popup-feature-flags";
 import { ingestChatUnificationMetric } from "@/lib/server/chat-unification-metrics";
@@ -568,11 +566,9 @@ export async function POST(request: NextRequest) {
                                     const allowedToolNames = new Set(getAllowedPopupToolNames());
                                     const popupToolDefinitions = getToolDefinitions(undefined, "project")
                                         .filter((tool) => allowedToolNames.has(tool.name));
-                                    const popupService = new AIService({
+                                    const popupService = createAIService({
                                         toolMiddlewares: [
                                             createPopupToolGuard({ popupContext, projectId: runtimeOptions.projectId }),
-                                            createToolPrerequisiteMiddleware(),
-                                            createIdempotencyMiddleware(),
                                         ],
                                     });
 

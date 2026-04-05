@@ -6,11 +6,20 @@ import { AIErrorWithEnvelope } from "@/lib/ai/error-envelope";
 import type { PopupChatContext } from "@/types/popup-chat";
 import { PopupChat } from "../PopupChat";
 
-const { mockUsePopupChat, mockUseProjectConversation, mockProcessAIStream, mockCreateNoteAction } = vi.hoisted(() => ({
+const {
+    mockUsePopupChat,
+    mockUseProjectConversation,
+    mockProcessAIStream,
+    mockCreateNoteAction,
+    mockCreateConversation,
+    mockAddMessage,
+} = vi.hoisted(() => ({
     mockUsePopupChat: vi.fn(),
     mockUseProjectConversation: vi.fn(),
     mockProcessAIStream: vi.fn(),
     mockCreateNoteAction: vi.fn(),
+    mockCreateConversation: vi.fn(async () => ({ success: true, data: { id: "conv-1" } })),
+    mockAddMessage: vi.fn(async () => ({ success: true })),
 }));
 
 vi.mock("@/contexts/PopupChatContext", () => ({
@@ -26,8 +35,8 @@ vi.mock("@/app/actions/notes", () => ({
 }));
 
 vi.mock("@/app/actions/conversations", () => ({
-    createConversation: vi.fn(async () => ({ success: true, data: { id: "conv-1" } })),
-    addMessage: vi.fn(async () => ({ success: true })),
+    createConversation: mockCreateConversation,
+    addMessage: mockAddMessage,
 }));
 
 vi.mock("@/hooks/useStableChatScroll", () => ({
@@ -199,6 +208,56 @@ describe("PopupChat failure handling", () => {
         expect(screen.getByText("Which of these results should I inspect first?")).toBeTruthy();
         expect(screen.getByRole("button", { name: "Continue in Copilot to answer" })).toBeTruthy();
         expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
+        expect(mockProcessAIStream.mock.calls[0]?.[0].shouldContinue).toEqual(expect.any(Function));
+    });
+
+    it("renders compact semantic tool receipts from the shared popup runtime", async () => {
+        mockProcessAIStream.mockImplementationOnce(async ({ onChunk }) => {
+            await onChunk({
+                type: "tool_call",
+                toolCall: {
+                    id: "read-protocol-1",
+                    name: "read_protocol",
+                    arguments: {},
+                },
+            });
+            await onChunk({
+                type: "tool_result",
+                toolName: "read_protocol",
+                toolResult: {
+                    callId: "read-protocol-1",
+                    result: {
+                        hasProtocol: false,
+                        protocolContext: "[PROTOCOL_CONTEXT]\nNo protocol defined yet.",
+                        protocol: {},
+                    },
+                },
+            });
+            return {
+                runStatus: "completed",
+                stopReason: "done",
+                errorMessage: null,
+                errorMeta: null,
+                conversationId: "conv-1",
+                actualModel: null,
+                actualModelSource: "unknown",
+                terminalReason: "completed",
+            };
+        });
+
+        render(<PopupChat projectId="project-1" />);
+
+        fireEvent.change(screen.getByPlaceholderText("Ask a question about Eligibility..."), {
+            target: { value: "What does the protocol say?" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+        await waitFor(() => {
+            expect(screen.getByText("Read protocol")).toBeTruthy();
+        });
+
+        expect(screen.getByText("No protocol is defined yet.")).toBeTruthy();
+        expect(screen.getByText("Protocol")).toBeTruthy();
     });
 
     it("renders one retryable terminal error message when the stream ends without assistant content", async () => {
@@ -293,6 +352,77 @@ describe("PopupChat failure handling", () => {
 
         const nextInput = screen.getByPlaceholderText("Ask a question about Results...") as HTMLTextAreaElement;
         expect(nextInput.value).toBe("");
+    });
+
+    it("promotes popup context into copilot through a structured context-capture attachment", async () => {
+        mockUsePopupChat.mockReturnValue({
+            isOpen: true,
+            context: {
+                type: "criterion",
+                projectId: "project-1",
+                criterionType: "inclusion",
+                criterionIndex: 2,
+                text: "Adults with randomized controlled trials only",
+            } satisfies PopupChatContext,
+            closePopupChat: vi.fn(),
+        });
+        mockProcessAIStream.mockImplementationOnce(async ({ onChunk }) => {
+            await onChunk({ type: "content", content: "This criterion looks appropriately specific." });
+            return {
+                runStatus: "completed",
+                stopReason: "done",
+                errorMessage: null,
+                errorMeta: null,
+                conversationId: "conv-1",
+                actualModel: null,
+                actualModelSource: "unknown",
+                terminalReason: "completed",
+            };
+        });
+
+        render(<PopupChat projectId="project-1" />);
+
+        fireEvent.change(screen.getByPlaceholderText("Ask a question about this inclusion criterion..."), {
+            target: { value: "Should I narrow this criterion?" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+        await waitFor(() => {
+            expect(screen.getByText("This criterion looks appropriately specific.")).toBeTruthy();
+        });
+
+        fireEvent.click(screen.getByRole("button", { name: "Continue in Copilot" }));
+
+        await waitFor(() => {
+            expect(mockCreateConversation).toHaveBeenCalledWith({
+                projectId: "project-1",
+                studyId: undefined,
+                page: "protocol",
+                context: "project",
+            });
+        });
+
+        expect(mockAddMessage).toHaveBeenNthCalledWith(1, {
+            conversationId: "conv-1",
+            role: "user",
+            content: "Should I narrow this criterion?",
+            attachments: [{
+                type: "context_capture",
+                target: expect.objectContaining({
+                    kind: "protocol_criterion",
+                    projectId: "project-1",
+                    criterionType: "inclusion",
+                    criterionIndex: 2,
+                    text: "Adults with randomized controlled trials only",
+                }),
+            }],
+        });
+        expect(mockAddMessage).toHaveBeenNthCalledWith(2, {
+            conversationId: "conv-1",
+            role: "assistant",
+            content: "This criterion looks appropriately specific.",
+            attachments: undefined,
+        });
     });
 
     it("surfaces save-to-notes failures and lets the user retry from the popup footer", async () => {

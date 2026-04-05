@@ -20,11 +20,10 @@ import {
 } from "@/lib/ai/stream-lifecycle";
 import { AIErrorWithEnvelope } from "@/lib/ai/error-envelope";
 import {
-    appendPopupTerminalError,
+    createPopupStreamRuntimeController,
     appendPopupUserMessage,
     createInitialPopupStreamRuntimeState,
     getPopupTranscriptEntries,
-    reducePopupStreamChunk,
     type PopupTimelineItem,
     type PopupStreamRuntimeState,
 } from "@/lib/ai/popup-stream-runtime";
@@ -36,6 +35,8 @@ import type { CopilotPage } from "@/types/ai";
 import { COARSE_POINTER_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobilePopupV2Enabled } from "@/lib/mobile/feature-flags";
 import { isMobileTelemetryContext, recordMobileMetric } from "@/lib/mobile/telemetry";
+import { popupContextToContextTarget } from "@/lib/context-capture/targets";
+import { ABNORMAL_END_TOOL_FAILURE_SUMMARY, shouldFailRunningToolsOnAbnormalEnd } from "@/lib/ai/ai-stream-runtime";
 import styles from "./PopupChat.module.css";
 
 const TURN_HINT_THRESHOLD = 3;
@@ -110,7 +111,7 @@ function getPopupRuntimeKey(ctx: PopupChatContext): string {
         case "study":
             return `study:${ctx.projectId}:${ctx.studyId}`;
         case "criterion":
-            return `criterion:${ctx.projectId}:${ctx.criterionType}:${ctx.text}`;
+            return `criterion:${ctx.projectId}:${ctx.criterionType}:${ctx.criterionIndex}:${ctx.text}`;
         case "draft_selection":
             return `draft_selection:${ctx.projectId}:${ctx.section}:${ctx.selectedText}`;
         case "protocol_section":
@@ -124,6 +125,19 @@ function isAssistantItem(item: PopupTimelineItem | undefined): item is Extract<P
 
 function isErrorItem(item: PopupTimelineItem | undefined): item is Extract<PopupTimelineItem, { type: "error" }> {
     return item?.type === "error";
+}
+
+function getPopupToolStatusLabel(status: Extract<PopupTimelineItem, { type: "tool_activity" }>["status"]): string {
+    switch (status) {
+        case "done":
+            return "Completed";
+        case "failed":
+            return "Failed";
+        case "interrupted":
+            return "Interrupted";
+        default:
+            return "Updated";
+    }
 }
 
 type PopupChatProps = {
@@ -184,6 +198,8 @@ function PopupChatRuntime({
         message: string | null;
     }>({ status: "idle", message: null });
     const streamStateRef = useRef<PopupStreamRuntimeState>(createInitialPopupStreamRuntimeState());
+    const streamGenRef = useRef(0);
+    const runtimeRef = useRef<ReturnType<typeof createPopupStreamRuntimeController> | null>(null);
 
     const abortRef = useRef<AbortController | null>(null);
     const userStopRequestedRef = useRef(false);
@@ -218,6 +234,13 @@ function PopupChatRuntime({
         if (saveToNotesResetRef.current) {
             clearTimeout(saveToNotesResetRef.current);
         }
+    }, []);
+
+    useEffect(() => () => {
+        streamGenRef.current++;
+        abortRef.current?.abort();
+        abortRef.current = null;
+        runtimeRef.current = null;
     }, []);
 
     // Shared scroll hook for auto-scroll
@@ -266,7 +289,6 @@ function PopupChatRuntime({
         setInput("");
         setIsStreaming(true);
 
-        // Build popup transcript payload for the server popup runtime (server owns system prompt).
         const transcriptEntries = getPopupTranscriptEntries(streamStateRef.current.items);
         const apiMessages = [
             ...transcriptEntries.map((entry, index) => ({
@@ -279,6 +301,7 @@ function PopupChatRuntime({
         ];
 
         const aiMsgId = makeId("pm");
+        const myGen = ++streamGenRef.current;
         let terminalReason: StreamTerminalReason | null = null;
         userStopRequestedRef.current = false;
         const requestKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -321,6 +344,24 @@ function PopupChatRuntime({
 
         const controller = new AbortController();
         abortRef.current = controller;
+        const runtime = createPopupStreamRuntimeController({
+            initialState: streamStateRef.current,
+            aiMessageId: aiMsgId,
+            page: contextToPage(context),
+            section: context.type === "protocol_section" || context.type === "draft_selection"
+                ? context.section
+                : undefined,
+            now: () => new Date().toISOString(),
+            myGen,
+            getCurrentGen: () => streamGenRef.current,
+            selectedProjectId: context.projectId,
+            onStateChange: (nextState) => {
+                streamStateRef.current = nextState;
+                setStreamState(nextState);
+            },
+        });
+        runtimeRef.current = runtime;
+        runtime.reserveAssistantTurn();
 
         try {
             const response = await fetch("/api/ai/stream", {
@@ -352,16 +393,10 @@ function PopupChatRuntime({
             const summary = await processAIStream({
                 reader,
                 signal: controller.signal,
+                shouldContinue: () => streamGenRef.current === myGen,
                 throwOnErrorChunk: true,
                 onChunk: (event) => {
-                    updateStreamState((prev) => reducePopupStreamChunk(prev, event, {
-                        aiMessageId: aiMsgId,
-                        page: contextToPage(context),
-                        section: context.type === "protocol_section" || context.type === "draft_selection"
-                            ? context.section
-                            : undefined,
-                        now: () => new Date().toISOString(),
-                    }));
+                    runtime.handleChunk(event);
                 },
             });
             terminalReason = summary.terminalReason;
@@ -372,14 +407,14 @@ function PopupChatRuntime({
             if (terminalReason) emitTerminalMetric(terminalReason);
             if (terminalReason && isFailureTerminalReason(terminalReason)) {
                 const errorState = buildUnexpectedTerminalErrorState(terminalReason);
-                updateStreamState((prev) => appendPopupTerminalError(prev, {
+                runtime.appendTerminalError({
                     message: errorState.message,
                     retryable: errorState.retryable,
                     errorMeta: {
                         ...errorState.errorMeta,
                     },
                     createdAt: new Date().toISOString(),
-                }));
+                });
             }
         } catch (error) {
             if (error instanceof DOMException && error.name === "AbortError") {
@@ -395,16 +430,27 @@ function PopupChatRuntime({
             }
 
             const errorState = buildClientErrorState(error);
-            updateStreamState((prev) => appendPopupTerminalError(prev, {
+            runtime.appendTerminalError({
                 message: errorState.message,
                 retryable: errorState.retryable,
                 errorMeta: errorState.errorMeta,
                 createdAt: new Date().toISOString(),
-            }));
+            });
         } finally {
+            runtime.clearProgress();
+            if (
+                streamGenRef.current === myGen
+                && !userStopRequestedRef.current
+                && shouldFailRunningToolsOnAbnormalEnd(terminalReason)
+            ) {
+                runtime.failRunningTools(ABNORMAL_END_TOOL_FAILURE_SUMMARY);
+            }
             setIsStreaming(false);
             if (abortRef.current === controller) {
                 abortRef.current = null;
+            }
+            if (runtimeRef.current === runtime) {
+                runtimeRef.current = null;
             }
             if (isMobileTelemetryContext()) {
                 recordMobileMetric({
@@ -423,8 +469,10 @@ function PopupChatRuntime({
 
     const handleStop = useCallback(() => {
         userStopRequestedRef.current = true;
+        streamGenRef.current++;
         abortRef.current?.abort();
         abortRef.current = null;
+        runtimeRef.current = null;
         setIsStreaming(false);
     }, []);
 
@@ -508,6 +556,7 @@ function PopupChatRuntime({
         try {
             const page = contextToPage(context);
             const studyId = context.type === "study" ? context.studyId : undefined;
+            const popupContextTarget = popupContextToContextTarget(context);
 
             const convResult = await createConversation({
                 projectId,
@@ -532,14 +581,23 @@ function PopupChatRuntime({
             }
             const convId = convResult.data.id;
 
-            // Insert messages sequentially
-            for (const msg of getPopupTranscriptEntries(streamStateRef.current.items)) {
+            const transcriptEntries = getPopupTranscriptEntries(streamStateRef.current.items)
+                .filter((entry) => entry.content.trim().length > 0);
+            let attachedPopupContext = false;
+
+            for (const msg of transcriptEntries) {
                 if (!msg.content.trim()) continue;
                 await addMessage({
                     conversationId: convId,
                     role: msg.role,
                     content: msg.content,
+                    attachments: !attachedPopupContext && msg.role === "user"
+                        ? [{ type: "context_capture", target: popupContextTarget }]
+                        : undefined,
                 });
+                if (msg.role === "user" && !attachedPopupContext) {
+                    attachedPopupContext = true;
+                }
             }
 
             await selectConversation(convId);
@@ -573,7 +631,7 @@ function PopupChatRuntime({
                 });
             }
         }
-    }, [context, projectId, refreshConversations, selectConversation, setCollapsed, streamState.items.length, closePopupChat]);
+    }, [closePopupChat, context, projectId, refreshConversations, selectConversation, setCollapsed, streamState.items.length]);
 
     const handleSaveToNotes = useCallback(async () => {
         if (streamState.items.length === 0 || saveToNotesState.status === "saving") return;
@@ -674,6 +732,46 @@ function PopupChatRuntime({
                                     );
                                 }
 
+                                if (item.type === "tool_activity") {
+                                    return (
+                                        <div key={item.id} className={styles.metaRow}>
+                                            <div className={styles.toolReceiptCard}>
+                                                <div className={styles.toolReceiptHeader}>
+                                                    <div className={styles.toolReceiptTitleRow}>
+                                                        <span className="material-icons-round">
+                                                            {item.status === "done" ? "task_alt" : item.status === "failed" ? "error" : "pause_circle"}
+                                                        </span>
+                                                        <span className={styles.toolReceiptTitle}>
+                                                            {item.displayLabel ?? item.toolName}
+                                                        </span>
+                                                    </div>
+                                                    <span className={styles.toolReceiptStatus}>
+                                                        {getPopupToolStatusLabel(item.status)}
+                                                    </span>
+                                                </div>
+                                                {item.inputPreview ? (
+                                                    <div className={styles.toolReceiptInput}>{item.inputPreview}</div>
+                                                ) : null}
+                                                {item.outcomeSummary || item.summary ? (
+                                                    <div className={styles.toolReceiptSummary}>
+                                                        {item.outcomeSummary ?? item.summary}
+                                                    </div>
+                                                ) : null}
+                                                {item.sourceBadge ? (
+                                                    <div className={styles.toolReceiptBadge}>{item.sourceBadge}</div>
+                                                ) : null}
+                                                {item.detailItems?.length ? (
+                                                    <div className={styles.toolReceiptDetails}>
+                                                        {item.detailItems.map((detail) => (
+                                                            <div key={detail} className={styles.toolReceiptDetail}>{detail}</div>
+                                                        ))}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
                                 if (item.type === "checkpoint") {
                                     return (
                                         <div key={item.id} className={styles.metaRow}>
@@ -683,10 +781,11 @@ function PopupChatRuntime({
                                 }
 
                                 if (item.type === "user_input_request") {
+                                    const blockerHeader = item.header ?? "Waiting for your answer";
                                     return (
                                         <div key={item.id} className={styles.metaRow}>
                                             <div className={styles.blockerCard}>
-                                                {item.header ? <div className={styles.blockerHeader}>{item.header}</div> : null}
+                                                <div className={styles.blockerHeader}>{blockerHeader}</div>
                                                 <div className={styles.blockerQuestion}>{item.question}</div>
                                                 {item.context ? <div className={styles.blockerContext}>{item.context}</div> : null}
                                                 <button

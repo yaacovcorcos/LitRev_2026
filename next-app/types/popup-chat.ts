@@ -2,7 +2,7 @@ import type { AIErrorEnvelope } from "@/types/ai";
 
 export type PopupChatContext =
     | { type: "study"; projectId: string; studyId: string; title: string; abstract?: string; authors?: string }
-    | { type: "criterion"; projectId: string; text: string; criterionType: "inclusion" | "exclusion" }
+    | { type: "criterion"; projectId: string; text: string; criterionType: "inclusion" | "exclusion"; criterionIndex: number }
     | { type: "draft_selection"; projectId: string; section: string; selectedText: string }
     | { type: "protocol_section"; projectId: string; section: string; sectionKey?: string; currentContent: string };
 

@@ -172,7 +172,8 @@
 
 .metaCard,
 .checkpointCard,
-.blockerCard {
+.blockerCard,
+.toolReceiptCard {
     width: min(100%, 92%);
     border-radius: 12px;
     border: 1px solid var(--glass-border);
@@ -192,6 +193,86 @@
 .metaCard .material-icons-round {
     font-size: 14px;
     color: var(--accent-primary);
+}
+
+.toolReceiptCard {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+}
+
+.toolReceiptHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.toolReceiptTitleRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.toolReceiptTitleRow .material-icons-round {
+    font-size: 14px;
+    color: var(--accent-primary);
+    flex-shrink: 0;
+}
+
+.toolReceiptTitle {
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--text-primary);
+}
+
+.toolReceiptStatus {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.toolReceiptInput,
+.toolReceiptSummary,
+.toolReceiptDetail {
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.toolReceiptInput {
+    color: var(--text-muted);
+}
+
+.toolReceiptSummary {
+    color: var(--text-primary);
+}
+
+.toolReceiptBadge {
+    align-self: flex-start;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(var(--rgb-accent-primary), 0.12);
+    color: var(--accent-primary);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.toolReceiptDetails {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.toolReceiptDetail {
+    color: var(--text-muted);
 }
 
 .checkpointCard {
