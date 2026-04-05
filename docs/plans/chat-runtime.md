@@ -26,6 +26,7 @@ This plan does not own:
 - `/ai` standard send and plan paths already run through the shared reducer/runtime contract.
 - `/ai`, main project conversation, and side-panel project copilot now all hand pre-normalized `TimelineItem[]` data into the shared timeline renderer, so progress/approval state and timeline rendering consume the same normalized shape instead of re-deriving it twice on the project surfaces.
 - Project copilot already migrated off bespoke chunk accumulation onto the shared reducer/runtime path, but still carries a few surface adapter differences that matter for truthful progress/presentation.
+- Protocol artifact propagation is not yet fully parity-complete across the main surfaces: project copilot acceptance and undo emit `protocolPatch` for immediate protocol live-sync application, but `/ai` still invalidates the protocol domain without embedding that patch payload, so protocol views reacting to `/ai` remain refetch-bound today.
 - `/ai` and project copilot now share the same default transparency semantics on top of that runtime: `summary` mode stays provider-independent, compact process summaries are derived from existing shared trace facts, and raw provider reasoning is limited to explicit `full` mode on surfaces that support it.
 - `/ai`, main conversation, and side-panel copilot now also share the queued-follow-up contract on top of that runtime: one explicit text-only next message may be queued while a run is active, rendered as an attached composer cap, and auto-dispatched only after the surface returns to true idle/sendable state.
 - `/ai`, main conversation, and side-panel copilot now also consume phase-backed recovery truth from persisted `AgentRun.runPhase` / `phaseEnteredAt`, so paused-input and stale-finalize cases converge through the shared runtime contract instead of per-surface reconnect heuristics.
@@ -192,6 +193,7 @@ Rules:
     - preserve raw validator JSON either in the live report appendix or in linked dated snapshot artifacts under `docs/reports/`
     - if a scoped Day-0 probe returns zero rows, verify whether unscoped `metricVersion=3` telemetry exists before treating it as a runtime/telemetry outage; refresh the cohort scope when the scoped filter is stale
     - complete replay parity confidence for `/ai` vs project adapters
+    - close the remaining protocol live-sync parity gap by making `/ai` artifact review and undo emit `protocolPatch` with project-data invalidation, matching project copilot immediate protocol patch behavior
     - prove parity for durable recovery truth, not only reducer-state parity
     - prove phase-backed paused-input and stale-finalize recovery behavior across the supported main surfaces
     - add burn-in checks for no indefinite reconnect loops, no contradictory same-run states, and truthful degraded continuation behavior
