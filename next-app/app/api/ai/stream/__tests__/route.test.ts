@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   ingestChatUnificationMetric: vi.fn(),
   streamChatWithArtifacts: vi.fn(),
   streamChat: vi.fn(),
+  streamChatWithTools: vi.fn(),
+  createAIService: vi.fn(),
   resolveLatestValidRunCheckpoint: vi.fn(),
   buildCheckpointContinuationContext: vi.fn(),
   resolveDurableContinuationSource: vi.fn(),
@@ -16,6 +18,11 @@ const mocks = vi.hoisted(() => ({
   hydrateClarificationControllerState: vi.fn(),
   buildUserInputResolutionContinuationContext: vi.fn(),
   buildClarificationResolutionUserMessage: vi.fn(),
+  buildPopupSystemPrompt: vi.fn(),
+  createPopupToolGuard: vi.fn(),
+  getAllowedPopupToolNames: vi.fn(),
+  getToolDefinitions: vi.fn(),
+  isPopupToolsEnabled: vi.fn(),
 }));
 
 vi.mock("@/lib/server/auth/session", () => ({
@@ -39,11 +46,24 @@ vi.mock("@/lib/server/ai", () => ({
     streamChatWithArtifacts: mocks.streamChatWithArtifacts,
     streamChat: mocks.streamChat,
   }),
-  AIService: class {
-    streamChatWithTools() {
-      return mocks.streamChatWithArtifacts();
-    }
-  },
+  createAIService: mocks.createAIService,
+}));
+
+vi.mock("@/lib/server/ai/popup-context", () => ({
+  buildPopupSystemPrompt: mocks.buildPopupSystemPrompt,
+}));
+
+vi.mock("@/lib/server/ai/popup-tool-contract", () => ({
+  createPopupToolGuard: mocks.createPopupToolGuard,
+  getAllowedPopupToolNames: mocks.getAllowedPopupToolNames,
+}));
+
+vi.mock("@/lib/server/ai/tools", () => ({
+  getToolDefinitions: mocks.getToolDefinitions,
+}));
+
+vi.mock("@/lib/ai/popup-feature-flags", () => ({
+  isPopupToolsEnabled: mocks.isPopupToolsEnabled,
 }));
 
 vi.mock("@/lib/server/agent/durable-continuation", () => ({
@@ -112,6 +132,17 @@ describe("/api/ai/stream route", () => {
       || request.recommendedAnswer
       || "resolved clarification"
     ));
+    mocks.createAIService.mockReturnValue({
+      streamChatWithTools: mocks.streamChatWithTools,
+    });
+    mocks.buildPopupSystemPrompt.mockResolvedValue("Popup system prompt");
+    mocks.createPopupToolGuard.mockReturnValue({ name: "popup-tool-guard" });
+    mocks.getAllowedPopupToolNames.mockReturnValue(["read_protocol"]);
+    mocks.getToolDefinitions.mockReturnValue([
+      { name: "read_protocol" },
+      { name: "update_protocol" },
+    ]);
+    mocks.isPopupToolsEnabled.mockReturnValue(true);
   });
 
   it("streams checkpoint and user-input events without route-side persistence authorship", async () => {
@@ -387,6 +418,79 @@ describe("/api/ai/stream route", () => {
     });
     expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]?.continueFromRunId).toBeUndefined();
     expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]?.continuationContext).toBeUndefined();
+  });
+
+  it("routes popup tool requests through the shared AI service factory with popup capability gating", async () => {
+    mocks.streamChatWithTools.mockImplementation(async function* () {
+      yield { type: "run_start", runId: "run-popup", conversationId: "conv-popup" };
+      yield { type: "run_end", runId: "run-popup", conversationId: "conv-popup", runStatus: "completed", stopReason: null };
+    });
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [
+          { role: "user", content: "What does this protocol section mean?" },
+        ],
+        popupContext: {
+          type: "protocol_section",
+          projectId: "project-1",
+          section: "Eligibility",
+          currentContent: "Current protocol text",
+        },
+        options: {
+          popupMode: true,
+          projectId: "project-1",
+          page: "protocol",
+          section: "Eligibility",
+          agentMode: "general",
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    await response.text();
+
+    expect(mocks.buildPopupSystemPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      popupContext: expect.objectContaining({
+        type: "protocol_section",
+        projectId: "project-1",
+        section: "Eligibility",
+      }),
+      page: "protocol",
+      section: "Eligibility",
+    }));
+    expect(mocks.createPopupToolGuard).toHaveBeenCalledWith({
+      popupContext: expect.objectContaining({
+        type: "protocol_section",
+        projectId: "project-1",
+        section: "Eligibility",
+      }),
+      projectId: "project-1",
+    });
+    expect(mocks.createAIService).toHaveBeenCalledWith({
+      toolMiddlewares: [{ name: "popup-tool-guard" }],
+    });
+    expect(mocks.streamChatWithTools).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "system",
+          content: "Popup system prompt",
+        }),
+        expect.objectContaining({
+          role: "user",
+          content: "What does this protocol section mean?",
+        }),
+      ]),
+      expect.objectContaining({
+        projectId: "project-1",
+        page: "protocol",
+        section: "Eligibility",
+        tools: [{ name: "read_protocol" }],
+      }),
+    );
   });
 
   it("emits a typed continuation-unavailable error chunk when the source is no longer valid", async () => {

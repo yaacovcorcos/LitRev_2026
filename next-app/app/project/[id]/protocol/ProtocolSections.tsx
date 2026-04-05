@@ -122,6 +122,7 @@ export function ProtocolSections({ projectId }: Props) {
             projectId,
             text,
             criterionType,
+            criterionIndex: index,
         });
     }, [captureEnabled, openPopupChat, openPopupForTarget, projectId]);
 

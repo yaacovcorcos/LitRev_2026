@@ -5,6 +5,7 @@ import {
     buildStudySetTarget,
     buildNoteTarget,
     contextTargetToPopupContext,
+    popupContextToContextTarget,
 } from "../targets";
 
 describe("context capture target builders", () => {
@@ -36,7 +37,24 @@ describe("context capture target builders", () => {
             type: "criterion",
             projectId: "proj_123",
             criterionType: "inclusion",
+            criterionIndex: 1,
             text: "Adults with randomized controlled trials only",
+        });
+    });
+
+    it("rebuilds protocol criterion targets from popup context without losing identity", () => {
+        expect(popupContextToContextTarget({
+            type: "criterion",
+            projectId: "proj_123",
+            criterionType: "exclusion",
+            criterionIndex: 2,
+            text: "Exclude conference abstracts",
+        })).toMatchObject({
+            kind: "protocol_criterion",
+            projectId: "proj_123",
+            criterionType: "exclusion",
+            criterionIndex: 2,
+            text: "Exclude conference abstracts",
         });
     });
 
@@ -54,4 +72,3 @@ describe("context capture target builders", () => {
         expect(contextTargetToPopupContext(target)).toBeNull();
     });
 });
-

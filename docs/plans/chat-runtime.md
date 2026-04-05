@@ -40,7 +40,7 @@ This plan does not own:
 - Abrupt main-surface stream endings without concrete transport evidence now reconcile as `failed_interrupted` through the shared lifecycle contract instead of defaulting to `failed_network`, so recovery affordances and error copy no longer imply a network failure unless one is actually known.
 - Progressive assistant streaming on the main surfaces now preserves the trace-before-answer placement invariant required by the transparency contract: if a reserved assistant row and durable trace/progress for the same turn coexist, the shared adapters move the reserved assistant behind the contiguous trace suffix instead of leaving a visible `assistant -> trace` shape that would strand `Process details` at the bottom.
 - That placement repair is a live-session/runtime invariant only. `/ai` reload or conversation reselect still rebuilds from persisted messages + artifacts rather than full durable tool/checkpoint trace, so reload-time reconstruction of `Process details` remains a separate persistence task.
-- Popup has canonical Context V2 payload alignment and now derives its supported progress/checkpoint/error/blocking subset through a shared reducer adapter, but it still has not migrated fully onto the shared runtime engine.
+- Popup now uses the same shared runtime controller pattern as the main chat surfaces for its supported subset: progress, grounded checkpoints, settled semantic receipts, blocking clarification, and structured terminal errors all derive from the shared runtime state machine, while popup-specific prompt/tool limits remain explicit surface configuration instead of a separate runtime model.
 - The CI anti-duplication architecture guard is already enforced and should continue preventing new per-surface chunk parsers.
 - Chat/runtime work above this layer now depends on convergence here rather than inventing new per-surface semantics.
 - Durable route identity is still weaker than the runtime contract on the main chat surfaces:
@@ -208,16 +208,15 @@ Rules:
     - replay parity is proven at reducer-state + intent level
     - reliability thresholds are met for the shared runtime path
 
-- [ ] `U3` Popup migration to shared engine
-  - Problem: popup still does not use the same runtime path as `/ai` and project copilot, which blocks fully shared trace/error/tool semantics.
-  - Remaining work:
-    - wait for stabilized durable runtime truth before claiming broader recovery/continuation parity
-    - move popup from bridge/special path onto shared reducer/runtime adapters
-    - keep popup compact through capability gating, not bespoke runtime logic
-    - preserve handoff to full copilot with no context loss
-  - Exit criteria:
-    - popup consumes the same runtime contracts as the other chat surfaces
-    - popup remains a truthful reduced subset only until shared-engine convergence is complete
+- [x] `U3` Popup migration to shared engine
+  - Shipped:
+    - popup now consumes the shared runtime controller/reducer path for its supported subset instead of keeping a popup-local chunk adapter
+    - popup server requests use the shared `createAIService(...)` construction path, with popup-specific tool limits injected as surface configuration rather than hand-assembled runtime wiring
+    - popup remains compact through capability gating, not bespoke runtime logic
+    - `Continue in Copilot` promotion now preserves structured source context through `context_capture` attachment handoff instead of transcript-only copying
+  - Residual limits:
+    - popup remains intentionally ephemeral and reduced
+    - popup still does not claim full artifact/replay/queued-follow-up parity
 
 - [ ] `U4` Shadow cleanup and legacy-path removal
   - Problem: once burn-in and popup migration are complete, the remaining fallback/legacy branches become drift risks.
@@ -287,13 +286,14 @@ Architecture guardrails:
   - no live run may be rebound to a different conversation or project solely because a normalization pass changed the URL
   - popup remains promotion-only and should not gain first-class durable URL identity unless this plan and `plan-ux-ui.md` are updated together
 
-Popup remains a truthful reduced subset only: until `U3` lands, popup should be reviewed against the shared runtime contract's honest reduced subset, not full reconnect/replay chrome or continuation parity.
+Popup remains a truthful reduced subset only: after `U3`, popup should still be reviewed against the shared runtime contract's honest reduced subset, not full reconnect/replay chrome or continuation parity.
 
-Queued follow-up parity is currently limited to `/ai`, main conversation, and side-panel copilot. Popup support is intentionally deferred until `U3` because the popup shell has not yet converged on the same shared runtime/composer contract.
+Queued follow-up parity is currently limited to `/ai`, main conversation, and side-panel copilot. Popup support remains intentionally deferred because the popup shell stays ephemeral/reduced even after shared-engine convergence and should not silently inherit a second durable-composer contract.
 
 ## Recently Completed
 - Shared main chat surfaces now consume phase-backed recovery truth from persisted `AgentRun.runPhase` / `phaseEnteredAt`, so paused-input and stale-finalize cases reconcile through the shared runtime contract without adding new popup parity claims.
 - Popup now preserves a truthful reduced shared-trace subset for live progress, grounded checkpoints, blocking clarification, and structured terminal failures through a shared reducer adapter while remaining compact.
+- Popup now completes `U3` shared-engine convergence for its reduced contract: it uses the shared runtime controller pattern, renders compact settled semantic receipts from shared `tool_activity`, and promotes into full copilot through structured `context_capture` handoff instead of transcript-only copying.
 - Shared pure reducer + intents shipped and now back both `/ai` and project copilot.
 - `/ai` send and plan stream paths were migrated onto the shared reducer/runtime path.
 - Popup payloads were aligned to Context V2 so popup no longer silently bypasses the canonical context contract.

@@ -2,7 +2,7 @@
  * AI Server Module Index
  */
 
-export { AIService, getAIService } from "./ai-service";
+export { AIService, createAIService, getAIService } from "./ai-service";
 export {
     getOrCreateConversation,
     createConversation,

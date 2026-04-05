@@ -582,10 +582,12 @@ Do not ship these patterns:
 ### Popup
 - popup supports a reduced but truthful subset:
   - live progress
+  - compact settled semantic receipts where the shared `tool_activity` path has grounded meaning
   - grounded checkpoints
   - blocking clarification
   - structured terminal errors
 - popup still does not claim full receipt/artifact/timeline parity
+- popup-to-copilot promotion must preserve structured source context, not just visible transcript text
 - compactness may reduce presentation density, but it must not falsify the underlying runtime state
 
 ## Phase Model
