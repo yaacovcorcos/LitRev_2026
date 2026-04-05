@@ -71,6 +71,11 @@ const STREAM_EVENT_TYPES: RuntimeStreamEvent["type"][] = [
     "user_input_resolved",
 ];
 
+function normalizeOptionalRunId(value: string | undefined): string | undefined {
+    const normalized = value?.trim();
+    return normalized ? normalized : undefined;
+}
+
 export async function POST(request: NextRequest) {
     try {
         const progressiveStreaming = getProgressiveAnswerStreamingConfig();
@@ -120,14 +125,18 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        if (options?.continueFromRunId && !options.conversationId) {
+        const normalizedReplaceRunId = normalizeOptionalRunId(options?.replaceRunId);
+        const normalizedContinueFromRunId = normalizeOptionalRunId(options?.continueFromRunId);
+        const normalizedPreferContinueFromRunId = normalizeOptionalRunId(options?.preferContinueFromRunId);
+
+        if (normalizedContinueFromRunId && !options?.conversationId) {
             return new Response(
                 JSON.stringify({ error: "continueFromRunId requires conversationId" }),
                 { status: 400, headers: { "Content-Type": "application/json" } },
             );
         }
 
-        if (options?.preferContinueFromRunId && !options.conversationId) {
+        if (normalizedPreferContinueFromRunId && !options?.conversationId) {
             return new Response(
                 JSON.stringify({ error: "preferContinueFromRunId requires conversationId" }),
                 { status: 400, headers: { "Content-Type": "application/json" } },
@@ -135,12 +144,34 @@ export async function POST(request: NextRequest) {
         }
 
         if (
-            options?.continueFromRunId
-            && options?.preferContinueFromRunId
-            && options.continueFromRunId !== options.preferContinueFromRunId
+            normalizedContinueFromRunId
+            && normalizedPreferContinueFromRunId
+            && normalizedContinueFromRunId !== normalizedPreferContinueFromRunId
         ) {
             return new Response(
                 JSON.stringify({ error: "continueFromRunId and preferContinueFromRunId must match when both are provided" }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+        }
+
+        if (
+            normalizedReplaceRunId
+            && normalizedContinueFromRunId
+            && normalizedReplaceRunId !== normalizedContinueFromRunId
+        ) {
+            return new Response(
+                JSON.stringify({ error: "replaceRunId and continueFromRunId must match when both are provided" }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+        }
+
+        if (
+            normalizedReplaceRunId
+            && normalizedPreferContinueFromRunId
+            && normalizedReplaceRunId !== normalizedPreferContinueFromRunId
+        ) {
+            return new Response(
+                JSON.stringify({ error: "replaceRunId and preferContinueFromRunId must match when both are provided" }),
                 { status: 400, headers: { "Content-Type": "application/json" } },
             );
         }
@@ -197,6 +228,9 @@ export async function POST(request: NextRequest) {
         const service = getAIService();
         const scopedOptions: StreamRouteOptions = {
             ...options,
+            replaceRunId: normalizedReplaceRunId,
+            continueFromRunId: normalizedContinueFromRunId,
+            preferContinueFromRunId: normalizedPreferContinueFromRunId,
             additionalContext: [options?.additionalContext, contextCapturePrompt].filter(Boolean).join("\n\n") || undefined,
             userId: authResult.context.userId,
             workspaceId: authResult.context.workspaceId,

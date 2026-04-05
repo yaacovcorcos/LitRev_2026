@@ -277,6 +277,58 @@ describe("/api/ai/stream route", () => {
     });
   });
 
+  it("rejects mismatched strict continuation and replace targets", async () => {
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "Continue from the saved work",
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          replaceRunId: "run-replace",
+          continueFromRunId: "run-continue",
+          agentMode: "general",
+          page: "ai",
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "replaceRunId and continueFromRunId must match when both are provided",
+    });
+    expect(mocks.streamChatWithArtifacts).not.toHaveBeenCalled();
+    expect(mocks.resolveLatestValidRunCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it("rejects mismatched best-effort continuation and replace targets", async () => {
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "Retry the interrupted work",
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          replaceRunId: "run-replace",
+          preferContinueFromRunId: "run-continue",
+          agentMode: "general",
+          page: "ai",
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "replaceRunId and preferContinueFromRunId must match when both are provided",
+    });
+    expect(mocks.streamChatWithArtifacts).not.toHaveBeenCalled();
+    expect(mocks.resolveLatestValidRunCheckpoint).not.toHaveBeenCalled();
+  });
+
   it("falls back to a valid durable continuation source when no checkpoint exists", async () => {
     mocks.resolveDurableContinuationSource.mockResolvedValue({
       kind: "tool_result",
