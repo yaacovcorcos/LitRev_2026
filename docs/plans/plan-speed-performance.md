@@ -514,6 +514,7 @@ Precedence rules:
   - `SPD-008` remains planning/governance-first. Implementation work should land under follow-up tasks only after the remaining contracts above are written.
 
 ## Cross-Plan Guardrails
+- `docs/plans/plan-ledger.md` owns ledger-specific product sequencing and acceptance for study-list/detail architecture, duplicate-safe ingestion, PDF/file review UX, and the ledger cache-consolidation wave; this plan remains the authority for freshness/preload/memory policy and performance budgets.
 - Draft-surface performance and cache work must remain consistent with `docs/plans/plan-drafting-experience.md`; this plan owns performance policy, not draft architecture.
 - `/ai`, project copilot, and popup performance work must preserve the shared runtime and truthful trace contracts in `docs/plans/chat-runtime.md` and `docs/plans/transparency-ui.md`.
 - Performance work must not fork shared chat/runtime behavior as a shortcut for one route.

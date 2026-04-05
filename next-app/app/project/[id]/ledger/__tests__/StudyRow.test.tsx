@@ -5,15 +5,8 @@ import type { Study } from "@/types/ledger";
 import type { CriteriaMatchResult } from "@/lib/criteria-matching";
 import { StudyRow } from "../StudyRow";
 
-const { mockPush, mockOpenPopupChat } = vi.hoisted(() => ({
-  mockPush: vi.fn(),
+const { mockOpenPopupChat } = vi.hoisted(() => ({
   mockOpenPopupChat: vi.fn(),
-}));
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    push: mockPush,
-  }),
 }));
 
 vi.mock("@/contexts/PopupChatContext", () => ({
@@ -68,9 +61,12 @@ function renderRow(options?: {
         <StudyRow
           study={study}
           projectId="project-1"
+          previewHref="/project/project-1/ledger?study=study-1"
+          detailHref="/project/project-1/ledger/study-1?filter=all"
           isExpanded={options?.isExpanded ?? false}
           isSelected={false}
           isSelectMode={options?.isSelectMode ?? false}
+          isPreviewActive={false}
           hasProtocolCriteria={options?.hasProtocolCriteria ?? false}
           criteriaMatch={options?.criteriaMatch}
           onToggleExpand={handlers.onToggleExpand}
@@ -91,15 +87,20 @@ describe("StudyRow", () => {
     vi.clearAllMocks();
   });
 
-  it("navigates to study detail when row body is clicked", () => {
+  it("renders preview and full-study links with distinct targets", () => {
     renderRow();
 
-    fireEvent.click(screen.getByText("Example Study"));
-
-    expect(mockPush).toHaveBeenCalledWith("/project/project-1/ledger/study-1");
+    expect(
+      screen.getByRole("link", { name: "Example Study" }).getAttribute("href"),
+    ).toBe("/project/project-1/ledger?study=study-1");
+    expect(
+      screen
+        .getByRole("link", { name: "Open full study page for Example Study" })
+        .getAttribute("href"),
+    ).toBe("/project/project-1/ledger/study-1?filter=all");
   });
 
-  it("executes row actions without triggering navigation", () => {
+  it("executes row actions without interfering with links", () => {
     const { study, onToggleExpand, onOpenFiles, onDeleteStudy } = renderRow();
 
     fireEvent.click(screen.getByRole("button", { name: "Expand" }));
@@ -113,7 +114,6 @@ describe("StudyRow", () => {
     expect(onToggleExpand).toHaveBeenCalledWith("study-1");
     expect(onOpenFiles).toHaveBeenCalledWith(study);
     expect(onDeleteStudy).toHaveBeenCalledWith("study-1");
-    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it("renders expanded actions and sends triage + ask-ai intents", () => {
@@ -184,9 +184,12 @@ describe("StudyRow", () => {
               },
             })}
             projectId="project-1"
+            previewHref="/project/project-1/ledger?study=study-1"
+            detailHref="/project/project-1/ledger/study-1?filter=all"
             isExpanded={false}
             isSelected={false}
             isSelectMode={false}
+            isPreviewActive={false}
             hasProtocolCriteria={false}
             criteriaMatch={undefined}
             onToggleExpand={vi.fn()}

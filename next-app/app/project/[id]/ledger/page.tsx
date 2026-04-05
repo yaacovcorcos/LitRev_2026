@@ -8,7 +8,7 @@ import {
   useState,
   type ChangeEvent,
 } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
@@ -44,19 +44,22 @@ import { getStudyProcessingStatusView, isStudyProcessingActive } from "@/lib/stu
 import { useStudyProcessingSync } from "@/hooks/useStudyProcessingSync";
 import { normalizeRouteParam } from "@/lib/route-params";
 import {
+  buildLedgerRouteHref,
+  buildLedgerStudyDetailHref,
+  readLedgerRouteState,
+  type LedgerCriteriaFilter,
+  type LedgerRouteState,
+} from "@/lib/durable-route-state";
+import {
   useLedgerActions,
   type LedgerConfirmDialogState,
 } from "./useLedgerActions";
-
-type CriteriaFilter =
-  | "all"
-  | "meets-criteria"
-  | "fails-criteria"
-  | "in-date-range"
-  | "matching-design";
+import { LedgerStudyPreviewPanel } from "./LedgerStudyPreviewPanel";
 
 export default function LedgerPage() {
   const params = useParams<{ id: string | string[] }>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const id = normalizeRouteParam(params.id);
   const mobileLedgerV2Enabled = isMobileLedgerV2Enabled();
   const { captureEnabled, runAction, sendToCopilot } = useContextCaptureActions();
@@ -128,7 +131,40 @@ export default function LedgerPage() {
   const [protocol, setProtocol] = useState<ProtocolData>(
     createDefaultProtocolData,
   );
-  const [criteriaFilter, setCriteriaFilter] = useState<CriteriaFilter>("all");
+  const ledgerRouteState = useMemo(
+    () => readLedgerRouteState(searchParams),
+    [searchParams],
+  );
+  const criteriaFilter = ledgerRouteState.criteriaFilter;
+
+  const replaceLedgerRouteState = useCallback(
+    (
+      nextState: Partial<Pick<LedgerRouteState, "studyId" | "criteriaFilter">>,
+    ) => {
+      if (!id) return;
+      const href = buildLedgerRouteHref(
+        id,
+        {
+          studyId:
+            nextState.studyId === undefined
+              ? ledgerRouteState.studyId
+              : nextState.studyId,
+          criteriaFilter:
+            nextState.criteriaFilter ?? ledgerRouteState.criteriaFilter,
+        },
+        searchParams,
+      );
+      router.replace(href, { scroll: false });
+    },
+    [id, ledgerRouteState.criteriaFilter, ledgerRouteState.studyId, router, searchParams],
+  );
+
+  const setCriteriaFilter = useCallback(
+    (nextFilter: LedgerCriteriaFilter) => {
+      replaceLedgerRouteState({ criteriaFilter: nextFilter });
+    },
+    [replaceLedgerRouteState],
+  );
 
   // Load protocol data from preload cache
   useEffect(() => {
@@ -194,6 +230,11 @@ export default function LedgerPage() {
       }
     });
   }, [studies, criteriaFilter, studyCriteriaMap, hasProtocolCriteria]);
+
+  const previewStudy = useMemo(() => {
+    if (!ledgerRouteState.studyId) return null;
+    return studies.find((study) => study.id === ledgerRouteState.studyId) ?? null;
+  }, [ledgerRouteState.studyId, studies]);
 
   const activeProcessingStudyIds = useMemo(
     () => studies.filter(isStudyProcessingActive).map((study) => study.id),
@@ -278,6 +319,10 @@ export default function LedgerPage() {
     setSelectedStudy(null);
     setStudyFiles([]);
   }, []);
+
+  const handleClosePreview = useCallback(() => {
+    replaceLedgerRouteState({ studyId: null });
+  }, [replaceLedgerRouteState]);
 
   const handleUploadFile = useCallback(
     async (file: File) => {
@@ -675,9 +720,24 @@ export default function LedgerPage() {
                 key={study.id}
                 study={study}
                 projectId={id}
+                previewHref={buildLedgerRouteHref(
+                  id,
+                  {
+                    studyId: study.id,
+                    criteriaFilter,
+                  },
+                  searchParams,
+                )}
+                detailHref={buildLedgerStudyDetailHref(
+                  id,
+                  study.id,
+                  { criteriaFilter },
+                  searchParams,
+                )}
                 isExpanded={expandedIds.has(study.id)}
                 isSelected={selectedSet.has(study.id)}
                 isSelectMode={isSelectMode}
+                isPreviewActive={previewStudy?.id === study.id}
                 hasProtocolCriteria={hasProtocolCriteria}
                 criteriaMatch={studyCriteriaMap.get(study.id)}
                 onToggleExpand={toggleExpand}
@@ -713,6 +773,20 @@ export default function LedgerPage() {
         />
       </div>
     </>
+  ) : null;
+
+  const previewPanel = previewStudy ? (
+    <LedgerStudyPreviewPanel
+      study={previewStudy}
+      detailHref={buildLedgerStudyDetailHref(
+        id,
+        previewStudy.id,
+        { criteriaFilter },
+        searchParams,
+      )}
+      onClose={handleClosePreview}
+      onOpenFiles={handleOpenStudyFiles}
+    />
   ) : null;
 
   const dialogs = (
@@ -767,6 +841,7 @@ export default function LedgerPage() {
     >
       <div className={styles.page} data-mobile-ledger-v2={mobileLedgerV2Enabled ? "true" : "false"}>
         <div className={styles.mainContent}>{mainContent}</div>
+        {previewPanel}
         {filesPopup}
         {dialogs}
       </div>

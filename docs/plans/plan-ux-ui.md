@@ -7,6 +7,7 @@ This file consolidates the former dual-plan tracking into `plan-ux-ui.md`.
 Permanent frontend doctrine now lives in `docs/architecture/frontend-quality-bar.md`, and the repeatable frontend implementation/review procedure now lives in `docs/runbooks/frontend-review-loop.md`.
 Domain-specific execution plans remain canonical for their domains:
 - Guided setup: `docs/plans/plan-guided-setup.md`
+- Evidence Ledger: `docs/plans/plan-ledger.md`
 - Chat runtime parity: `docs/plans/chat-runtime.md`
 - Transparency/process UI deltas: `docs/plans/transparency-ui.md`
 - Performance budgets and probes: `docs/plans/plan-speed-performance.md`
@@ -64,6 +65,7 @@ Domain-specific execution plans remain canonical for their domains:
   - Homepage workspace and library now use separate route-local layout modules on top of that shared contract, and homepage tall-list wheel scrolling is covered by a dedicated smoke test.
 - Durable refresh/return-to-location behavior is still inconsistent across surfaces:
   - draft already syncs route-meaningful workspace state through URL search params, but several other surfaces still keep exact location in client-only state or local restore helpers
+  - ledger now uses URL-owned criteria filter state plus list-route `study` preview state, and canonical study-detail links preserve that filter context back to the ledger; deeper ledger route/detail execution remains owned by `docs/plans/plan-ledger.md`
   - project root conversation entry still depends on `project-entry` restore heuristics and localStorage-backed conversation fallback instead of a URL-addressable conversation identity
   - `/ai` still keeps active conversation and attached project scope in route-local client state rather than the URL
   - notes keeps the selected note in client state, memory keeps the active tab in client state, onboarding keeps the current step in client state, and protocol keeps the active section in context state
@@ -121,8 +123,6 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 
 ### Copilot Product UX (UI Layer)
 - [ ] `CUX-029` Add autonomy contract badge in composer.
-- [ ] `CUX-031` Add study details side panel from ledger links.
-- [ ] `CUX-032` Add import-study duplicate warning UX.
 
 ### Durable Navigation and Refresh Restoration
 - [ ] `CUX-038` Establish the URL-first durable navigation contract.
@@ -178,7 +178,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
     - memory should move active tab state into query params
     - protocol should move active section focus into query params
     - draft should keep `mode` and `section` as the only durable query params, with user navigation pushing history-worthy changes and canonical repair using replace only
-    - ledger should keep study detail route identity as canonical and only promote durable list state that materially affects user return position, such as core filters or view mode
+    - ledger-specific route/detail execution now lives in `docs/plans/plan-ledger.md`; this file only freezes the shared rule that study detail route identity remains canonical and only durable list state may move into query params
   - Rules:
     - do not overfit transient selection or bulk-action state into the URL unless it is part of the actual user task
     - route segments win for primary content, query params for tabs/filters/secondary state
@@ -230,6 +230,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 
 ## Cross-Plan Dependencies (Authoritative Elsewhere)
 - Guided setup/onboarding UX execution: `docs/plans/plan-guided-setup.md`.
+- Evidence Ledger surface architecture, import trust, PDF/file UX, cross-surface evidence workflows, and ledger-specific performance sequencing: `docs/plans/plan-ledger.md`.
 - Draft manuscript UX, citation-authoring, review flows, and export-grade drafting architecture: `docs/plans/plan-drafting-experience.md`.
 - Chat runtime parity and rollout gates: `docs/plans/chat-runtime.md` (`CUX-D01` dependency).
 - Durable navigation work in this file owns the cross-surface URL/refresh contract; `chat-runtime.md` remains the dependency for shared chat runtime semantics rather than route identity ownership.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
@@ -10,7 +10,6 @@ import { useLedger } from "@/contexts/LedgerContext";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { ProjectPageLayout } from "@/components/project/ProjectPageLayout";
 import { CitationBlock } from "@/components/CitationBlock";
-import { StudyQuickInfo } from "@/components/StudyQuickInfo";
 import { StudyFilesPanel } from "@/components/StudyFilesPanel";
 import { listStudyFilesAction, deleteFileAssetAction, uploadStudyFileAction } from "@/app/actions/files";
 import {
@@ -29,6 +28,8 @@ import { isMobileLedgerV2Enabled } from "@/lib/mobile/feature-flags";
 import { getStudyProcessingStatusView, isStudyProcessingActive } from "@/lib/study-processing-ui";
 import { useStudyProcessingSync } from "@/hooks/useStudyProcessingSync";
 import { normalizeRouteParam } from "@/lib/route-params";
+import { buildLedgerRouteHref, readLedgerRouteState } from "@/lib/durable-route-state";
+import { LedgerStudySnapshot } from "../LedgerStudySnapshot";
 import styles from "./study.module.css";
 
 // Build lookup for section labels
@@ -53,6 +54,7 @@ const RELEVANCE_COMPONENT_KEYS = Object.keys(RELEVANCE_COMPONENT_LABELS) as Arra
 
 export default function StudyDetailPage() {
     const params = useParams<{ id: string | string[]; studyId: string | string[] }>();
+    const searchParams = useSearchParams();
     const id = normalizeRouteParam(params.id);
     const studyId = normalizeRouteParam(params.studyId);
     const mobileLedgerV2Enabled = isMobileLedgerV2Enabled();
@@ -62,6 +64,14 @@ export default function StudyDetailPage() {
 
     const project = id ? getProjectById(id) : undefined;
     const ledgerStudyMainClassName = `${styles.appMainOverride} ${mobileLedgerV2Enabled ? styles.appMainOverrideMobileV2 : ""}`;
+    const ledgerRouteState = useMemo(() => readLedgerRouteState(searchParams), [searchParams]);
+    const backToLedgerHref = id
+        ? buildLedgerRouteHref(
+            id,
+            { studyId: null, criteriaFilter: ledgerRouteState.criteriaFilter },
+            searchParams,
+        )
+        : "/";
     const [study, setStudy] = useState<Study | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isEditing, setIsEditing] = useState(false);
@@ -460,7 +470,7 @@ export default function StudyDetailPage() {
                     icon="article"
                     title="Study not found"
                     description="This study may have been removed from the ledger."
-                    primaryAction={{ label: "Back to Ledger", href: `/project/${id}/ledger` }}
+                    primaryAction={{ label: "Back to Ledger", href: backToLedgerHref }}
                     className={styles.notFound}
                 />
             </ProjectPageLayout>
@@ -475,7 +485,7 @@ export default function StudyDetailPage() {
                 <header className={styles.header}>
                                 <div className={styles.headerText}>
                                     <div style={{ display: "flex", alignItems: "center" }}>
-                                        {!isEmbeddedInProjectShell && <BaseBackButton href={`/project/${id}/ledger`} label="Back to ledger" />}
+                                        {!isEmbeddedInProjectShell && <BaseBackButton href={backToLedgerHref} label="Back to ledger" />}
                                         <span className={styles.eyebrow}>Study Details</span>
                                     </div>
                                     {isEditing ? (
@@ -526,18 +536,12 @@ export default function StudyDetailPage() {
                                 </div>
                             </header>
 
-                            {/* Status & Quality */}
-                            <div className={styles.statusRow}>
-                                <span className={`${styles.statusPill} ${study.status === "extracted" ? styles.statusExtracted : styles.statusPending}`}>
-                                    {study.status === "extracted" ? "Extracted" : "Pending"}
-                                </span>
-                                <span className={`${styles.qualityBadge} ${study.quality === "High" ? styles.qualityHigh : study.quality === "Medium" ? styles.qualityMedium : ""}`}>
-                                    Quality: {study.quality}
-                                </span>
-                                <span className={`${styles.relevanceBadge} ${relevance?.band === "high" ? styles.relevanceHigh : relevance?.band === "moderate" ? styles.relevanceModerate : relevance?.band === "low" ? styles.relevanceLow : ""}`}>
-                                    Relevance: {relevance ? `${relevanceBandLabel}${typeof relevance.score === "number" ? ` (${relevance.score})` : ""}` : "Not scored"}
-                                </span>
-                            </div>
+                            <LedgerStudySnapshot
+                                study={study}
+                                mode="full"
+                                showSummary={false}
+                                showProcessingDescription={false}
+                            />
 
                             {pdfFile && processingStatus && (
                                 <section className={styles.processingCard}>
@@ -608,10 +612,6 @@ export default function StudyDetailPage() {
                                     </div>
                                 </section>
                             )}
-
-                            {/* Quick Info */}
-                            <StudyQuickInfo study={study} />
-
                             {/* Abstract */}
                             <section className={styles.section}>
                                 <h2
