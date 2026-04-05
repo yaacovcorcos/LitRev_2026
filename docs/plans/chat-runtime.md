@@ -56,7 +56,7 @@ This plan does not own:
 5. Surface-specific differences should live in rendering and capability gating, not in stream parsing or core runtime state transitions.
 
 ## Shared Runtime Rescue Invariants
-These invariants are the chat-runtime portion of `FIX-012`. They belong here because they are shared runtime truth, not UI doctrine.
+These invariants originated in the chat-runtime portion of `FIX-012` and remain load-bearing shared runtime truth after that rescue was retired. They belong here because they are shared runtime truth, not UI doctrine.
 
 ### One canonical event authority
 The shared runtime path remains the only authority for:
@@ -114,7 +114,7 @@ The shared runtime path must also own:
 3. blocked-state semantics
 4. continue/retry truth
 
-Popup remains a truthful reduced subset until `U3` lands.
+Popup remains a truthful reduced subset after `U3`; shared-engine convergence does not imply full popup parity.
 
 ## Shared Runtime Contract
 
@@ -187,7 +187,7 @@ Rules:
 - [ ] `U1.6` Cross-surface replay parity and burn-in sign-off
   - Problem: the shared runtime is shipped, but the operational proof that it is stable enough to treat as canonical is still incomplete. `U1.6` is later-stage validation, not the current rescue task, and must not be used as a substitute for fixing obvious baseline agent breakage in ordinary manual use.
   - Remaining work:
-    - resume this task only once `FIX-012` in `docs/plans/plan-agentic.md` has restored baseline agent usability/trust enough that burn-in is validating convergence instead of discovering obvious product failures
+    - resume this task only while baseline agent usability/trust is healthy enough that burn-in is validating convergence instead of rediscovering obvious product failures
     - finish canary evidence using `docs/runbooks/chat-runtime-burn-in.md`
     - advance `docs/reports/u1-6-burn-in.md` in place as the single canonical live report for the active window rather than creating parallel live reports
     - use the runbook baseline-then-organic evidence flow, including the minimum manual baseline scenario pack and preserved raw validator JSON artifacts
@@ -228,16 +228,14 @@ Rules:
     - the unified engine is the documented and enforced default
 
 ## Execution Order
-1. Resolve baseline agent usability/trust blockers tracked in `docs/plans/plan-agentic.md` (`FIX-012`).
-2. Finish `U1.6` burn-in and sign-off.
-3. Land `U3` popup migration.
-4. Remove legacy/runtime duplication in `U4`.
+1. Finish `U1.6` burn-in and sign-off.
+2. Remove legacy/runtime duplication in `U4`.
 
 ## Rollout and Rollback Semantics
 Current rollout control:
 1. `U1.6` burn-in currently uses a production deployment baseline plus `CANARY_SINCE_UTC` and scoped `workspaceIds` / `userIds` evidence filters.
 2. No active `CHAT_UNIFICATION_V2` runtime flag is currently wired in committed code; do not assume a live cohort-toggle path exists unless this plan and the burn-in runbook are updated first.
-3. `U3` becomes next only within this plan after `U1.6` passes; broader runtime roadmap ordering still follows `docs/plans/plan-agentic.md` unless it is explicitly updated there.
+3. `U3` is already landed for the popup reduced surface; broader runtime roadmap ordering now flows through `U1.6`, then `U4`, while `docs/plans/plan-agentic.md` remains the top-level prioritization owner.
 
 Rules:
 1. Before `U4`, rollback should be treated as a deploy/version rollback unless a documented runtime cohort gate is explicitly reintroduced.
@@ -260,7 +258,7 @@ Integration tests must continue covering:
 1. `/ai` global roundtrip.
 2. `/ai` attached-to-project roundtrip.
 3. Project copilot roundtrip.
-4. Popup roundtrip once `U3` lands.
+4. Popup roundtrip on the current reduced `U3` surface.
 5. Cross-surface replay parity at reducer-state + intent level.
 
 Architecture guardrails:
@@ -272,7 +270,7 @@ Architecture guardrails:
 ## Dependency Notes
 - [plan-agentic.md](./plan-agentic.md) now owns the active runtime stabilization program (`FIX-011b`) for disconnect classification, run convergence, durable continuation, and same-run recovery truth. This plan should treat that stabilization work as an upstream dependency rather than a competing runtime owner.
 - [agent-runtime-remediation/plan-fix-012-baseline-stability.md](./agent-runtime-remediation/plan-fix-012-baseline-stability.md) owns the execution detail for the baseline rescue; this plan owns only the shared runtime portion of that rescue.
-- `U1.6` should be treated as blocked whenever `plan-agentic.md` still tracks baseline agent breakage under `FIX-012`; burn-in is later-stage validation once ordinary manual use is no longer obviously broken.
+- `U1.6` should be treated as blocked whenever baseline agent usability/trust regresses badly enough that burn-in would again become bug discovery instead of later-stage convergence validation.
 - [agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md](./agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md) defines the durable recovery/continuation contract that chat runtime work must consume rather than reinterpret per surface.
 - [transparency-ui.md](./transparency-ui.md) depends on this plan for shared runtime parity across `/ai` and project copilot before broader truthful execution-trace rollout.
 - [plan-agentic.md](./plan-agentic.md) depends on this plan whenever agent fixes require shared stream/runtime semantics instead of per-surface adapters.
