@@ -190,6 +190,7 @@ Rules:
     - advance `docs/reports/u1-6-burn-in.md` in place as the single canonical live report for the active window rather than creating parallel live reports
     - use the runbook baseline-then-organic evidence flow, including the minimum manual baseline scenario pack and preserved raw validator JSON artifacts
     - preserve raw validator JSON either in the live report appendix or in linked dated snapshot artifacts under `docs/reports/`
+    - if a scoped Day-0 probe returns zero rows, verify whether unscoped `metricVersion=3` telemetry exists before treating it as a runtime/telemetry outage; refresh the cohort scope when the scoped filter is stale
     - complete replay parity confidence for `/ai` vs project adapters
     - prove parity for durable recovery truth, not only reducer-state parity
     - prove phase-backed paused-input and stale-finalize recovery behavior across the supported main surfaces

@@ -1,8 +1,7 @@
 "use client";
 
-import { memo, type MouseEvent } from "react";
+import { memo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { usePopupChat } from "@/contexts/PopupChatContext";
 import { useContextCaptureActions } from "@/hooks/useContextCaptureActions";
 import { buildStudyTarget } from "@/lib/context-capture/targets";
@@ -14,9 +13,12 @@ import styles from "./ledger.module.css";
 export type StudyRowProps = {
   study: Study;
   projectId: string;
+  previewHref: string;
+  detailHref: string;
   isExpanded: boolean;
   isSelected: boolean;
   isSelectMode: boolean;
+  isPreviewActive: boolean;
   hasProtocolCriteria: boolean;
   criteriaMatch: CriteriaMatchResult | undefined;
   onToggleExpand: (studyId: string) => void;
@@ -29,9 +31,12 @@ export type StudyRowProps = {
 export const StudyRow = memo(function StudyRow({
   study,
   projectId,
+  previewHref,
+  detailHref,
   isExpanded,
   isSelected,
   isSelectMode,
+  isPreviewActive,
   hasProtocolCriteria,
   criteriaMatch,
   onToggleExpand,
@@ -40,7 +45,6 @@ export const StudyRow = memo(function StudyRow({
   onDeleteStudy,
   onTriage,
 }: StudyRowProps) {
-  const router = useRouter();
   const { openPopupChat } = usePopupChat();
   const { captureEnabled, openPopupForTarget } = useContextCaptureActions();
   const details: StudyDetails = study.details ?? {};
@@ -60,9 +64,13 @@ export const StudyRow = memo(function StudyRow({
   if (details.studyType) metaParts.push(details.studyType);
   const citationLine = metaParts.join(" · ");
 
-  const rowClass = `${isSelected ? styles.rowSelected : ""} ${
-    isExpanded ? styles.rowExpanded : ""
-  } ${styles.clickableRow}`.trim();
+  const rowClass = [
+    isSelected ? styles.rowSelected : "",
+    isExpanded ? styles.rowExpanded : "",
+    isPreviewActive ? styles.rowPreviewActive : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const colSpan = isSelectMode
     ? hasProtocolCriteria
@@ -72,15 +80,9 @@ export const StudyRow = memo(function StudyRow({
       ? 7
       : 6;
 
-  const handleRowClick = (event: MouseEvent) => {
-    const target = event.target as HTMLElement;
-    if (target.closest("button, input, a, [role='button']")) return;
-    router.push(`/project/${projectId}/ledger/${study.id}`);
-  };
-
   return (
     <>
-      <tr className={rowClass} onClick={handleRowClick}>
+      <tr className={rowClass}>
         <td className={styles.expandCell}>
           <button
             className={`${styles.expandBtn} ${isExpanded ? styles.expanded : ""}`}
@@ -106,7 +108,9 @@ export const StudyRow = memo(function StudyRow({
           </td>
         ) : null}
         <td className={styles.titleCell}>
-          <div className={styles.studyTitle}>{study.title}</div>
+          <Link href={previewHref} className={styles.studyTitleLink} scroll={false}>
+            <span className={styles.studyTitle}>{study.title}</span>
+          </Link>
           <div className={styles.studyCitation} title={study.authors}>
             {citationLine}
           </div>
@@ -187,6 +191,14 @@ export const StudyRow = memo(function StudyRow({
           </td>
         ) : null}
         <td>
+          <Link
+            href={detailHref}
+            className={styles.actionBtnLink}
+            aria-label={`Open full study page for ${study.title}`}
+            title="Open full study"
+          >
+            <span className="material-icons-round">open_in_new</span>
+          </Link>
           <button
             className={styles.actionBtn}
             aria-label={`Manage files for ${study.title}`}
@@ -307,10 +319,10 @@ export const StudyRow = memo(function StudyRow({
                   </a>
                 ) : null}
                 <Link
-                  href={`/project/${projectId}/ledger/${study.id}`}
+                  href={detailHref}
                   className={styles.viewDetailsLink}
                 >
-                  View Full Details →
+                  Open full study
                 </Link>
               </div>
             </div>

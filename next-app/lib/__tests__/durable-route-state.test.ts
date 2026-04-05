@@ -8,12 +8,17 @@ import {
   DEFAULT_ONBOARDING_STEP_STATUSES,
   DRAFT_MODE_QUERY_PARAM,
   DRAFT_SECTION_QUERY_PARAM,
+  LEDGER_FILTER_QUERY_PARAM,
+  LEDGER_STUDY_QUERY_PARAM,
   MEMORY_TAB_IDS,
   ONBOARDING_STEP_IDS,
   PROTOCOL_SECTION_IDS,
   buildAiRouteHref,
   buildCopilotRouteSearchParams,
   buildDraftRouteSearchParams,
+  buildLedgerRouteHref,
+  buildLedgerRouteSearchParams,
+  buildLedgerStudyDetailHref,
   buildProjectConversationPath,
   isMemoryTabId,
   isOnboardingStepId,
@@ -25,6 +30,7 @@ import {
   readAiRouteState,
   readCopilotRouteState,
   readDraftRouteState,
+  readLedgerRouteState,
 } from "@/lib/durable-route-state";
 import {
   DEFAULT_ONBOARDING_STEP_STATUSES as SCHEMA_DEFAULT_ONBOARDING_STEP_STATUSES,
@@ -143,6 +149,80 @@ describe("durable route state helpers", () => {
       mode: null,
       sectionId: null,
     }).toString()).toBe("");
+  });
+
+  it("reads and builds ledger route state", () => {
+    const params = new URLSearchParams();
+    params.set(LEDGER_STUDY_QUERY_PARAM, "study-1");
+    params.set(LEDGER_FILTER_QUERY_PARAM, "matching-design");
+
+    expect(readLedgerRouteState(params)).toEqual({
+      studyId: "study-1",
+      criteriaFilter: "matching-design",
+    });
+    expect(
+      buildLedgerRouteSearchParams(
+        {
+          studyId: "study-1",
+          criteriaFilter: "matching-design",
+        },
+        params,
+      ).toString(),
+    ).toBe("study=study-1&filter=matching-design");
+    expect(
+      buildLedgerRouteHref(
+        "proj-1",
+        {
+          studyId: "study-1",
+          criteriaFilter: "matching-design",
+        },
+        params,
+      ),
+    ).toBe("/project/proj-1/ledger?study=study-1&filter=matching-design");
+  });
+
+  it("preserves unrelated query params when building ledger urls", () => {
+    const params = new URLSearchParams(
+      "copilot=conv-1&copilotPanel=open&study=stale-study",
+    );
+    const ledgerHref = buildLedgerRouteHref(
+      "proj-1",
+      {
+        studyId: "study-1",
+        criteriaFilter: "meets-criteria",
+      },
+      params,
+    );
+    const detailHref = buildLedgerStudyDetailHref(
+      "proj-1",
+      "study-1",
+      { criteriaFilter: "meets-criteria" },
+      params,
+    );
+
+    expect(ledgerHref).toBe(
+      "/project/proj-1/ledger?copilot=conv-1&copilotPanel=open&study=study-1&filter=meets-criteria",
+    );
+    expect(detailHref).toBe(
+      "/project/proj-1/ledger/study-1?copilot=conv-1&copilotPanel=open&filter=meets-criteria",
+    );
+  });
+
+  it("treats blank or invalid ledger values as absent", () => {
+    const params = new URLSearchParams();
+    params.set(LEDGER_STUDY_QUERY_PARAM, "   ");
+    params.set(LEDGER_FILTER_QUERY_PARAM, "invalid");
+
+    expect(readLedgerRouteState(params)).toEqual({
+      studyId: null,
+      criteriaFilter: "all",
+    });
+    expect(
+      buildLedgerRouteSearchParams(
+        { studyId: null, criteriaFilter: "all" },
+        params,
+      ).toString(),
+    ).toBe("");
   });
 
   it("exposes valid protocol section ids", () => {

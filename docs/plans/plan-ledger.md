@@ -24,6 +24,10 @@ This plan does not replace shared owner docs:
   - list route: `next-app/app/project/[id]/ledger/page.tsx`
   - study detail route: `next-app/app/project/[id]/ledger/[studyId]/page.tsx`
   - row/presentation helpers: `next-app/app/project/[id]/ledger/StudyRow.tsx`, `next-app/app/project/[id]/ledger/LedgerStatsBar.tsx`, `next-app/app/project/[id]/ledger/useLedgerActions.ts`
+- `LED-001` foundation is now partially shipped on current `main`:
+  - the list route can open a right-side study preview via URL-owned `study` query state instead of forcing every list interaction into the canonical detail route
+  - the list route now owns durable filter state in query params, and canonical study-detail links preserve that filter context on the return path back to the ledger
+  - shared study-summary presentation now starts in `next-app/app/project/[id]/ledger/LedgerStudySnapshot.tsx` so preview and full detail do not immediately fork status/quality/triage metadata again
 - Study state is still split across two client owners:
   - `next-app/contexts/ProjectDataContext.tsx` owns the ledger domain slice for project boot/warm/invalidate behavior
   - `next-app/contexts/LedgerContext.tsx` owns a second in-memory study cache used by the ledger route
@@ -102,6 +106,10 @@ LitRev should borrow patterns, not product shape:
 ### `LED-001` Study Detail Architecture and Durable Navigation
 - Goal:
   - make study preview, canonical detail, and URL-owned navigation coherent instead of layering a side panel onto an already overloaded detail page
+- Shipped foundation:
+  - the list route now supports URL-addressable preview state and durable criteria filter state
+  - the study-detail route now preserves that durable filter context on the return link back to the ledger
+  - shared status/metadata snapshot rendering now exists as a reusable ledger primitive, but the detail page still needs deeper decomposition
 - Current problem:
   - `page.tsx` and `[studyId]/page.tsx` both own too much UI/state logic, while `CUX-031` and the ledger slice of `CUX-040` are tightly coupled design problems
 - Required outcome:
@@ -246,6 +254,7 @@ Ledger work should follow LitRev’s existing testing philosophy: prefer high-si
 - `docs/plans/plan-testing-execution.md` owns shared lane taxonomy and CI policy; this plan only defines ledger-specific test expectations.
 
 ## Recently Completed
+- [x] `LED-001` navigation foundation shipped: the ledger list now supports URL-addressable study preview plus durable criteria filter state, canonical study links preserve list-filter return context, and preview/full detail both consume one shared study-summary primitive instead of duplicating status metadata immediately.
 - [x] Durable ledger PDF processing shipped: queue/lease/retry truth now lives in `StudyProcessingJob`, and list/detail/files surfaces consume one shared processing snapshot.
 - [x] Local dispatch fallback shipped: local non-deployed development now progresses queued processing without hidden dispatcher-secret setup.
 - [x] Local import drift handling shipped: post-upload local schema drift now returns explicit `LOCAL_SCHEMA_DRIFT` guidance instead of a generic failure.

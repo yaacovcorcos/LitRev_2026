@@ -1,0 +1,126 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  background: rgba(var(--rgb-ui-contrast), 0.08);
+  color: var(--text-secondary);
+}
+
+.badgeNeutral {
+  background: rgba(var(--rgb-ui-contrast), 0.08);
+  color: var(--text-secondary);
+}
+
+.badgeInfo {
+  background: var(--status-harvesting-bg);
+  color: var(--status-harvesting-text);
+}
+
+.badgeSuccess {
+  background: var(--status-ready-bg);
+  color: var(--status-ready-text);
+}
+
+.badgeDanger {
+  background: rgba(var(--rgb-color-danger), 0.12);
+  color: var(--color-danger);
+}
+
+.badgeQualityHigh,
+.badgeRelevanceHigh,
+.badgeTriageKeep {
+  background: var(--status-ready-bg);
+  color: var(--status-ready-text);
+}
+
+.badgeQualityMedium,
+.badgeRelevanceModerate,
+.badgeTriageMaybe {
+  background: rgba(var(--rgb-accent-tertiary), 0.12);
+  color: var(--accent-tertiary);
+}
+
+.badgeTriageExclude,
+.badgeRelevanceLow {
+  background: rgba(var(--rgb-color-danger), 0.12);
+  color: var(--color-danger);
+}
+
+.citation {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.processingDescription {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.summaryBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sectionLabel {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.summaryText,
+.exclusionReason,
+.emptyState {
+  margin: 0;
+  font-size: var(--text-md);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.summaryTextPreview {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+}
+
+.emptyState {
+  color: var(--text-muted);
+}
+
+.full {
+  gap: 18px;
+}
+
+.preview {
+  gap: 14px;
+}
+
+@media (max-width: 900px) {
+  .badge {
+    font-size: var(--text-xs);
+  }
+}
