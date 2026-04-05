@@ -26,11 +26,11 @@ import type {
     ChoiceOption,
     CopilotPage,
     ReasoningMode,
+    RuntimeSendOverrides,
     RunRecoveryResponse,
     RunRecoveryRecommendation,
     StreamPhase,
     UserInputRequest,
-    UserInputResolution,
 } from "@/types/ai";
 import type { ContextCaptureTarget } from "@/types/context-capture";
 import {
@@ -1221,12 +1221,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
             studyId?: string,
             retryModelExpectation?: RetryModelExpectation,
             contextTargets?: ContextCaptureTarget[],
-            runtimeOverrides?: {
-                replaceRunId?: string | null;
-                continueFromRunId?: string | null;
-                suppressUserMessageAppend?: boolean;
-                userInputResolution?: UserInputResolution;
-            },
+            runtimeOverrides?: RuntimeSendOverrides,
         ) => {
             const trimmed = text.trim();
             const explicitUserInputResolution = runtimeOverrides?.userInputResolution ?? null;
@@ -1237,6 +1232,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 return;
             }
             const continueFromRunId = runtimeOverrides?.continueFromRunId ?? null;
+            const preferContinueFromRunId = runtimeOverrides?.preferContinueFromRunId ?? null;
             const suppressUserMessageAppend = runtimeOverrides?.suppressUserMessageAppend === true;
             const replaceRunId = runtimeOverrides?.replaceRunId
                 ?? (isLoadingRef.current ? currentRunId : null);
@@ -1375,6 +1371,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                         page,
                         section,
                         continueFromRunId: continueFromRunId ?? undefined,
+                        preferContinueFromRunId: preferContinueFromRunId ?? undefined,
                         persistUserMessage: suppressUserMessageAppend ? false : undefined,
                         persistedUserMessageContent: suppressUserMessageAppend ? undefined : displayText,
                         userInputResolution: userInputResolution ?? undefined,

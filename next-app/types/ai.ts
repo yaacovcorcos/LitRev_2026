@@ -110,6 +110,14 @@ export type UserInputResolution = {
     decisionBoundaryKey?: string;
 };
 
+export type RuntimeSendOverrides = {
+    replaceRunId?: string | null;
+    continueFromRunId?: string | null;
+    preferContinueFromRunId?: string | null;
+    suppressUserMessageAppend?: boolean;
+    userInputResolution?: UserInputResolution;
+};
+
 export type AIErrorKind =
     | "provider_request"
     | "model_capability"
@@ -287,6 +295,11 @@ export type ChatOptions = {
      * The server validates this run before using it as continuation input.
      */
     continueFromRunId?: string;
+    /**
+     * Best-effort continuation target for retry/replace flows.
+     * If no safe durable source exists, the server falls back to a fresh retry.
+     */
+    preferContinueFromRunId?: string;
     /**
      * When false, the server treats the current request as reusing an already
      * persisted user turn and avoids double-writing it.

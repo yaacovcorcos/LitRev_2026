@@ -251,7 +251,12 @@ export function ProjectCopilotPanel({
                 source: "retry_action",
             },
             undefined,
-            replaceRunId ? { replaceRunId } : undefined,
+            replaceRunId
+                ? {
+                    replaceRunId,
+                    preferContinueFromRunId: replaceRunId,
+                }
+                : undefined,
         );
     }, [isLoading, messages, page, sendMessage, selectedModel, studyId]);
 

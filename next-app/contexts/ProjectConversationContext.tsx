@@ -30,9 +30,9 @@ import type {
     ChoiceOption,
     CopilotPage,
     ReasoningMode,
+    RuntimeSendOverrides,
     StreamPhase,
     UserInputRequest,
-    UserInputResolution,
     UserInputResolutionKind,
 } from "@/types/ai";
 import { useRouter } from "next/navigation";
@@ -547,12 +547,7 @@ function ProjectConversationRuntime({
             studyId?: string,
             retryModelExpectation?: RetryModelExpectation,
             contextTargets?: ContextCaptureTarget[],
-            runtimeOverrides?: {
-                replaceRunId?: string | null;
-                continueFromRunId?: string | null;
-                suppressUserMessageAppend?: boolean;
-                userInputResolution?: UserInputResolution;
-            },
+            runtimeOverrides?: RuntimeSendOverrides,
         ) => {
             if (contextTargets?.length) {
                 recordContextHistory(contextTargets);

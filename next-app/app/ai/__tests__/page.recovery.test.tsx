@@ -271,6 +271,86 @@ describe("/ai page recovery truth and continuation", () => {
     expect(screen.queryAllByText("The active run stopped making durable progress. Choose how to continue.")).toHaveLength(1);
   });
 
+  it("routes stop-and-retry through best-effort checkpointed retry semantics", async () => {
+    mockProcessAIStream
+      .mockImplementationOnce(async ({ onChunk }: {
+        onChunk: (chunk: unknown) => void | Promise<void>;
+      }) => {
+        await onChunk({ type: "run_start", runId: "run-3", conversationId: "conv-new" });
+        return {
+          runStatus: null,
+          stopReason: null,
+          terminalReason: "failed_network",
+          errorMessage: null,
+          errorMeta: null,
+          actualModel: null,
+          actualModelSource: "unknown",
+        };
+      })
+      .mockImplementationOnce(async () => ({
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "completed",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      }));
+    mockPollRunRecovery.mockResolvedValueOnce({
+      outcome: "needs_user_action",
+      response: {
+        conversationId: "conv-new",
+        runId: "run-3",
+        runStatus: "running",
+        isActive: true,
+        runPhase: "act",
+        phaseEnteredAt: "2026-03-13T11:24:00.000Z",
+        lastActivityAt: "2026-03-13T11:25:00.000Z",
+        lastDurableProgressAt: "2026-03-13T11:20:00.000Z",
+        finalizationState: "not_started",
+        lastSequence: 2,
+        replayableEvents: [],
+        terminalEvent: null,
+        recoveryRecommendation: "stop_and_retry",
+        abnormalEndClassification: "no_forward_durable_progress",
+      },
+      lastAppliedSequence: 2,
+    });
+
+    renderAiView();
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Stop & Retry" })).toBeTruthy();
+    });
+
+    await flushZeroTimeout();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Stop & Retry" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    const retryRequest = readFetchRequestBody(1) as {
+      options: {
+        replaceRunId?: string;
+        preferContinueFromRunId?: string;
+        continueFromRunId?: string;
+      };
+    };
+
+    expect(retryRequest.options).toMatchObject({
+      replaceRunId: "run-3",
+      preferContinueFromRunId: "run-3",
+    });
+    expect(retryRequest.options.continueFromRunId).toBeUndefined();
+  });
+
   it("continues from the existing durable state without appending a duplicate user message", async () => {
     mockProcessAIStream
       .mockImplementationOnce(async ({ onChunk }: {
