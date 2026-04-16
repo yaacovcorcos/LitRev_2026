@@ -102,6 +102,14 @@ describe("getProjectRecentActivity", () => {
         expect(activity).toHaveLength(2);
         expect(activity[0]?.coalescedCount).toBe(2);
         expect(activity[0]?.label).toContain("(+1 more)");
+        expect(mockConversationFindMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({
+                projectId: "project-1",
+                userId: "local-user",
+                workspaceId: "local-workspace",
+                archived: false,
+            }),
+        }));
     });
 
     it("throws when project is outside the scoped workspace/user", async () => {

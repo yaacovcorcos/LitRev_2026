@@ -29,7 +29,7 @@ import { getStudyProcessingStatusView, isStudyProcessingActive } from "@/lib/stu
 import { useStudyProcessingSync } from "@/hooks/useStudyProcessingSync";
 import { normalizeRouteParam } from "@/lib/route-params";
 import { buildLedgerRouteHref, readLedgerRouteState } from "@/lib/durable-route-state";
-import { LedgerStudySnapshot } from "../LedgerStudySnapshot";
+import { LedgerStudySnapshot } from "@/app/project/[id]/ledger/LedgerStudySnapshot";
 import styles from "./study.module.css";
 
 // Build lookup for section labels

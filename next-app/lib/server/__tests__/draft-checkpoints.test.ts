@@ -169,6 +169,7 @@ describe("draft-checkpoints service", () => {
 
   it("creates an immutable authoring-state snapshot and trims link metadata", async () => {
     mockFileAssetFindFirst.mockResolvedValueOnce({ id: "file-1" });
+    mockConversationFindFirst.mockResolvedValueOnce({ id: "conv-1" });
     const draft = createDraftState({ includeDiscussion: true, copilotText: "Preserve this separately" });
 
     const checkpoint = await createDraftCheckpoint(scope, {
@@ -177,6 +178,7 @@ describe("draft-checkpoints service", () => {
       kind: "manual",
       draftState: draft,
       fileAssetId: "file-1",
+      conversationId: "conv-1",
     });
 
     const createInput = mockDraftCheckpointCreate.mock.calls[0]?.[0]?.data;
@@ -196,6 +198,15 @@ describe("draft-checkpoints service", () => {
     expect(createInput.snapshot).not.toHaveProperty("contentBySection");
     expect(createInput.snapshot).not.toHaveProperty("copilotBySection");
     expect(checkpoint.fileAssetId).toBe("file-1");
+    expect(mockConversationFindFirst).toHaveBeenCalledWith({
+      where: {
+        id: "conv-1",
+        projectId: "proj-1",
+        userId: "user-1",
+        workspaceId: "ws-1",
+      },
+      select: { id: true },
+    });
   });
 
   it("lists and loads checkpoints as normalized records", async () => {
