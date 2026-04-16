@@ -23,7 +23,7 @@ const userUpdate = vi.mocked(prisma.user.update);
 function createMockUser(overrides: Partial<User> = {}): User {
   return {
     id: "u1",
-    email: "coryacos1@gmail.com",
+    email: "admin@example.com",
     isPlatformAdmin: false,
     name: "Yaacov",
     emailVerified: false,
@@ -47,14 +47,14 @@ describe("platform admin bootstrap", () => {
     userCount.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
     userUpdate.mockResolvedValue(createMockUser({ isPlatformAdmin: true }));
 
-    const result = await bootstrapPlatformAdmin("coryacos1@gmail.com");
+    const result = await bootstrapPlatformAdmin("admin@example.com");
     expect(userUpdate).toHaveBeenCalledWith({
       where: { id: "u1" },
       data: { isPlatformAdmin: true },
     });
     expect(result).toMatchObject({
       mode: "bootstrap",
-      email: "coryacos1@gmail.com",
+      email: "admin@example.com",
       userId: "u1",
       alreadyAdmin: false,
       totalAdminsAfter: 1,
@@ -65,7 +65,7 @@ describe("platform admin bootstrap", () => {
     userFindMany.mockResolvedValue([createMockUser()]);
     userCount.mockResolvedValueOnce(2);
 
-    await expect(bootstrapPlatformAdmin("coryacos1@gmail.com")).rejects.toThrow(
+    await expect(bootstrapPlatformAdmin("admin@example.com")).rejects.toThrow(
       "Bootstrap blocked",
     );
     expect(userUpdate).not.toHaveBeenCalled();
@@ -76,14 +76,14 @@ describe("platform admin bootstrap", () => {
     userCount.mockResolvedValueOnce(3);
     userUpdate.mockResolvedValue(createMockUser({ isPlatformAdmin: true }));
 
-    const result = await recoverPlatformAdmin("coryacos1@gmail.com");
+    const result = await recoverPlatformAdmin("admin@example.com");
     expect(userUpdate).toHaveBeenCalledTimes(1);
     expect(result.mode).toBe("recover");
     expect(result.totalAdminsAfter).toBe(3);
   });
 
   it("supports env var email fallback", async () => {
-    process.env.PLATFORM_ADMIN_BOOTSTRAP_EMAIL = "coryacos1@gmail.com";
+    process.env.PLATFORM_ADMIN_BOOTSTRAP_EMAIL = "admin@example.com";
     userFindMany.mockResolvedValue([createMockUser({ isPlatformAdmin: true })]);
     userCount.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
 

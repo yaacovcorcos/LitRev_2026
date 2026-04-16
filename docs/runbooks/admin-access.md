@@ -18,7 +18,7 @@ This runbook defines platform-admin bootstrap and recovery operations.
 Use when no platform admin exists yet.
 
 ```bash
-npx tsx scripts/bootstrap-platform-admin.ts --mode bootstrap --email coryacos1@gmail.com
+npx tsx scripts/bootstrap-platform-admin.ts --mode bootstrap --email admin@example.com
 ```
 
 Expected behavior:
@@ -30,7 +30,7 @@ Expected behavior:
 Use when admin access was lost or needs explicit re-grant.
 
 ```bash
-npx tsx scripts/bootstrap-platform-admin.ts --mode recover --email coryacos1@gmail.com
+npx tsx scripts/bootstrap-platform-admin.ts --mode recover --email admin@example.com
 ```
 
 Expected behavior:
@@ -46,7 +46,7 @@ If `--email` is omitted, the script reads:
 Example:
 
 ```bash
-PLATFORM_ADMIN_BOOTSTRAP_EMAIL=coryacos1@gmail.com npx tsx scripts/bootstrap-platform-admin.ts --mode bootstrap
+PLATFORM_ADMIN_BOOTSTRAP_EMAIL=admin@example.com npx tsx scripts/bootstrap-platform-admin.ts --mode bootstrap
 ```
 
 ## Verification SQL (read-only)
@@ -133,7 +133,7 @@ Migration index set for this page:
 If no authorized admin can access `/admin`, run explicit recovery:
 
 ```bash
-npx tsx scripts/bootstrap-platform-admin.ts --mode recover --email coryacos1@gmail.com
+npx tsx scripts/bootstrap-platform-admin.ts --mode recover --email admin@example.com
 ```
 
 Then verify:
@@ -141,7 +141,7 @@ Then verify:
 ```sql
 select id, email, "isPlatformAdmin"
 from "User"
-where email = 'coryacos1@gmail.com';
+where email = 'admin@example.com';
 ```
 
 ### Verify Audit Trail Integrity

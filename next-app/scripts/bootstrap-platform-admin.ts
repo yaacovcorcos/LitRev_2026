@@ -3,13 +3,13 @@
  *
  * Usage examples:
  * 1) First bootstrap (fails if admins already exist):
- *    npx tsx scripts/bootstrap-platform-admin.ts --mode bootstrap --email coryacos1@gmail.com
+ *    npx tsx scripts/bootstrap-platform-admin.ts --mode bootstrap --email admin@example.com
  *
  * 2) Recovery (can grant admin even when admins already exist):
- *    npx tsx scripts/bootstrap-platform-admin.ts --mode recover --email coryacos1@gmail.com
+ *    npx tsx scripts/bootstrap-platform-admin.ts --mode recover --email admin@example.com
  *
  * 3) Using env fallback:
- *    PLATFORM_ADMIN_BOOTSTRAP_EMAIL=coryacos1@gmail.com npx tsx scripts/bootstrap-platform-admin.ts --mode bootstrap
+ *    PLATFORM_ADMIN_BOOTSTRAP_EMAIL=admin@example.com npx tsx scripts/bootstrap-platform-admin.ts --mode bootstrap
  */
 
 import { config } from "dotenv";
