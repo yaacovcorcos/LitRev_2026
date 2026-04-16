@@ -1,0 +1,25 @@
+[
+  {
+    "id": "smith2020",
+    "type": "article-journal",
+    "title": "Synthetic Outcomes After Timed Intensification",
+    "author": [
+      { "family": "Smith", "given": "Jane" },
+      { "family": "Brown", "given": "Alex" }
+    ],
+    "issued": { "date-parts": [[2020]] },
+    "container-title": "Journal A",
+    "DOI": "10.1000/litrev-benchmark-1"
+  },
+  {
+    "id": "jones2021",
+    "type": "article-journal",
+    "title": "Benchmark Comparator Effects Across Care Settings",
+    "author": [
+      { "family": "Jones", "given": "Priya" }
+    ],
+    "issued": { "date-parts": [[2021]] },
+    "container-title": "Journal B",
+    "DOI": "10.1000/litrev-benchmark-2"
+  }
+]

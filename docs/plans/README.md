@@ -7,27 +7,27 @@ This file is the active plan registry and the canonical owner for plan-maintenan
 - [**Architecture & Infrastructure**](plan-backend.md): DB schema changes, Auth, server-side actions, export generation logic.
 - [**Lint Governance**](plan-lint-governance.md): Canonical tracker for repo-local lint architecture, staged governance rules, audit baselines, and CI rollout.
 - [**Testing Execution**](plan-testing-execution.md): Canonical tracker for shared test command taxonomy, CI lane clarity, changed-scope execution policy, smoke-lane discipline, and cross-cutting testing operations.
-- [**Agentic Systems & AI Orchestration**](plan-agentic.md): Single canonical plan for agent runtime architecture, active fixes, roadmap phases, and maintenance/update rules.
-  - Supporting execution detail for active fixes lives under [**agent-runtime-remediation/**](agent-runtime-remediation/README.md).
-  - This file is also the canonical owner for immediate chat/agent runtime stabilization and active correctness fixes.
-  - Supporting stabilization and continuation detail lives in [**Runtime Stabilization and Continuation**](agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md).
-  - Supporting baseline-rescue detail for `FIX-012` lives in [**Baseline Stability and Transparency Reset**](agent-runtime-remediation/plan-fix-012-baseline-stability.md).
-- [**Memory & Retrieval**](plan-memory.md): Memory extraction, lifecycle, pgvector embeddings, project state sync. (This is the **only** active memory tracker).
+- [**Agent Platform**](plan-agentic.md): Single canonical plan for the agent platform: runtime architecture, orchestration, decisioning, tool boundaries, shared-surface truth, and the long-range agent product roadmap.
+  - Supporting execution detail for active fixes still lives under [**agent-runtime-remediation/**](agent-runtime-remediation/README.md).
+  - Historical/supporting runtime and transparency notes remain in [**Chat Runtime**](chat-runtime.md) and [**Transparency UI**](transparency-ui.md), but active status now lives in `plan-agentic.md`.
+- [**Agent Quality**](plan-agent-quality.md): Canonical plan for agent reliability, security, executable evals, rollout discipline, observability, performance efficiency, and long-term benchmark intake.
+- [**Memory, Grounding, and Prompting**](plan-memory.md): The only active memory tracker, now expanded to also own grounding, retrieval-quality, prompt-library, and extraction work for the agent's knowledge layer.
 - **UI, UX, components** — Canonical + archive:
   - [**UI/UX Canonical Plan**](plan-ux-ui.md): Single active tracker for UI/UX execution and remaining backlog. Permanent frontend doctrine lives outside the plan layer.
   - [**Evidence Ledger**](plan-ledger.md): Canonical plan for the Evidence Ledger as a product area: study list/detail architecture, duplicate-safe ingestion, PDF/file processing UX, cross-surface evidence reuse, and ledger-specific state/performance sequencing.
   - [**Draft Experience**](plan-drafting-experience.md): Canonical plan for the manuscript editor, evidence-linked drafting, review workflows, inline AI proposals, and export-grade manuscript compilation.
+  - [**Draft Authoring Platform**](plan-draft-authoring-platform.md): Supporting implementation plan for rebuilding the draft surface around non-AI-first writing quality, scientific authoring primitives, reliability/performance, and agent-ready seams.
   - [**Context Capture Plan**](plan-context-capture.md): Canonical plan for scoped AI entrypoints, semantic selection targets, context receipts/history, and cross-surface context reuse.
   - [**Protocol Live Sync**](plan-protocol-live-sync.md): Canonical plan for shared live protocol state, local durability, immediate copilot acceptance patching, and conflict-safe protocol UX.
   - [**Reliability A0 brief**](reliability-a0-brief.md): Deterministic repro + baseline threshold contract for Track A blocker reliability work.
   - [**Mobile plan**](mobile-plan.md): Canonical app-wide responsive foundation tracker, including mobile/chat follow-up waves.
   - [**Mobile layout contract**](mobile-layout-contract.md): Operational contract for shared phone/compact height, safe-area, and scroll-ownership rules.
-  - [**Transparency UI**](transparency-ui.md): Canonical supporting plan for truthful process visibility across chat surfaces: live phase, semantic tool receipts, grounded checkpoints, optional reasoning visibility, and visible-message boundaries.
-  - [**Chat Runtime**](chat-runtime.md): Canonical supporting plan for shared runtime parity across `/ai`, project copilot, and popup while keeping `/ai` project-optional; later-stage U1.6 burn-in remains a validation gate, not the substitute for baseline product rescue.
+  - [**Transparency UI**](transparency-ui.md): Supporting reference for truthful process visibility across chat surfaces. Active ownership now lives in `plan-agentic.md` and `plan-agent-quality.md`.
+  - [**Chat Runtime**](chat-runtime.md): Supporting reference for shared runtime parity history and burn-in context. Active ownership now lives in `plan-agentic.md` and `plan-agent-quality.md`.
 - [**Guided Setup V2**](plan-guided-setup.md): Dedicated onboarding activation plan for visual redesign, AI-enhanced step flow, personalization, and setup-mode agent behavior.
 - [**Settings**](plan-settings.md): Canonical tracker for user-configurable behavior defaults and future Settings UI controls.
 - [**Speed and Performance**](plan-speed-performance.md): Canonical tracker for Web Vitals budgets, cache/preload policy, route performance, and smooth interaction delivery.
-- [**System Prompts & LLM Extraction**](plan-prompts.md): The text of prompts, JSON schemas, extraction rules, model parameters.
+- [**System Prompts & LLM Extraction**](plan-prompts.md): Supporting reference only; active prompt and extraction ownership now lives in `plan-memory.md`.
 
 ## Plan Filename Policy
 

@@ -8,8 +8,8 @@ Permanent frontend doctrine now lives in `docs/architecture/frontend-quality-bar
 Domain-specific execution plans remain canonical for their domains:
 - Guided setup: `docs/plans/plan-guided-setup.md`
 - Evidence Ledger: `docs/plans/plan-ledger.md`
-- Chat runtime parity: `docs/plans/chat-runtime.md`
-- Transparency/process UI deltas: `docs/plans/transparency-ui.md`
+- Agent platform/runtime truth: `docs/plans/plan-agentic.md`
+- Agent quality and rollout gates: `docs/plans/plan-agent-quality.md`
 - Performance budgets and probes: `docs/plans/plan-speed-performance.md`
 - Reliability blockers and thresholds: `docs/plans/reliability-a0-brief.md`
 
@@ -70,7 +70,7 @@ Domain-specific execution plans remain canonical for their domains:
   - `/ai` still keeps active conversation and attached project scope in route-local client state rather than the URL
   - notes keeps the selected note in client state, memory keeps the active tab in client state, onboarding keeps the current step in client state, and protocol keeps the active section in context state
   - home resume still stores the last project id rather than the last meaningful in-app location URL
-  - durable navigation ownership is now intentionally split: this plan owns the user-facing route contract, `chat-runtime.md` owns shared chat-runtime constraints, and `plan-speed-performance.md` owns route-boot/cache implications where restore semantics affect load behavior
+  - durable navigation ownership is now intentionally split: this plan owns the user-facing route contract, `plan-agentic.md` owns shared chat-runtime constraints, and `plan-speed-performance.md` owns route-boot/cache implications where restore semantics affect load behavior
 - Citation hover previews now use source-aware server metadata assembly:
   - PubMed links keep PubMed-owned bibliography while resolving citation counts from NIH iCite/OCC first and Crossref second when a DOI fallback is available.
   - DOI links remain Crossref-backed, and citation preview telemetry records the actual upstream count source (`icite` or `crossref`).
@@ -132,7 +132,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
     - `docs/agents/specialists/frontend-ui-specialist.md`
     - `docs/plans/README.md`
     - `docs/plans/plan-ux-ui.md`
-    - `docs/plans/chat-runtime.md`
+    - `docs/plans/plan-agentic.md`
     - `docs/plans/plan-speed-performance.md`
   - Rules to freeze in implementation:
     - if refresh must return the user to the same place, that state belongs in the URL
@@ -155,7 +155,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
     - side-panel copilot should bind durable conversation identity through query params on workspace routes
     - `/ai` should bind active conversation and optional attached project scope through URL state
   - Guardrails:
-    - preserve the shared runtime contract owned by `chat-runtime.md`
+    - preserve the shared runtime contract owned by `plan-agentic.md`
     - do not let local restore override explicit deep links
     - route segment identity always beats side-panel query-param identity
     - invalid URL state may normalize only to safe non-destructive states
@@ -231,12 +231,13 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 ## Cross-Plan Dependencies (Authoritative Elsewhere)
 - Guided setup/onboarding UX execution: `docs/plans/plan-guided-setup.md`.
 - Evidence Ledger surface architecture, import trust, PDF/file UX, cross-surface evidence workflows, and ledger-specific performance sequencing: `docs/plans/plan-ledger.md`.
-- Draft manuscript UX, citation-authoring, review flows, and export-grade drafting architecture: `docs/plans/plan-drafting-experience.md`.
-- Chat runtime parity and rollout gates: `docs/plans/chat-runtime.md` (`CUX-D01` dependency).
-- Durable navigation work in this file owns the cross-surface URL/refresh contract; `chat-runtime.md` remains the dependency for shared chat runtime semantics rather than route identity ownership.
-- Durable navigation work in this file must be reflected in `chat-runtime.md` and `plan-speed-performance.md` whenever conversation identity or project-entry restore assumptions change.
+- Draft manuscript UX, citation-authoring, review flows, export-grade drafting architecture, and the shipped non-visual `DAP-00` benchmark baseline: `docs/plans/plan-drafting-experience.md`, `docs/plans/plan-draft-authoring-platform.md`, and `docs/reviews/2026-04-16-draft-benchmark-baseline.md`. Any visible draft UI change must first go through the separate user-reviewed draft UI planning checkpoint defined in the canonical draft plan.
+- Chat runtime parity and shared-surface semantics: `docs/plans/plan-agentic.md`.
+- Agent rollout/sign-off implications: `docs/plans/plan-agent-quality.md`.
+- Durable navigation work in this file owns the cross-surface URL/refresh contract; `plan-agentic.md` remains the dependency for shared chat runtime semantics rather than route identity ownership.
+- Durable navigation work in this file must be reflected in `plan-agentic.md` and `plan-speed-performance.md` whenever conversation identity or project-entry restore assumptions change, and in `plan-agent-quality.md` whenever rollout/sign-off assumptions change.
 - Context capture and scoped AI entrypoints: `docs/plans/plan-context-capture.md` (owns composer context receipts/chips and cross-surface context reuse).
-- Transparency/process UI deltas: `docs/plans/transparency-ui.md`.
+- Transparency/process UI detail: `docs/plans/transparency-ui.md` as a supporting note only.
 - Performance budgets and enforcement: `docs/plans/plan-speed-performance.md`.
 - Reliability blocker baselines and A1 patch targeting: `docs/plans/reliability-a0-brief.md`.
 
