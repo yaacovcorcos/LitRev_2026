@@ -192,7 +192,12 @@ export async function getProjectRecentActivity(
             select: { id: true, type: true, title: true, createdAt: true },
         }),
         prisma.aIConversation.findMany({
-            where: { projectId, archived: false },
+            where: {
+                projectId,
+                userId: scope.ownerId,
+                workspaceId: scope.workspaceId,
+                archived: false,
+            },
             orderBy: { updatedAt: "desc" },
             take: perSourceLimit,
             select: { id: true, title: true, updatedAt: true, createdAt: true },

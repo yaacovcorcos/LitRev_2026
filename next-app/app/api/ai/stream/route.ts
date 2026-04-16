@@ -17,7 +17,7 @@ import { StreamCoalescer } from "@/lib/server/ai/stream-coalescer";
 import { getProgressiveAnswerStreamingConfig } from "@/lib/feature-flags";
 import { runWithActorContext } from "@/lib/server/actor";
 import { requireApiSession } from "@/lib/server/auth/session";
-import { assertProjectAccess } from "@/lib/server/access";
+import { assertProjectAccess, assertStudyAccess } from "@/lib/server/access";
 import {
     buildStreamErrorChunk,
     extractAIErrorEnvelope,
@@ -186,6 +186,21 @@ export async function POST(request: NextRequest) {
             } catch {
                 return new Response(
                     JSON.stringify({ error: "Project not found or access denied" }),
+                    { status: 403, headers: { "Content-Type": "application/json" } },
+                );
+            }
+        }
+
+        if (options?.studyId) {
+            try {
+                await assertStudyAccess(
+                    { ownerId: authResult.context.userId, workspaceId: authResult.context.workspaceId },
+                    options.studyId,
+                    options.projectId,
+                );
+            } catch {
+                return new Response(
+                    JSON.stringify({ error: "Study not found or access denied" }),
                     { status: 403, headers: { "Content-Type": "application/json" } },
                 );
             }

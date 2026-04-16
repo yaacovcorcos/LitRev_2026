@@ -126,7 +126,7 @@ LitRev drafting becomes a manuscript operating system with:
   - Current editor is Tiptap `StarterKit` + `Underline` + custom `Citation` node + paragraph direction.
   - No native comments, suggestion mode, headings UI, tables, figures, equations, links, footnotes, or outline tooling.
 - `next-app/app/project/[id]/draft/useDraftSections.ts` and nearby draft hooks
-  - The live route currently composes section behavior, export state, and copilot wiring through smaller extracted hooks plus `page.tsx`; `useDraftWorkspaceController.ts` exists as a parallel controller but is not the canonical entrypoint today.
+  - The live route currently composes section behavior, export state, and copilot wiring through smaller extracted hooks plus `page.tsx`; there is no second parallel draft controller in production, so future work should keep the route-local controller path canonical instead of reintroducing split ownership.
 - `next-app/app/project/[id]/draft/useDraftExport.ts`
   - Export now calls the server-owned compiler pipeline and prepends real stored `FileAsset` results back into the current route history UI.
 - `next-app/components/ExportModal.tsx`

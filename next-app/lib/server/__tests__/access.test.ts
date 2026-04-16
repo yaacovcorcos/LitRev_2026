@@ -6,13 +6,17 @@ vi.mock('@/lib/server/prisma', () => ({
     project: {
       findFirst: vi.fn(),
     },
+    study: {
+      findFirst: vi.fn(),
+    },
   },
 }))
 
-import { assertProjectAccess } from '../access'
+import { assertProjectAccess, assertStudyAccess, resolveOwnedConversationScope } from '../access'
 import { prisma } from '@/lib/server/prisma'
 
 const mockFindFirst = prisma.project.findFirst as ReturnType<typeof vi.fn>
+const mockStudyFindFirst = prisma.study.findFirst as ReturnType<typeof vi.fn>
 
 describe('assertProjectAccess', () => {
   beforeEach(() => {
@@ -131,5 +135,120 @@ describe('assertProjectAccess', () => {
         }),
       })
     )
+  })
+})
+
+describe('assertStudyAccess', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const validScope = {
+    ownerId: 'user-123',
+    workspaceId: 'workspace-456',
+  }
+
+  it('returns canonical study and project scope when access is granted', async () => {
+    mockStudyFindFirst.mockResolvedValue({ id: 'study-1', projectId: 'project-1' })
+
+    const result = await assertStudyAccess(validScope, 'study-1', 'project-1')
+
+    expect(result).toEqual({
+      ...validScope,
+      projectId: 'project-1',
+      studyId: 'study-1',
+    })
+    expect(mockStudyFindFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'study-1',
+        projectId: 'project-1',
+        project: {
+          workspaceId: 'workspace-456',
+          ownerId: 'user-123',
+        },
+      },
+      select: {
+        id: true,
+        projectId: true,
+      },
+    })
+  })
+
+  it('throws when study is outside the scoped project ownership', async () => {
+    mockStudyFindFirst.mockResolvedValue(null)
+
+    await expect(
+      assertStudyAccess(validScope, 'study-1', 'project-1')
+    ).rejects.toThrow('Study not found or access denied.')
+  })
+
+  it('throws on empty study ID', async () => {
+    await expect(assertStudyAccess(validScope, '')).rejects.toThrow(
+      'Study ID is required.'
+    )
+  })
+})
+
+describe('resolveOwnedConversationScope', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const validScope = {
+    ownerId: 'user-123',
+    workspaceId: 'workspace-456',
+  }
+
+  it('derives global conversation scope when no project or study is supplied', async () => {
+    const result = await resolveOwnedConversationScope(validScope, {})
+
+    expect(result).toEqual({
+      ...validScope,
+      projectId: null,
+      studyId: null,
+      context: 'global',
+    })
+    expect(mockFindFirst).not.toHaveBeenCalled()
+    expect(mockStudyFindFirst).not.toHaveBeenCalled()
+  })
+
+  it('derives project conversation scope from validated project ownership', async () => {
+    mockFindFirst.mockResolvedValue({ id: 'project-1' })
+
+    const result = await resolveOwnedConversationScope(validScope, { projectId: 'project-1' })
+
+    expect(result).toEqual({
+      ...validScope,
+      projectId: 'project-1',
+      studyId: null,
+      context: 'project',
+    })
+  })
+
+  it('derives study conversation scope from validated study ownership and canonical project', async () => {
+    mockStudyFindFirst.mockResolvedValue({ id: 'study-1', projectId: 'project-owned' })
+
+    const result = await resolveOwnedConversationScope(validScope, {
+      projectId: 'project-owned',
+      studyId: 'study-1',
+    })
+
+    expect(result).toEqual({
+      ...validScope,
+      projectId: 'project-owned',
+      studyId: 'study-1',
+      context: 'study',
+    })
+  })
+
+  it('rejects mismatched study and project pairs', async () => {
+    mockStudyFindFirst.mockResolvedValue(null)
+
+    await expect(
+      resolveOwnedConversationScope(validScope, {
+        projectId: 'project-owned',
+        studyId: 'study-foreign',
+      })
+    ).rejects.toThrow('Study not found or access denied.')
   })
 })

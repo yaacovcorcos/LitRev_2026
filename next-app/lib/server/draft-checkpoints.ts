@@ -42,6 +42,7 @@ function normalizeOptionalText(value: string | undefined): string | null {
 }
 
 async function assertCheckpointLinkagesBelongToProject(
+  scope: { ownerId: string; workspaceId: string },
   projectId: string,
   input: Pick<CreateDraftCheckpointInput, "fileAssetId" | "artifactId" | "conversationId">,
 ): Promise<void> {
@@ -60,7 +61,12 @@ async function assertCheckpointLinkagesBelongToProject(
       : Promise.resolve(null),
     input.conversationId
       ? prisma.aIConversation.findFirst({
-          where: { id: input.conversationId, projectId },
+          where: {
+            id: input.conversationId,
+            projectId,
+            userId: scope.ownerId,
+            workspaceId: scope.workspaceId,
+          },
           select: { id: true },
         })
       : Promise.resolve(null),
@@ -92,7 +98,7 @@ export async function createDraftCheckpoint(
   input: CreateDraftCheckpointInput,
 ): Promise<DraftCheckpointRecord> {
   const scope = await assertProjectAccess(scopeInput, input.projectId);
-  await assertCheckpointLinkagesBelongToProject(input.projectId, input);
+  await assertCheckpointLinkagesBelongToProject(scope, input.projectId, input);
 
   const snapshot = buildDraftCheckpointSnapshot(input.draftState);
   const created = await prisma.draftCheckpoint.create({

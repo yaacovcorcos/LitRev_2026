@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   requireApiSession: vi.fn(),
   assertProjectAccess: vi.fn(),
+  assertStudyAccess: vi.fn(),
   ingestChatUnificationMetric: vi.fn(),
   streamChatWithArtifacts: vi.fn(),
   streamChat: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock("@/lib/server/auth/session", () => ({
 
 vi.mock("@/lib/server/access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
+  assertStudyAccess: mocks.assertStudyAccess,
 }));
 
 vi.mock("@/lib/server/chat-unification-metrics", () => ({
@@ -100,6 +102,7 @@ describe("/api/ai/stream route", () => {
       },
     });
     mocks.assertProjectAccess.mockResolvedValue(undefined);
+    mocks.assertStudyAccess.mockResolvedValue(undefined);
     mocks.ingestChatUnificationMetric.mockResolvedValue(undefined);
     mocks.resolveLatestValidRunCheckpoint.mockResolvedValue(null);
     mocks.resolveDurableContinuationSource.mockResolvedValue(null);
@@ -275,6 +278,32 @@ describe("/api/ai/stream route", () => {
       replaceRunId: "run-old",
       continuationContext: "[CONTINUATION_CONTEXT]\nPersisted checkpoint",
     });
+  });
+
+  it("rejects study scopes that are not owned by the authenticated actor", async () => {
+    mocks.assertStudyAccess.mockRejectedValueOnce(new Error("Study not found or access denied"));
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "Summarize this study",
+        context: "study",
+        options: {
+          projectId: "project-1",
+          studyId: "study-foreign",
+          page: "study",
+        },
+      }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "Study not found or access denied",
+    });
+    expect(mocks.streamChatWithArtifacts).not.toHaveBeenCalled();
   });
 
   it("rejects mismatched strict continuation and replace targets", async () => {

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/server/prisma";
 import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
+import { resolveOwnedConversationScope } from "@/lib/server/access";
 import { cuidSchema } from "@/lib/schemas/ids";
 import {
     listConversationsParamsSchema,
@@ -298,17 +299,23 @@ export async function createConversation(params: {
 }): Promise<ActionResult<{ id: string }>> {
     return withValidatedAction(createConversationParamsSchema, params, (v) =>
         withAuth(async ({ userId, workspaceId }) => {
-            const { context = "project", title } = v;
-            const { projectId, studyId } = v;
+            const { title } = v;
+            const scope = await resolveOwnedConversationScope(
+                { ownerId: userId, workspaceId },
+                {
+                    projectId: v.projectId,
+                    studyId: v.studyId,
+                },
+            );
 
             const conversation = await prisma.aIConversation.create({
                 data: {
                     userId,
                     workspaceId,
-                    projectId,
-                    studyId,
+                    projectId: scope.projectId,
+                    studyId: scope.studyId,
                     page: v.page,
-                    context,
+                    context: scope.context,
                     title: title || null,
                 },
             });
@@ -599,15 +606,23 @@ export async function getOrCreateConversation(params: {
 }): Promise<ActionResult<ConversationWithMessages>> {
     return withValidatedAction(getOrCreateConversationParamsSchema, params, (v) =>
         withAuth(async ({ userId, workspaceId }) => {
-            const { projectId, studyId, page } = v;
+            const { page } = v;
+            const scope = await resolveOwnedConversationScope(
+                { ownerId: userId, workspaceId },
+                {
+                    projectId: v.projectId,
+                    studyId: v.studyId,
+                },
+            );
 
             // Try to find an existing recent conversation
             const existing = await prisma.aIConversation.findFirst({
                 where: {
                     userId,
                     workspaceId,
-                    projectId: projectId || undefined,
-                    studyId: studyId || undefined,
+                    projectId: scope.projectId,
+                    studyId: scope.studyId,
+                    context: scope.context,
                     page: page || undefined,
                     archived: false,
                 },
@@ -659,10 +674,10 @@ export async function getOrCreateConversation(params: {
                 data: {
                     userId,
                     workspaceId,
-                    projectId,
-                    studyId,
+                    projectId: scope.projectId,
+                    studyId: scope.studyId,
                     page,
-                    context: studyId ? "study" : projectId ? "project" : "global",
+                    context: scope.context,
                 },
             });
 

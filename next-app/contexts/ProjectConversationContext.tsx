@@ -236,13 +236,13 @@ function ProjectConversationRuntime({
     );
 
     useEffect(() => {
-        const abortController = abortControllerRef.current;
         return () => {
             if (saveTimerRef.current) {
                 clearTimeout(saveTimerRef.current);
             }
-            if (abortController) {
-                abortController.abort();
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+                abortControllerRef.current = null;
             }
         };
     }, []);
