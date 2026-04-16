@@ -231,7 +231,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 ## Cross-Plan Dependencies (Authoritative Elsewhere)
 - Guided setup/onboarding UX execution: `docs/plans/plan-guided-setup.md`.
 - Evidence Ledger surface architecture, import trust, PDF/file UX, cross-surface evidence workflows, and ledger-specific performance sequencing: `docs/plans/plan-ledger.md`.
-- Draft manuscript UX, citation-authoring, review flows, export-grade drafting architecture, and the shipped non-visual `DAP-00` benchmark baseline: `docs/plans/plan-drafting-experience.md`, `docs/plans/plan-draft-authoring-platform.md`, and `docs/reviews/2026-04-16-draft-benchmark-baseline.md`. Any visible draft UI change must first go through the separate user-reviewed draft UI planning checkpoint defined in the canonical draft plan.
+- Draft manuscript UX, citation-authoring, review flows, export-grade drafting architecture, the shipped non-visual `DAP-00` benchmark baseline, and the shipped non-UI `DAP-03A` import foundation: `docs/plans/plan-drafting-experience.md`, `docs/plans/plan-draft-authoring-platform.md`, `docs/reviews/2026-04-16-draft-benchmark-baseline.md`, and `docs/reviews/2026-04-17-draft-import-interoperability.md`. Any visible draft UI change must first go through the separate user-reviewed draft UI planning checkpoint defined in the canonical draft plan.
 - Chat runtime parity and shared-surface semantics: `docs/plans/plan-agentic.md`.
 - Agent rollout/sign-off implications: `docs/plans/plan-agent-quality.md`.
 - Durable navigation work in this file owns the cross-surface URL/refresh contract; `plan-agentic.md` remains the dependency for shared chat runtime semantics rather than route identity ownership.
