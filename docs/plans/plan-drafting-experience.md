@@ -5,6 +5,9 @@ This is the single canonical plan for LitRev's drafting surface.
 
 It defines the canonical drafting direction for LitRev and the sequence of work around it. The current authoritative route baseline is the restored section-first drafting experience anchored to the March 12, 2026 `8998296` interaction model: top section tabs, real `Section` / `Full Draft`, a dedicated left Evidence Ledger, and an obvious center drafting surface. The canonical manuscript model, citation compiler, and export foundation remain active under that UI, but the rejected continuous-workspace, drawer-first, and segmented-sidebar route shells are not the current product truth.
 
+Supporting execution detail for the next editorial-quality rebuild now lives in [plan-draft-authoring-platform.md](./plan-draft-authoring-platform.md).
+The completed non-visual `DAP-00` benchmark/harness baseline now lives in [2026-04-16-draft-benchmark-baseline.md](../reviews/2026-04-16-draft-benchmark-baseline.md) and the shipped corpus/harness code under `next-app/lib/draft-benchmark/**` plus `next-app/test/fixtures/draft/**`.
+
 ## Product Contract Boundary
 This plan changes how LitRev delivers drafting, not what LitRev is for.
 
@@ -38,8 +41,11 @@ Current route contract:
 
 ### Draft UI Approval Rule
 - Any draft-route UI change requires explicit user approval before implementation.
+- Before any UI-changing draft task starts, create or refresh a separate UI-planning checkpoint with the user that covers the intended layout, visuals, changed interactions, key states, and verification expectations.
+- Do not implement any visual or interaction change until that UI-planning checkpoint has been reviewed with the user and explicitly authorized.
 - Any draft implementation plan that includes a UI change must clearly mark the UI-changing phase as approval-gated.
 - Any such phase must include an explicit warning that visual or interaction behavior will change and must be manually verified before approval.
+- This rule applies even when the triggering task is primarily technical, reliability-focused, or feature-focused; if the user will see a changed draft UI, it must pause for separate UI planning and authorization first.
 - Do not bundle draft UI changes into broader draft work without calling them out separately first.
 
 ## Deferred Improvements After Route Restore
@@ -147,6 +153,8 @@ LitRev drafting becomes a manuscript operating system with:
 - Add this file as the canonical drafting-experience plan.
 - Update `docs/plans/README.md` to register this plan.
 - Update `docs/plans/plan-ux-ui.md` to point at this plan as the active draft-domain owner where the active UI execution tracker needs that dependency.
+- Add `docs/plans/plan-draft-authoring-platform.md` as the supporting execution plan for the next editorial-quality rebuild.
+- Add a durable completion note for `DAP-00` in `docs/reviews/2026-04-16-draft-benchmark-baseline.md`.
 
 ### Documentation that future implementation must update
 - `docs/runbooks/db-architecture.md`
@@ -628,15 +636,16 @@ These are implementation tracks for one target state, not separate product versi
 - Journal-specific export rules are profile-driven and additive; the manuscript model itself should stay journal-agnostic.
 
 ## Recently Completed
+- `DAP-00` shipped the non-visual benchmark baseline for the draft rebuild: LitRev now has a committed corpus under `next-app/lib/draft-benchmark/**`, import and measurement fixtures under `next-app/test/fixtures/draft/**`, runnable benchmark scripts under `next-app/scripts/draft-benchmark/**`, and a durable decision record in `docs/reviews/2026-04-16-draft-benchmark-baseline.md`.
 - `DRX-006A` hardened the backend draft proposal contract: fresh `draft_diff` artifacts now carry deterministic section metadata plus base-section state, accepted apply rejects stale target-section changes instead of overwriting newer draft text, and accepted proposals now create whole-draft `ai_apply` checkpoints in addition to per-section `DraftVersion` provenance.
 - `DRX-005A` shipped the backend-first diagnostics contract: draft/export warning derivation now compiles from one canonical normalized diagnostics report, citation-derived issues reuse the existing citation taxonomy, section-level coverage signals are advisory warnings only, and strict export blocking still tracks only current citation-integrity failures.
 - `DRX-007` replaced the placeholder draft export path with a real server-owned compiler pipeline: DOCX and Markdown now compile from normalized manuscript state, generated exports store real file assets, and visible export history stays truthful and DOCX-only in the current UI.
 - `DRX-004A` shipped the backend-only checkpoint foundation: immutable whole-draft `DraftCheckpoint` records now capture authoring-state snapshots, export-created checkpoints link back to generated files, restore rebuilds a valid `DraftState v2` without reviving route/UI state, the draft page UI remains unchanged, and no user-facing checkpoint action surface is shipped yet.
 - `DRX-003` restored the seeded section-first drafting baseline on top of the canonical manuscript model, bringing back top tabs, real `Section` / `Full Draft`, and the left Evidence Ledger while keeping the right side copilot-only.
 - `DRX-002R` shipped the one-left-drawer manuscript shell and removed the draft-owned right panel from the route; it remains documented as an intermediate correction that `DRX-003` superseded.
-- [x] `DRX-001` Defined the canonical manuscript schema, stable block identity, and `DraftState v2` migration contract. Draft save/load now normalize legacy payloads into a canonical manuscript document plus `contentBySection` compatibility projection, and direct draft writers use the same normalizer.
 
 ## Active Tasks
+- [ ] `DRX-010` Execute the draft authoring platform rebuild under `docs/plans/plan-draft-authoring-platform.md`, front-loading non-AI editorial quality while preserving manuscript normalization, evidence semantics, checkpoints, and agent-ready seams.
 - [x] `DRX-002` Establish the canonical manuscript document and structural editing foundation.
 - [x] `DRX-003` Restore the draft route to the seeded section-first drafting baseline with a left Evidence Ledger.
 - [ ] `DRX-004` Add first-class comments, suggestion mode, checkpoints, and compare/restore.

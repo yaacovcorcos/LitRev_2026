@@ -1,0 +1,16 @@
+{
+  "recordedAt": "2026-04-16T12:00:00.000Z",
+  "measurements": [
+    { "metric": "coldOpenMs", "scale": "short", "value": 980, "fixtureId": "short-paper" },
+    { "metric": "warmOpenMs", "scale": "short", "value": 420, "fixtureId": "short-paper" },
+    { "metric": "typingLatencyMs", "scale": "medium", "value": 28, "fixtureId": "medium-review" },
+    { "metric": "typingLatencyMs", "scale": "large", "value": 52, "fixtureId": "large-evidence-heavy" },
+    { "metric": "commandOpenMs", "value": 96 },
+    { "metric": "citationSearchOpenMs", "value": 180 },
+    { "metric": "saveAckMs", "value": 140 },
+    { "metric": "recoverSuccessRate", "value": 0.995 },
+    { "metric": "anchorStabilityRate", "value": 0.998 },
+    { "metric": "importBlockingLossCount", "value": 0 },
+    { "metric": "browserSmokeFailureCount", "value": 0 }
+  ]
+}
