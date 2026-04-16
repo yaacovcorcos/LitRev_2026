@@ -1,6 +1,6 @@
 # Repo Health
 
-Last reviewed: 2026-04-03
+Last reviewed: 2026-04-16
 
 This file is the living summary of current repo health. Keep it concise and factual. Replace stale statements instead of appending history.
 
@@ -10,7 +10,7 @@ This file is the living summary of current repo health. Keep it concise and fact
 
 ## Regressions Since Last Review
 
-- No repo-contract regression is confirmed from the 2026-03-21 baseline; the raw lint baseline is now clean and promoted into the required CI `check` contract, so the remaining improvement work is about deeper architectural enforcement rather than default-lint debt.
+- No sustained repo-contract regression is confirmed from the 2026-03-21 baseline; raw lint remains clean and part of the required CI `check` contract, and the brief ledger phase-3 searchability drift was closed by restoring the canonical `@/` import path in the route.
 
 ## Repeated Mistakes
 
@@ -32,6 +32,7 @@ This file is the living summary of current repo health. Keep it concise and fact
 - Restored mobile foundation confidence by aligning Playwright auth bootstrapping with the e2e origin and stabilizing the zero-state to workspace transition helper.
 - Targeted lint cleanup slices reduced the default baseline from `126` errors / `112` warnings to `0` errors / `0` warnings on `main`, and raw `npm run lint` is now part of the required CI `check` workflow rather than a side-track cleanup item.
 - Added direct regression coverage for `useTimelineWindowing`, provider streamed tool-call delta assembly, conversation attachment/tool-call JSON serialization, and `CommandPalette` hydration/body-scroll behavior so the cleanup wave stays evidence-backed instead of relying on lint-only confidence.
+- Reconfirmed the core local quality lanes on `main`: `npm run lint`, `npx tsc --noEmit`, `npx vitest run`, and `npm run governance:ci-required` now agree on a green baseline again.
 
 ## Next Review Inputs
 
