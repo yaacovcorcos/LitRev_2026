@@ -81,6 +81,7 @@ import {
   resolveDraftRouteProjection,
   resolveSectionModeActiveSection,
 } from "@/lib/draft-state-contracts";
+import { useWindowEvent } from "@/hooks/useWindowEvent";
 
 function createCitationUid(sectionId: DraftSectionId): string {
   const rand = Math.random().toString(36).slice(2, 8);
@@ -213,6 +214,7 @@ function DraftContent() {
   const pendingContentRef = useRef<Record<DraftSectionId, JSONContent>>(draft.contentBySection);
   const dirtyContentKeysRef = useRef<Set<DraftSectionId>>(new Set());
   const contentCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushPendingDraftToLocalRef = useRef<() => void>(() => {});
   const lastSyncedUrlRef = useRef<string | null>(null);
   const pendingPushedUrlRef = useRef<string | null>(null);
 
@@ -340,15 +342,13 @@ function DraftContent() {
   }), [activeSectionLabel]);
 
   const scheduleSave = useCallback(
-    (next: DraftState) => {
+    (persistableState: DraftState) => {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
       }
       setSaveStatus("saving");
       saveTimerRef.current = setTimeout(async () => {
-        const persistableState = normalizeForPersistence(next);
         if (id) {
-          saveDraftState(id, persistableState);
           const result = await saveDraftAction(id, persistableState);
           if (!result.success) {
             console.error("Failed to save draft to backend:", result.error);
@@ -359,7 +359,7 @@ function DraftContent() {
         setSaveStatus("saved");
       }, 400);
     },
-    [id, normalizeForPersistence]
+    [id]
   );
 
   const updateDraft = useCallback(
@@ -370,11 +370,15 @@ function DraftContent() {
         if (next.contentBySection !== prev.contentBySection || next.sectionOrder !== prev.sectionOrder) {
           next = normalizeForEditor(next);
         }
-        scheduleSave(next);
+        const persistableState = normalizeForPersistence(next);
+        if (id) {
+          saveDraftState(id, persistableState);
+        }
+        scheduleSave(persistableState);
         return next;
       });
     },
-    [normalizeForEditor, scheduleSave]
+    [id, normalizeForEditor, normalizeForPersistence, scheduleSave]
   );
 
   const flushContentCommit = useCallback(() => {
@@ -426,6 +430,32 @@ function DraftContent() {
     },
     [flushContentCommit]
   );
+
+  flushPendingDraftToLocalRef.current = () => {
+    if (!id || dirtyContentKeysRef.current.size === 0) return;
+    if (contentCommitTimerRef.current) {
+      clearTimeout(contentCommitTimerRef.current);
+      contentCommitTimerRef.current = null;
+    }
+
+    const nextContent = { ...draft.contentBySection };
+    for (const key of dirtyContentKeysRef.current) {
+      nextContent[key] = pendingContentRef.current[key];
+    }
+
+    dirtyContentKeysRef.current.clear();
+
+    const nextDraft = normalizeForEditor({
+      ...draft,
+      contentBySection: nextContent,
+    });
+    pendingContentRef.current = nextDraft.contentBySection;
+    saveDraftState(id, normalizeForPersistence(nextDraft));
+  };
+
+  useWindowEvent("pagehide", () => {
+    flushPendingDraftToLocalRef.current();
+  });
 
   useEffect(() => {
     setDraft((prev) => {
@@ -493,6 +523,7 @@ function DraftContent() {
 
   useEffect(() => {
     return () => {
+      flushPendingDraftToLocalRef.current();
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
       }

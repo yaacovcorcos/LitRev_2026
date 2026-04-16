@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
@@ -7,6 +7,10 @@ import DraftPage from "../page";
 
 const {
   mockLoadDraftState,
+  mockSaveDraftState,
+  mockSaveDraftAction,
+  mockSetEditorDoc,
+  mockEmitEditorUpdate,
   mockWarmDomain,
   mockPush,
   mockReplace,
@@ -20,6 +24,22 @@ const {
   mockRunAction,
 } = vi.hoisted(() => ({
   mockLoadDraftState: vi.fn(),
+  mockSaveDraftState: vi.fn(),
+  mockSaveDraftAction: vi.fn(async (_projectId: string, state: unknown) => ({ success: true, data: state })),
+  currentEditorDoc: { type: "doc", content: [{ type: "paragraph" }] },
+  latestEditorOptions: null as null | {
+    onUpdate?: (payload: { editor: { getJSON: () => unknown } }) => void;
+  },
+  mockSetEditorDoc: vi.fn((doc: unknown) => {
+    state.currentEditorDoc = doc;
+  }),
+  mockEmitEditorUpdate: vi.fn(() => {
+    state.latestEditorOptions?.onUpdate?.({
+      editor: {
+        getJSON: () => state.currentEditorDoc,
+      },
+    });
+  }),
   mockWarmDomain: vi.fn(),
   mockPush: vi.fn(),
   mockReplace: vi.fn(),
@@ -33,31 +53,63 @@ const {
   mockOpenPopupChat: vi.fn(),
   mockOpenPopupForTarget: vi.fn(),
   mockRunAction: vi.fn(),
-  mockEditor: {
-    chain: () => ({
-      focus: () => ({
-        run: vi.fn(),
-        insertContent: () => ({
-          insertContent: () => ({ run: vi.fn() }),
-          run: vi.fn(),
-        }),
-      }),
-    }),
+  mockEditor: {} as {
+    chain: () => {
+      focus: () => {
+        run: ReturnType<typeof vi.fn>;
+        insertContent: () => {
+          insertContent: () => { run: ReturnType<typeof vi.fn> };
+          run: ReturnType<typeof vi.fn>;
+        };
+      };
+    };
     commands: {
-      setContent: vi.fn(),
-    },
-    setEditable: vi.fn(),
-    getAttributes: vi.fn(() => ({})),
-    getJSON: () => ({ type: "doc", content: [{ type: "paragraph" }] }),
-    getText: () => "",
+      setContent: ReturnType<typeof vi.fn>;
+    };
+    setEditable: ReturnType<typeof vi.fn>;
+    getAttributes: ReturnType<typeof vi.fn>;
+    getJSON: () => unknown;
+    getText: () => string;
     state: {
-      selection: { empty: true, from: 0, to: 0 },
-      doc: { textBetween: () => "" },
-    },
-    on: vi.fn(),
-    off: vi.fn(),
+      selection: { empty: boolean; from: number; to: number };
+      doc: { textBetween: () => string };
+    };
+    on: ReturnType<typeof vi.fn>;
+    off: ReturnType<typeof vi.fn>;
   },
 }));
+
+const state = {
+  currentEditorDoc: { type: "doc", content: [{ type: "paragraph" }] } as unknown,
+  latestEditorOptions: null as null | {
+    onUpdate?: (payload: { editor: { getJSON: () => unknown } }) => void;
+  },
+};
+
+mockEditor.chain = () => ({
+  focus: () => ({
+    run: vi.fn(),
+    insertContent: () => ({
+      insertContent: () => ({ run: vi.fn() }),
+      run: vi.fn(),
+    }),
+  }),
+});
+mockEditor.commands = {
+  setContent: vi.fn((content: unknown) => {
+    state.currentEditorDoc = content;
+  }),
+};
+mockEditor.setEditable = vi.fn();
+mockEditor.getAttributes = vi.fn(() => ({}));
+mockEditor.getJSON = () => state.currentEditorDoc;
+mockEditor.getText = () => "";
+mockEditor.state = {
+  selection: { empty: true, from: 0, to: 0 },
+  doc: { textBetween: () => "" },
+};
+mockEditor.on = vi.fn();
+mockEditor.off = vi.fn();
 
 vi.mock("next/navigation", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/navigation")>();
@@ -157,7 +209,7 @@ vi.mock("@/hooks/useProjectData", () => ({
 }));
 
 vi.mock("@/app/actions/drafts", () => ({
-  saveDraftAction: vi.fn(async (_projectId: string, state: unknown) => ({ success: true, data: state })),
+  saveDraftAction: (...args: Parameters<typeof mockSaveDraftAction>) => mockSaveDraftAction(...args),
 }));
 
 vi.mock("@/app/actions/files", () => ({
@@ -209,7 +261,10 @@ vi.mock("@tiptap/react", () => {
   return {
     Editor: class {},
     EditorContent: () => <div data-testid="editor-content" />,
-    useEditor: () => mockEditor,
+    useEditor: (options: (typeof state)["latestEditorOptions"]) => {
+      state.latestEditorOptions = options;
+      return mockEditor;
+    },
   };
 });
 
@@ -218,7 +273,7 @@ vi.mock("@/lib/draft-storage", async (importOriginal) => {
   return {
     ...actual,
     loadDraftState: (...args: Parameters<typeof actual.loadDraftState>) => mockLoadDraftState(...args),
-    saveDraftState: vi.fn(),
+    saveDraftState: (...args: Parameters<typeof actual.saveDraftState>) => mockSaveDraftState(...args),
   };
 });
 
@@ -305,7 +360,10 @@ function createDraftState(overrides: Record<string, unknown> = {}) {
 describe("Draft page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
     setSearchParams("");
+    state.currentEditorDoc = { type: "doc", content: [{ type: "paragraph" }] };
+    state.latestEditorOptions = null;
     mockLoadDraftState.mockReturnValue(createDraftState());
   });
 
@@ -480,5 +538,47 @@ describe("Draft page", () => {
       expect(mockPush).toHaveBeenCalledWith("/project/proj-1/draft?mode=full&section=abstract", { scroll: false });
     });
     expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it("persists committed editor updates locally before the backend debounce settles", async () => {
+    render(<DraftPage />);
+    await screen.findByText("Alpha Draft");
+    vi.useFakeTimers();
+
+    act(() => {
+      mockSetEditorDoc(textDoc("Updated abstract"));
+      mockEmitEditorUpdate();
+    });
+
+    expect(mockSaveDraftState).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+
+    expect(mockSaveDraftState).toHaveBeenCalled();
+    expect(mockSaveDraftAction).not.toHaveBeenCalled();
+
+    const [, savedState] = mockSaveDraftState.mock.lastCall as [string, ReturnType<typeof createDraftState>];
+    expect(savedState.contentBySection.abstract).toEqual(textDoc("Updated abstract"));
+  });
+
+  it("flushes pending editor updates to local storage on pagehide", async () => {
+    render(<DraftPage />);
+    await screen.findByText("Alpha Draft");
+    vi.useFakeTimers();
+
+    act(() => {
+      mockSetEditorDoc(textDoc("Updated abstract"));
+      mockEmitEditorUpdate();
+    });
+
+    expect(mockSaveDraftState).not.toHaveBeenCalled();
+
+    fireEvent(window, new Event("pagehide"));
+
+    expect(mockSaveDraftState).toHaveBeenCalled();
+    const [, savedState] = mockSaveDraftState.mock.lastCall as [string, ReturnType<typeof createDraftState>];
+    expect(savedState.contentBySection.abstract).toEqual(textDoc("Updated abstract"));
+    expect(mockSaveDraftAction).not.toHaveBeenCalled();
   });
 });
