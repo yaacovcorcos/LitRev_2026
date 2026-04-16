@@ -14,6 +14,7 @@ import {
   coerceManuscriptDocument,
   createManuscriptDocument,
 } from "@/lib/manuscript/schema";
+import type { DraftAuxiliaryReference } from "@/lib/draft-import/types";
 import {
   draftSectionHasMeaningfulContent,
   resolveDraftMode,
@@ -63,6 +64,7 @@ type DraftStateBase = {
   contentBySection: Record<DraftSectionId, JSONContent>;
   ledgerBySection: Record<DraftSectionId, string[]>;
   copilotBySection: Record<DraftSectionId, CopilotMessage[]>;
+  auxiliaryBibliography?: DraftAuxiliaryReference[];
 };
 
 export type LegacyDraftState = DraftStateBase & {
@@ -151,6 +153,7 @@ export function createDefaultDraftState(): DraftState {
     contentBySection: buildSectionRecord(knownSectionIds, (key) => compatContent[key] ?? emptyDoc()),
     ledgerBySection: buildSectionRecord(knownSectionIds, () => []),
     copilotBySection: buildSectionRecord(knownSectionIds, () => []),
+    auxiliaryBibliography: [],
     manuscript,
   };
 }
@@ -244,6 +247,62 @@ function normalizeCopilotMessage(value: unknown): CopilotMessage | null {
     text,
     createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date().toISOString(),
   };
+}
+
+function trimOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeOptionalYear(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  const whole = Math.floor(value);
+  return whole >= 0 ? whole : undefined;
+}
+
+function normalizeAuxiliaryReference(value: unknown): DraftAuxiliaryReference | null {
+  if (!isRecord(value)) return null;
+
+  const sourceFormat = trimOptionalString(value.sourceFormat);
+  const title = trimOptionalString(value.title);
+  if (!sourceFormat || !title) {
+    return null;
+  }
+
+  return {
+    id:
+      trimOptionalString(value.id)
+      ?? trimOptionalString(value.sourceItemId)
+      ?? `aux-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`,
+    sourceFormat: sourceFormat as DraftAuxiliaryReference["sourceFormat"],
+    sourceItemId: trimOptionalString(value.sourceItemId),
+    citationKey: trimOptionalString(value.citationKey),
+    title,
+    authors: trimOptionalString(value.authors),
+    year: normalizeOptionalYear(value.year),
+    containerTitle: trimOptionalString(value.containerTitle),
+    volume: trimOptionalString(value.volume),
+    issue: trimOptionalString(value.issue),
+    pages: trimOptionalString(value.pages),
+    doi: trimOptionalString(value.doi),
+    pmid: trimOptionalString(value.pmid),
+    linkedStudyId: trimOptionalString(value.linkedStudyId),
+  };
+}
+
+function coerceAuxiliaryBibliography(value: unknown): DraftAuxiliaryReference[] {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set<string>();
+  const normalized: DraftAuxiliaryReference[] = [];
+  for (const entry of value) {
+    const next = normalizeAuxiliaryReference(entry);
+    if (!next || seen.has(next.id)) continue;
+    seen.add(next.id);
+    normalized.push(next);
+  }
+  return normalized;
 }
 
 function createContentRecord(
@@ -369,6 +428,7 @@ export function normalizeDraftState(input: unknown): DraftState {
     contentBySection: buildSectionRecord(knownSectionIds, (key) => nextCompat[key] ?? emptyDoc()),
     ledgerBySection,
     copilotBySection,
+    auxiliaryBibliography: coerceAuxiliaryBibliography(parsed.auxiliaryBibliography),
     manuscript: nextManuscript,
   };
 }

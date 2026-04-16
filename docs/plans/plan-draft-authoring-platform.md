@@ -698,6 +698,7 @@ Implementation note (April 16, 2026): this slice shipped as a non-visual baselin
   - any visible insertion UI, metadata panel, bibliography inspector, or profile surface changes must be separately planned with the user before implementation
 
 ### `DAP-03A` Import and interoperability
+Implementation note (April 17, 2026): this slice shipped as a non-UI foundation. LitRev now has canonical draft-import contracts under `next-app/lib/draft-import/**`, bibliography adapters for `CSL JSON` / `RIS` / `BibTeX`, manuscript intake for `DOCX` / Markdown / HTML / CSV / TSV, checkpoint-safe reconciliation and apply orchestration under `next-app/lib/server/draft-imports.ts`, and fixture-backed verification plus benchmark-corpus coverage. Durable memory now lives in [2026-04-17-draft-import-interoperability.md](../reviews/2026-04-17-draft-import-interoperability.md).
 - Add:
   - DOI/PMID-first reference add flows where provider support exists
   - bibliography import adapters for prioritized formats
@@ -900,12 +901,12 @@ Maintain a seeded draft fixture with:
 
 ## Recently Completed
 - [x] `DAP-00` Shipped the draft benchmark baseline: committed manuscript and import corpora, acceptance-budget helpers, runnable benchmark scripts, anchor/export verification tests, and a durable decision note now exist before `Draft VNext` implementation begins.
+- [x] `DAP-03A` Shipped the non-UI import/interoperability foundation: LitRev now has server-owned draft import orchestration, canonical import/report contracts, bibliography adapters, manuscript intake for the prioritized formats, checkpoint-safe reconciliation, and fixture-backed verification without shipping visible import UI yet.
 
 ## Active Tasks
 - [ ] `DAP-01` Draft VNext shell and one-editor core
 - [ ] `DAP-02` Editorial comfort and writing-quality foundation
 - [ ] `DAP-03` Scientific object, bibliography, and metadata system
-- [ ] `DAP-03A` Import and interoperability
 - [ ] `DAP-04` Reliability, sync, and large-document performance
 - [ ] `DAP-05` Review-grade editing
 - [ ] `DAP-06` Agentic drafting lane

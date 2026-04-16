@@ -13,6 +13,7 @@ describe("createDefaultDraftState", () => {
     expect(state.sectionOrder).toEqual(DEFAULT_SECTION_ORDER);
     expect(state.manuscript.sections.map((section) => section.sectionId)).toEqual(DEFAULT_SECTION_ORDER);
     expect(state.contentBySection[UNSECTIONED_DRAFT_ID]).toBeTruthy();
+    expect(state.auxiliaryBibliography).toEqual([]);
   });
 });
 

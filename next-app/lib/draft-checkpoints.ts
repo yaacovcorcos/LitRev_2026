@@ -18,7 +18,7 @@ type RichTextContent = {
   text?: string;
 };
 
-export type DraftCheckpointKind = "manual" | "ai_apply" | "export";
+export type DraftCheckpointKind = "manual" | "ai_apply" | "export" | "import";
 
 export type DraftCheckpointSnapshot = {
   manuscript: ManuscriptDocument;

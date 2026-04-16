@@ -1,6 +1,23 @@
 import { z } from "zod";
 import { normalizeDraftState } from "@/lib/draft-storage";
 
+const auxiliaryBibliographyEntrySchema = z.object({
+  id: z.string(),
+  sourceFormat: z.string(),
+  sourceItemId: z.string().optional(),
+  citationKey: z.string().optional(),
+  title: z.string(),
+  authors: z.string().optional(),
+  year: z.number().optional(),
+  containerTitle: z.string().optional(),
+  volume: z.string().optional(),
+  issue: z.string().optional(),
+  pages: z.string().optional(),
+  doi: z.string().optional(),
+  pmid: z.string().optional(),
+  linkedStudyId: z.string().optional(),
+});
+
 /**
  * Normalize unknown draft payloads into JSON-safe data before validation.
  * This strips runtime-only values (for example functions leaked from editor attrs).
@@ -86,6 +103,7 @@ export const draftStateV1Schema = z.object({
   contentBySection: z.record(z.string(), jsonContentSchema),
   ledgerBySection: z.record(z.string(), z.array(z.string())),
   copilotBySection: z.record(z.string(), z.array(z.unknown())),
+  auxiliaryBibliography: z.array(auxiliaryBibliographyEntrySchema).optional(),
 });
 
 export const draftStateV2Schema = draftStateV1Schema.extend({
