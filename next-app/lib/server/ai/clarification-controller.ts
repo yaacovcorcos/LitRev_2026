@@ -195,7 +195,7 @@ export async function hydrateClarificationControllerState(params: {
                 ],
             },
         },
-        orderBy: [{ createdAt: "asc" }, { sequence: "asc" }],
+        orderBy: [{ createdAt: "desc" }, { sequence: "desc" }],
         take: LINEAGE_EVENT_SCAN_LIMIT,
         select: {
             runId: true,
@@ -206,6 +206,7 @@ export async function hydrateClarificationControllerState(params: {
             createdAt: true,
         },
     }) as ClarificationLineageEventRecord[];
+    events.reverse();
 
     let totalClarificationCount = 0;
     let hasDurableProgressSinceLastResolution = true;

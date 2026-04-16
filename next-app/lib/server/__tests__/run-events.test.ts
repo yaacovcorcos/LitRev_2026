@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   agentRunUpdateMany: vi.fn(),
   transaction: vi.fn(),
   noteObservedRunActivity: vi.fn(),
+  assertRunWritableInTransaction: vi.fn(),
 }));
 
 const txMock = {
@@ -38,6 +39,7 @@ vi.mock("@/lib/server/prisma", () => ({
 
 vi.mock("@/lib/server/agent/run", () => ({
   noteObservedRunActivity: mocks.noteObservedRunActivity,
+  assertRunWritableInTransaction: mocks.assertRunWritableInTransaction,
 }));
 
 const { emitEvent, emitEventWithinTransaction, getRunTimeline } = await import("@/lib/server/agent/events");
@@ -47,6 +49,7 @@ describe("run events", () => {
     vi.clearAllMocks();
     mocks.transaction.mockImplementation(async (callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock));
     mocks.agentRunUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.assertRunWritableInTransaction.mockResolvedValue(undefined);
     mocks.agentRunFindUnique.mockResolvedValue({
       id: "run-1",
       status: "running",
@@ -77,13 +80,26 @@ describe("run events", () => {
       }),
     );
     expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith({
-      where: { id: "run-1", status: "running" },
+      where: {
+        id: "run-1",
+        status: { in: ["running"] },
+        completedAt: null,
+      },
       data: {
         lastActivityAt: expect.any(Date),
         lastDurableProgressAt: expect.any(Date),
       },
     });
     expect(mocks.noteObservedRunActivity).toHaveBeenCalledWith("run-1", expect.any(Date));
+  });
+
+  it("fails closed when the shared run-write guard rejects the event", async () => {
+    mocks.assertRunWritableInTransaction.mockRejectedValueOnce(new Error("run no longer writable"));
+
+    await expect(emitEvent("run-1", "message", { hello: "world" })).rejects.toThrow(
+      "run no longer writable",
+    );
+    expect(mocks.runEventCreate).not.toHaveBeenCalled();
   });
 
   it("keeps durable progress unchanged for observability-only events", async () => {
@@ -97,7 +113,11 @@ describe("run events", () => {
     await emitEvent("run-1", "context_assembly", { branch: "memories" });
 
     expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith({
-      where: { id: "run-1", status: "running" },
+      where: {
+        id: "run-1",
+        status: { in: ["running"] },
+        completedAt: null,
+      },
       data: { lastActivityAt: expect.any(Date) },
     });
   });
@@ -153,7 +173,11 @@ describe("run events", () => {
       },
     });
     expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(2, {
-      where: { id: "run-1", status: "running" },
+      where: {
+        id: "run-1",
+        status: { in: ["running"] },
+        completedAt: null,
+      },
       data: {
         lastActivityAt: createdAt,
         lastDurableProgressAt: createdAt,

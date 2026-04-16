@@ -36,6 +36,7 @@ vi.mock("@/lib/server/agent/run-phase", () => ({
 }));
 
 const {
+  RunOwnershipError,
   startRun,
   endRun,
   startRunHeartbeat,
@@ -44,6 +45,7 @@ const {
   markRunAbnormalEndClassification,
   markRunFinalizationFailed,
   markRunFinalizationState,
+  settleClarificationDismissedRun,
 } = await import("@/lib/server/agent/run");
 
 describe("startRun lineage", () => {
@@ -197,12 +199,15 @@ describe("startRun lineage", () => {
 describe("run freshness lifecycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.agentRunUpdate.mockResolvedValue({
+    mocks.agentRunFindUnique.mockResolvedValue({
       id: "run-1",
       conversationId: "conv-1",
       projectId: "project-1",
       userId: "user-1",
+      durabilityState: "durable",
       status: "completed",
+      completedAt: null,
+      finalizationState: "not_started",
     });
     mocks.aiMessageCount.mockResolvedValue(0);
     mocks.agentRunUpdateMany.mockResolvedValue({ count: 1 });
@@ -217,8 +222,12 @@ describe("run freshness lifecycle", () => {
   it("updates lastActivityAt when ending a run", async () => {
     await endRun("run-1", "completed", 10, 20);
 
-    expect(mocks.agentRunUpdate).toHaveBeenCalledWith({
-      where: { id: "run-1" },
+    expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: "run-1",
+        status: "running",
+        completedAt: null,
+      },
       data: expect.objectContaining({
         status: "completed",
         completedAt: expect.any(Date),
@@ -230,6 +239,20 @@ describe("run freshness lifecycle", () => {
         costTokensOut: 20,
       }),
     });
+  });
+
+  it("throws a run ownership error when endRun loses the terminal write race", async () => {
+    mocks.agentRunUpdateMany.mockResolvedValueOnce({ count: 0 });
+    mocks.agentRunFindUnique
+      .mockResolvedValueOnce({ durabilityState: "durable" })
+      .mockResolvedValueOnce({
+        id: "run-1",
+        status: "cancelled",
+        completedAt: new Date("2026-03-14T12:00:00.000Z"),
+        finalizationState: "completed",
+      });
+
+    await expect(endRun("run-1", "completed")).rejects.toBeInstanceOf(RunOwnershipError);
   });
 
   it("marks finalization state and abnormal-end classification through centralized helpers", async () => {
@@ -248,25 +271,67 @@ describe("run freshness lifecycle", () => {
       expect.any(Date),
     );
     expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(1, {
-      where: { id: "run-1" },
+      where: {
+        id: "run-1",
+        status: { in: ["running"] },
+        completedAt: null,
+        finalizationState: { in: ["not_started", "in_progress"] },
+      },
+      data: {
+        lastActivityAt: expect.any(Date),
+      },
+    });
+    expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: "run-1",
+        status: "running",
+        completedAt: null,
+      },
       data: {
         finalizationState: "in_progress",
         lastActivityAt: expect.any(Date),
       },
     });
-    expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(2, {
-      where: { id: "run-1" },
+    expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(3, {
+      where: {
+        id: "run-1",
+        status: "running",
+        completedAt: null,
+      },
       data: {
         abnormalEndClassification: "unknown",
         lastActivityAt: expect.any(Date),
       },
     });
-    expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(3, {
-      where: { id: "run-1" },
+    expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(4, {
+      where: {
+        id: "run-1",
+        status: "running",
+        completedAt: null,
+      },
       data: {
         finalizationState: "failed",
         abnormalEndClassification: "finalization_failed",
         lastActivityAt: expect.any(Date),
+      },
+    });
+  });
+
+  it("settles dismissed clarification runs as cancelled terminal state", async () => {
+    await settleClarificationDismissedRun("run-1");
+
+    expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: "run-1",
+        status: { in: ["running", "paused"] },
+      },
+      data: {
+        status: "cancelled",
+        completedAt: expect.any(Date),
+        lastActivityAt: expect.any(Date),
+        lastDurableProgressAt: expect.any(Date),
+        finalizationState: "completed",
+        abnormalEndClassification: null,
       },
     });
   });

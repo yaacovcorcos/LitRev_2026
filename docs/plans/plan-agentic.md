@@ -152,11 +152,15 @@ Every fix entry must include:
 
 - **`FIX-011b` Runtime stabilization, convergence, and durable continuation**
   - **Severity:** P0 trust/reliability
-  - **Symptom:** the major convergence primitives are already shipped, and the latest closeout audit on `2026-04-05` revalidated the shared recovery/convergence battery without finding a new code-path gap, but `FIX-011b` is still open because the repo has not yet completed a sign-offable `U1.6` burn-in window on current production truth.
-  - **Desired end state:** with `FIX-012` retired, keep the shared runtime code closed unless a fresh burn-in window reveals one narrow remaining delta; otherwise finish `U1.6` on a valid current deployment/cohort window and retire `FIX-011b` without reopening settled recovery design.
+  - **Symptom:** the major convergence primitives are already shipped, but a fresh deep audit on `2026-04-16` found narrow shared-runtime deltas that still sit below the current burn-in layer: replaced/cancelled runs are not fully excluded from later writes/finalization, cancelled terminal truth still drifts across live stream vs replay/client lifecycle, blocked-card cancel is not durably replayed as cancelled, long-lineage clarification hydration can read stale history, and post-answer auxiliary work can still retro-fail an already useful run.
+  - **Desired end state:** reopen `FIX-011b` as targeted shared-runtime remediation, not just burn-in paperwork. The shared runtime must first enforce hard execution ownership, one cancelled terminal contract, lineage-safe clarification state, and degrade-only post-answer auxiliaries; then `U1.6` can resume as sign-off instead of rediscovering baseline runtime bugs.
   - **Supporting plans:** `docs/plans/agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md` for supporting closeout detail, `docs/plans/transparency-ui.md` for durable execution-trace truth, and `docs/plans/chat-runtime.md` plus `docs/runbooks/chat-runtime-burn-in.md` for the operational `U1.6` sign-off path.
   - **Exit criteria:**
     - baseline rescue remains retired and burn-in can serve as sign-off instead of bug discovery
+    - stale or replaced runs cannot append run events, persist assistant output, or overwrite terminal state after ownership is lost
+    - cancelled terminal truth converges across live stream, replay, recovery, and client lifecycle, including blocked-card dismissal parity
+    - clarification hydration remains correct on long run lineages instead of depending on the oldest scanned history window
+    - post-answer auxiliary work cannot retro-fail an already-useful completed run
     - the delta audit confirms no remaining shared-runtime gap, or any discovered gap is patched in the shared convergence/recovery path
     - `/ai`, project copilot, and the main conversation show no remaining recovery-action drift under the audited/stressed cases
     - `U1.6` burn-in evidence is complete and sign-offable through `docs/runbooks/chat-runtime-burn-in.md`

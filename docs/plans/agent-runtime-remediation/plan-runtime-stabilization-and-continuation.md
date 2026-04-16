@@ -21,10 +21,10 @@ Use this file for detailed execution thinking about stabilization and continuati
 - The fifth `FIX-011b` stabilization slice now adds a narrow `RunCheckpoint` store for the exact Slice 4 gaps that still needed explicit continuation seeds: recovery can prefer `continue_from_checkpoint` when a valid `tool_result_ready` or `artifact_ready` boundary survives later same-run noise, while legacy runs and non-checkpoint cases still fall back to Slice 4 durable continuation or retry semantics.
 - `CAG-003` is now shipped on top of that foundation: the stream entrypoint resolves strict `continueFromRunId` and best-effort retry continuation through one server-owned `checkpoint -> durable -> fresh retry` selector, explicit `Continue` stays strict, and run-targeted retry/replace actions on the main surfaces can now reuse audited durable work without degrading clean fallback when no safe source remains.
 - The sixth `FIX-011b` / `CAG-001` slice now persists coarse `runPhase` and `phaseEnteredAt` on `AgentRun`, writes phase transitions only at authoritative runtime boundaries, uses ask-phase truth to recover/readmit paused runs without surfacing them as active conflicts, and uses stale finalize-phase truth to bound reconnect behavior instead of treating it as healthy running work.
-- A repo audit against `run-convergence.ts`, `run-recovery.ts`, the current recovery/surface tests, and the canonical runtime plans did not identify a new shared-runtime recovery delta beyond the shipped convergence path.
-- A fresh closeout audit on `2026-04-05` revalidated that conclusion on current `main`: `npx tsc --noEmit` stayed green, the targeted recovery/parity battery passed locally, and production DB preflight succeeded against the real Vercel/Supabase environment for the active deployment.
+- A repo audit against `run-convergence.ts`, `run-recovery.ts`, the current recovery/surface tests, and the canonical runtime plans was later deepened on `2026-04-16`; that deeper pass did identify a narrow new shared-runtime delta beyond the shipped convergence path.
+- The current delta is targeted, not greenfield: execution ownership is still too soft after replace/cancel, cancelled terminal truth still drifts across live stream vs replay/client lifecycle, blocked-card cancel is not durably replayed as cancelled, clarification hydration reads the oldest lineage window instead of the newest one, and post-answer auxiliary work can still retro-fail a useful run.
 - The live `U1.6` report was also found to be operationally stale rather than code-blocked: the previously recorded scoped cohort now yields zero `metricVersion=3` rows while sparse unscoped v3 telemetry still exists, so the next valid burn-in window must refresh cohort scope instead of treating an empty scoped probe as proof of a new runtime defect.
-- The remaining closeout risk is now conditional: once baseline agent stability/trust is restored under `FIX-012`, `U1.6` still needs sign-off-quality burn-in evidence, and any later issue found during that burn-in should be treated as a narrow shared-path patch rather than a new recovery architecture program.
+- `U1.6` therefore remains paused on targeted remediation first: burn-in is still required for sign-off, but it should not be resumed as if the current runtime delta were already closed.
 - Popup still remains a truthful reduced subset only; it should not claim full recovery/continuation parity until shared-engine convergence is explicitly finished.
 
 ## Locked Design Principles
@@ -36,11 +36,24 @@ Use this file for detailed execution thinking about stabilization and continuati
 - Existing recovery primitives are the baseline; this plan hardens and extends them where the current durable contract is incomplete.
 
 ## Closeout Posture
-- Treat `FIX-011b` as a delta-closeout task, not a greenfield runtime program.
+- Treat `FIX-011b` as a targeted shared-runtime remediation program, not as burn-in paperwork and not as a greenfield runtime rewrite.
 - If `FIX-012` is still open because ordinary manual agent use is visibly broken, treat this file as blocked by that broader baseline rescue work instead of treating burn-in as the current rescue task.
-- Assume no schema change; reopen persistence only if a concrete missing persisted fact is discovered during burn-in or a narrow delta audit.
+- Prefer hard execution-boundary fixes over prompt or surface patches. Reopen persistence when that is the simplest honest way to enforce authority or durable truth.
 - Use this file for supporting detail only. [plan-agentic.md](../plan-agentic.md) remains the canonical fix-status owner, and `U1.6` in [chat-runtime.md](../chat-runtime.md) plus [chat-runtime-burn-in.md](../../runbooks/chat-runtime-burn-in.md) remains the operational sign-off owner.
-- If a real runtime drift is found, patch only the shared convergence/recovery path and add focused tests for that uncovered case.
+- If a real runtime drift is found, patch only the shared ownership/convergence/recovery path and add focused tests for that uncovered case.
+
+## Active Delta Checklist
+- **Execution ownership / stale-writer exclusion**
+  - A replaced, cancelled, or otherwise superseded run must not persist new run events, assistant transcript output, abnormal-end markers, degraded-durability state, or finalization writes after ownership is lost.
+  - Shared write helpers should fail closed on inactive runs and let the stale worker stop instead of degrading the winning run's truth.
+- **Cancelled terminal truth convergence**
+  - `runStatus="cancelled"` must mean cancelled everywhere, even when `stopReason` is missing.
+  - Blocked-card dismissal must durably settle the source run as cancelled instead of emitting a live-only cancelled projection while persisted recovery still says paused.
+- **Lineage-safe clarification state**
+  - Clarification suppression/repeat policy must reconstruct from the newest relevant lineage window, not the oldest scanned events.
+  - The current scan-based controller should remain correct on long lineages until a future first-class persisted controller snapshot exists.
+- **Post-answer success boundary**
+  - Once a useful final assistant answer is durably stored, auxiliary follow-on work such as summarization, tracing flush, and conversation-title polish must be degrade-only and must not flip the run to failed.
 
 ## Workstream A: Abnormal-End Classification
 - Classify disconnects and finalization failures durably enough to stop guessing from generic broken-stream symptoms.
@@ -101,7 +114,7 @@ Everything else remains deferred:
 - No surface should show contradictory same-run timeout/conflict/fallback states once stabilization work is complete.
 
 ## Validation and Burn-In
-- Burn-in must cover forced disconnect after tool result, disconnect before paused question delivery, recovery-required persistence failure behavior, no-forward-progress detection, degraded continuation correctness, and elimination of contradictory same-run recovery/error states.
+- Burn-in must cover forced disconnect after tool result, disconnect before paused question delivery, recovery-required persistence failure behavior, no-forward-progress detection, degraded continuation correctness, elimination of contradictory same-run recovery/error states, cancelled terminal parity, and stale-writer exclusion after replace/cancel.
 - Stabilization is not done when unit tests pass; it is done when the runtime converges truthfully under those harnessed failure classes and the existing `U1.6` burn-in thresholds are met.
 - `chat-runtime-burn-in.md` remains the only operational canary/sign-off source. This file should not restate or replace that contract.
 

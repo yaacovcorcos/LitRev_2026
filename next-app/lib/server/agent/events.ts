@@ -7,7 +7,10 @@ import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import type { Prisma } from "@prisma/client";
 import type { RunEventType, RunPhase } from "@/types/agent";
-import { noteObservedRunActivity } from "@/lib/server/agent/run";
+import {
+    assertRunWritableInTransaction,
+    noteObservedRunActivity,
+} from "@/lib/server/agent/run";
 import { isDurableProgressRunEventType } from "@/lib/server/agent/run-event-authority";
 import { transitionRunPhaseInTransaction } from "@/lib/server/agent/run-phase";
 
@@ -24,6 +27,12 @@ export interface EmitEventExtras {
 const MAX_SEQUENCE_RETRY_ATTEMPTS = 5;
 
 type RunEventTransactionClient = Prisma.TransactionClient;
+
+function getAllowedStatusesForEventType(type: RunEventType) {
+    return type === "user_input_resolved"
+        ? ["running", "paused"] as const
+        : ["running"] as const;
+}
 
 function getRunPhaseForEventType(type: RunEventType): RunPhase | null {
     switch (type) {
@@ -61,6 +70,11 @@ export async function emitEventWithinTransaction(
     payload: unknown,
     extras?: EmitEventExtras,
 ) {
+    await assertRunWritableInTransaction(tx, {
+        runId,
+        allowedStatuses: [...getAllowedStatusesForEventType(type)],
+        requireIncomplete: type !== "user_input_resolved",
+    });
     const lastEvent = await tx.runEvent.findFirst({
         where: { runId },
         orderBy: { sequence: "desc" },
@@ -90,7 +104,11 @@ export async function emitEventWithinTransaction(
     }
 
     await tx.agentRun.updateMany({
-        where: { id: runId, status: "running" },
+        where: {
+            id: runId,
+            status: { in: [...getAllowedStatusesForEventType(type)] },
+            ...(type !== "user_input_resolved" ? { completedAt: null } : {}),
+        },
         data: {
             lastActivityAt: event.createdAt,
             ...(isDurableProgressRunEventType(type)

@@ -6,6 +6,7 @@
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import { logServerError } from "@/lib/server/logging";
+import type { Prisma } from "@prisma/client";
 import type {
     AgentMode,
     RunAbnormalEndClassification,
@@ -48,6 +49,109 @@ export interface RunLineageNode {
 }
 
 export const RUN_HEARTBEAT_INTERVAL_MS = 15_000;
+
+type RunWriteTransactionClient = Prisma.TransactionClient;
+type RunWritableStatus = Extract<RunStatus, "running" | "paused">;
+
+type RunWriteSnapshot = {
+    id: string;
+    status: RunStatus;
+    completedAt: Date | null;
+    finalizationState: RunFinalizationState;
+};
+
+export class RunOwnershipError extends Error {
+    readonly name = "RunOwnershipError";
+    readonly code = "RUN_OWNERSHIP_LOST";
+    readonly runId: string;
+    readonly status: RunStatus | null;
+    readonly completedAt: string | null;
+    readonly finalizationState: RunFinalizationState | null;
+
+    constructor(params: {
+        runId: string;
+        status: RunStatus | null;
+        completedAt: Date | null;
+        finalizationState: RunFinalizationState | null;
+    }) {
+        const statusLabel = params.status ?? "missing";
+        const finalizationLabel = params.finalizationState ?? "unknown";
+        super(
+            `Run ${params.runId} is no longer writable (status=${statusLabel}, finalizationState=${finalizationLabel}).`,
+        );
+        this.runId = params.runId;
+        this.status = params.status;
+        this.completedAt = params.completedAt?.toISOString() ?? null;
+        this.finalizationState = params.finalizationState;
+    }
+}
+
+export function isRunOwnershipError(error: unknown): error is RunOwnershipError {
+    return error instanceof RunOwnershipError;
+}
+
+async function getRunWriteSnapshot(
+    client: Pick<RunWriteTransactionClient, "agentRun">,
+    runId: string,
+): Promise<RunWriteSnapshot | null> {
+    const run = await client.agentRun.findUnique({
+        where: { id: runId },
+        select: {
+            id: true,
+            status: true,
+            completedAt: true,
+            finalizationState: true,
+        },
+    });
+    if (!run) return null;
+    return {
+        id: run.id,
+        status: run.status as RunStatus,
+        completedAt: run.completedAt,
+        finalizationState: run.finalizationState as RunFinalizationState,
+    };
+}
+
+async function throwRunOwnershipError(
+    client: Pick<RunWriteTransactionClient, "agentRun">,
+    runId: string,
+): Promise<never> {
+    const snapshot = await getRunWriteSnapshot(client, runId);
+    throw new RunOwnershipError({
+        runId,
+        status: snapshot?.status ?? null,
+        completedAt: snapshot?.completedAt ?? null,
+        finalizationState: snapshot?.finalizationState ?? null,
+    });
+}
+
+export async function assertRunWritableInTransaction(
+    tx: RunWriteTransactionClient,
+    params: {
+        runId: string;
+        allowedStatuses: RunWritableStatus[];
+        requireIncomplete?: boolean;
+        allowedFinalizationStates?: RunFinalizationState[];
+        at?: Date;
+    },
+): Promise<void> {
+    const at = params.at ?? new Date();
+    const result = await tx.agentRun.updateMany({
+        where: {
+            id: params.runId,
+            status: { in: params.allowedStatuses },
+            ...(params.requireIncomplete ? { completedAt: null } : {}),
+            ...(params.allowedFinalizationStates
+                ? { finalizationState: { in: params.allowedFinalizationStates } }
+                : {}),
+        },
+        data: {
+            lastActivityAt: at,
+        },
+    });
+    if (result.count === 1) return;
+    await throwRunOwnershipError(tx, params.runId);
+}
 
 type RunActivityListener = (at: Date) => void;
 
@@ -98,9 +202,20 @@ export async function markRunFinalizationState(
 ) {
     const result = state === "in_progress"
         ? await prisma.$transaction(async (tx) => {
+            await assertRunWritableInTransaction(tx, {
+                runId,
+                allowedStatuses: ["running"],
+                requireIncomplete: true,
+                allowedFinalizationStates: ["not_started", "in_progress"],
+                at,
+            });
             await transitionRunPhaseInTransaction(tx, runId, "finalize", at);
             return tx.agentRun.updateMany({
-                where: { id: runId },
+                where: {
+                    id: runId,
+                    status: "running",
+                    completedAt: null,
+                },
                 data: {
                     finalizationState: state,
                     lastActivityAt: at,
@@ -108,7 +223,11 @@ export async function markRunFinalizationState(
             });
         })
         : await prisma.agentRun.updateMany({
-            where: { id: runId },
+            where: {
+                id: runId,
+                status: "running",
+                completedAt: null,
+            },
             data: {
                 finalizationState: state,
                 lastActivityAt: at,
@@ -126,7 +245,11 @@ export async function markRunAbnormalEndClassification(
     at = new Date(),
 ) {
     const result = await prisma.agentRun.updateMany({
-        where: { id: runId },
+        where: {
+            id: runId,
+            status: "running",
+            completedAt: null,
+        },
         data: {
             abnormalEndClassification: classification,
             lastActivityAt: at,
@@ -144,7 +267,11 @@ export async function markRunDurabilityDegraded(
     at = new Date(),
 ) {
     const result = await prisma.agentRun.updateMany({
-        where: { id: runId },
+        where: {
+            id: runId,
+            status: "running",
+            completedAt: null,
+        },
         data: {
             durabilityState: "degraded",
             durabilityDegradedReason: reason,
@@ -160,7 +287,11 @@ export async function markRunDurabilityDegraded(
 
 export async function markRunFinalizationFailed(runId: string, at = new Date()) {
     const result = await prisma.agentRun.updateMany({
-        where: { id: runId },
+        where: {
+            id: runId,
+            status: "running",
+            completedAt: null,
+        },
         data: {
             finalizationState: "failed",
             abnormalEndClassification: "finalization_failed",
@@ -293,8 +424,12 @@ export async function endRun(
     });
     const preserveAbnormalClassification =
         existing?.durabilityState === "degraded";
-    const run = await prisma.agentRun.update({
-        where: { id: runId },
+    const updated = await prisma.agentRun.updateMany({
+        where: {
+            id: runId,
+            status: "running",
+            completedAt: null,
+        },
         data: {
             status,
             completedAt,
@@ -308,6 +443,15 @@ export async function endRun(
             ...(costTokensOut !== undefined ? { costTokensOut } : {}),
         },
     });
+    if (updated.count !== 1) {
+        await throwRunOwnershipError({ agentRun: prisma.agentRun }, runId);
+    }
+    const run = await prisma.agentRun.findUnique({
+        where: { id: runId },
+    });
+    if (!run) {
+        throw new Error(`Run not found after finalization: ${runId}`);
+    }
     notifyRunActivity(runId, completedAt);
 
     // Fire-and-forget: extract memories from completed conversations
@@ -340,6 +484,30 @@ async function scheduleMemoryExtraction(
  */
 export async function cancelRun(runId: string) {
     return endRun(runId, "cancelled");
+}
+
+export async function settleClarificationDismissedRun(
+    runId: string,
+    at = new Date(),
+) {
+    const result = await prisma.agentRun.updateMany({
+        where: {
+            id: runId,
+            status: { in: ["running", "paused"] },
+        },
+        data: {
+            status: "cancelled",
+            completedAt: at,
+            lastActivityAt: at,
+            lastDurableProgressAt: at,
+            finalizationState: "completed",
+            abnormalEndClassification: null,
+        },
+    });
+    if (result.count > 0) {
+        notifyRunActivity(runId, at);
+    }
+    return result.count;
 }
 
 /**

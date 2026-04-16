@@ -187,6 +187,7 @@ Rules:
 - [ ] `U1.6` Cross-surface replay parity and burn-in sign-off
   - Problem: the shared runtime is shipped, but the operational proof that it is stable enough to treat as canonical is still incomplete. `U1.6` is later-stage validation, not the current rescue task, and must not be used as a substitute for fixing obvious baseline agent breakage in ordinary manual use.
   - Remaining work:
+    - keep this task paused until the targeted `FIX-011b` runtime deltas are patched; do not treat the current window as sign-off-only while stale-writer exclusion and cancelled terminal parity are still open
     - resume this task only while baseline agent usability/trust is healthy enough that burn-in is validating convergence instead of rediscovering obvious product failures
     - finish canary evidence using `docs/runbooks/chat-runtime-burn-in.md`
     - advance `docs/reports/u1-6-burn-in.md` in place as the single canonical live report for the active window rather than creating parallel live reports
@@ -197,6 +198,10 @@ Rules:
     - close the remaining protocol live-sync parity gap by making `/ai` artifact review and undo emit `protocolPatch` with project-data invalidation, matching project copilot immediate protocol patch behavior
     - prove parity for durable recovery truth, not only reducer-state parity
     - prove phase-backed paused-input and stale-finalize recovery behavior across the supported main surfaces
+    - prove that a replaced/cancelled run cannot append replay-authoritative state or overwrite terminal truth after ownership is lost
+    - prove that cancelled `runStatus` stays cancelled across live stream, recovery replay, and client lifecycle classification
+    - prove that blocked-card dismissals replay as cancelled terminal truth rather than reverting to paused source-run truth
+    - prove that long-lineage clarification hydration still preserves the shared suppression/resume contract
     - add burn-in checks for no indefinite reconnect loops, no contradictory same-run states, and truthful degraded continuation behavior
     - keep manual `project` evidence precise by naming the exact entrypoint exercised and covering both the main project conversation and side-panel project copilot entrypoints during the active window
     - serve as the operational sign-off blocker for retiring `FIX-011b` once the runtime delta audit confirms no additional shared-runtime gap remains
@@ -253,6 +258,8 @@ Contract tests must continue covering:
 7. Structured blocked-request resolution, cancellation, and fallback invariants.
 8. Typed tool lifecycle transitions.
 9. Abnormal-end cleanup and reconnect-eligibility invariants.
+10. Cancelled terminal parity invariants across live stream, replay, and client lifecycle classification.
+11. Stale-writer exclusion after replace/cancel and finalization races.
 
 Integration tests must continue covering:
 1. `/ai` global roundtrip.

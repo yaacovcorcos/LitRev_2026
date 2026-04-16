@@ -40,8 +40,16 @@ const mocks = vi.hoisted(() => {
     markRunFinalizationState: vi.fn(),
     markRunFinalizationFailed: vi.fn(),
     markRunAbnormalEndClassification: vi.fn(),
+    isRunOwnershipError: vi.fn(() => false),
     startRunTrace: vi.fn(() => trace),
     flushTracing: vi.fn(),
+    addAssistantMessageToConversationForRun: vi.fn(async () => ({
+      id: "msg-1",
+      role: "assistant",
+      content: "assistant content",
+      createdAt: new Date("2026-03-11T12:00:00.000Z").toISOString(),
+    })),
+    autoSummarizeIfNeeded: vi.fn(async () => {}),
     resolveAuthenticatedIdentity: vi.fn(),
     trace,
     provider,
@@ -63,10 +71,11 @@ vi.mock("@/lib/server/ai/rate-limiter", () => ({
 
 vi.mock("@/lib/server/ai/memory", () => ({
   getOrCreateConversation: vi.fn(),
+  addAssistantMessageToConversationForRun: mocks.addAssistantMessageToConversationForRun,
   addMessageToConversation: vi.fn(),
   getConversationWithSummary: mocks.getConversationWithSummary,
   getConversationWithSummaryById: mocks.getConversationWithSummaryById,
-  autoSummarizeIfNeeded: vi.fn(async () => {}),
+  autoSummarizeIfNeeded: mocks.autoSummarizeIfNeeded,
 }));
 
 vi.mock("@/lib/server/memory", () => ({
@@ -104,6 +113,7 @@ vi.mock("@/lib/server/agent/run", () => ({
   markRunFinalizationState: mocks.markRunFinalizationState,
   markRunFinalizationFailed: mocks.markRunFinalizationFailed,
   markRunAbnormalEndClassification: mocks.markRunAbnormalEndClassification,
+  isRunOwnershipError: mocks.isRunOwnershipError,
 }));
 
 vi.mock("@/lib/server/agent/events", () => ({
@@ -168,7 +178,7 @@ vi.mock("@/lib/agent/loop-controller", () => ({
 
 vi.mock("@/lib/server/ai/tracing", () => ({
   startRunTrace: mocks.startRunTrace,
-  startLLMGeneration: vi.fn(),
+  startLLMGeneration: vi.fn(() => ({ update: vi.fn(), end: vi.fn() })),
   startContextSpan: vi.fn(() => ({ update: vi.fn(() => ({ end: vi.fn() })) })),
   flushTracing: mocks.flushTracing,
 }));
@@ -587,6 +597,31 @@ describe("AIService run finalization", () => {
       },
     });
     expect(mocks.markRunAbnormalEndClassification).toHaveBeenCalledWith("run-1", "unknown");
+  });
+
+  it("does not retro-fail a completed run when auto-summarization throws", async () => {
+    mocks.autoSummarizeIfNeeded.mockRejectedValueOnce(new Error("summary write failed"));
+
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    });
+
+    const chunks: Array<{ type?: string; runStatus?: string; stopReason?: string }> = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      runStatus: "completed",
+      stopReason: "natural",
+    });
+    expect(mocks.endRun).toHaveBeenCalledWith("run-1", "completed", expect.any(Number), expect.any(Number));
+    expect(mocks.markRunFinalizationFailed).not.toHaveBeenCalled();
   });
 
   it("marks finalization as failed when endRun throws during forced cleanup", async () => {

@@ -83,7 +83,12 @@ function buildSyntheticTerminalReconciliationChunk(
         actualModel: run.model ?? undefined,
         actualModelSource: run.model ? "requested" : "unknown",
         conversationId: run.conversationId ?? undefined,
-        stopReason: runStatus === "paused" ? "paused_for_input" : undefined,
+        stopReason:
+            runStatus === "paused"
+                ? "paused_for_input"
+                : runStatus === "cancelled"
+                    ? "cancelled"
+                    : undefined,
     };
 }
 

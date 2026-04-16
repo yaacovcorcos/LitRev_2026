@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   emitEvent: vi.fn(),
   markRunDurabilityDegraded: vi.fn(),
+  isRunOwnershipError: vi.fn(),
 }));
 
 vi.mock("@/lib/server/agent/events", () => ({
@@ -11,6 +12,7 @@ vi.mock("@/lib/server/agent/events", () => ({
 
 vi.mock("@/lib/server/agent/run", () => ({
   markRunDurabilityDegraded: mocks.markRunDurabilityDegraded,
+  isRunOwnershipError: mocks.isRunOwnershipError,
 }));
 
 const { recordRunEvent, getRunEventDurabilityClass } = await import("@/lib/server/agent/run-event-recorder");
@@ -20,6 +22,7 @@ describe("run event recorder", () => {
     vi.clearAllMocks();
     mocks.emitEvent.mockResolvedValue({ id: "evt-1" });
     mocks.markRunDurabilityDegraded.mockResolvedValue(1);
+    mocks.isRunOwnershipError.mockReturnValue(false);
   });
 
   it("classifies context assembly as observability-only", () => {
@@ -74,6 +77,22 @@ describe("run event recorder", () => {
       failureMode: "strict",
       logContext: "tool_call:search_pubmed",
     })).rejects.toThrow("hard failure");
+
+    expect(mocks.markRunDurabilityDegraded).not.toHaveBeenCalled();
+  });
+
+  it("rethrows run ownership errors without degrading durability", async () => {
+    const ownershipError = new Error("run no longer writable");
+    mocks.emitEvent.mockRejectedValueOnce(ownershipError);
+    mocks.isRunOwnershipError.mockReturnValueOnce(true);
+
+    await expect(recordRunEvent({
+      runId: "run-1",
+      type: "tool_result",
+      payload: { callId: "call-1", result: { ok: true } },
+      failureMode: "degrade",
+      logContext: "tool_result:search_pubmed",
+    })).rejects.toBe(ownershipError);
 
     expect(mocks.markRunDurabilityDegraded).not.toHaveBeenCalled();
   });
