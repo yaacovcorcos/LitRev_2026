@@ -1,0 +1,676 @@
+.stage {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.stageMeta {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.stageLabel {
+    margin: 0 0 6px;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent-secondary);
+}
+
+.stageTitle {
+    margin: 0;
+    font-size: var(--text-3xl);
+    color: var(--text-primary);
+}
+
+.stageDescription {
+    margin: 8px 0 0;
+    max-width: 700px;
+    font-size: var(--text-lg);
+    line-height: 1.55;
+    color: var(--text-secondary);
+}
+
+.stageChips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.stageChip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-surface) 90%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-default) 92%, transparent);
+    color: var(--text-secondary);
+    text-transform: capitalize;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+.canvas {
+    width: 100%;
+    margin: 0 auto;
+    border-radius: 32px;
+    border: 1px solid color-mix(in srgb, var(--border-default) 92%, transparent);
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 95%, transparent), color-mix(in srgb, var(--bg-surface) 88%, transparent)),
+        var(--bg-surface);
+    box-shadow: var(--shadow-xl);
+    overflow: hidden;
+}
+
+.canvas-desktop {
+    max-width: 1320px;
+}
+
+.canvas-tablet {
+    max-width: 980px;
+}
+
+.canvas-mobile {
+    max-width: 430px;
+}
+
+.density-comfortable {
+    --surface-padding: 24px;
+    --surface-gap: 20px;
+}
+
+.density-compact {
+    --surface-padding: 18px;
+    --surface-gap: 14px;
+}
+
+.projectHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    padding: var(--surface-padding);
+    border-bottom: 1px solid color-mix(in srgb, var(--border-default) 92%, transparent);
+    background:
+        radial-gradient(circle at top right, color-mix(in srgb, var(--accent-primary) 8%, transparent), transparent 32%),
+        color-mix(in srgb, var(--bg-surface) 94%, transparent);
+}
+
+.projectHeaderCopy {
+    min-width: 0;
+}
+
+.projectEyebrow {
+    margin: 0 0 6px;
+    font-size: var(--text-sm);
+    color: var(--accent-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: var(--font-weight-semibold);
+}
+
+.projectTitle {
+    margin: 0;
+    font-size: var(--text-4xl);
+    line-height: 1.1;
+    color: var(--text-primary);
+}
+
+.projectSubtitle {
+    margin: 8px 0 0;
+    max-width: 720px;
+    font-size: var(--text-lg);
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.projectHeaderActions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.statusPill,
+.ghostButton,
+.primaryButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--touch-target-min);
+    padding: 0 16px;
+    border-radius: 999px;
+    font-size: var(--text-md);
+    font-weight: var(--font-weight-semibold);
+}
+
+.statusPill {
+    background: color-mix(in srgb, var(--accent-secondary) 12%, var(--bg-surface));
+    color: var(--accent-secondary-hover);
+}
+
+.statusPillWarm {
+    background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-surface));
+    color: var(--accent-primary-dark);
+}
+
+.ghostButton,
+.primaryButton {
+    border: none;
+}
+
+.ghostButton {
+    background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+    color: var(--text-primary);
+}
+
+.primaryButton {
+    background: var(--accent-primary);
+    color: var(--color-white);
+}
+
+.tabBar {
+    display: flex;
+    gap: 10px;
+    padding: 14px var(--surface-padding);
+    border-bottom: 1px solid color-mix(in srgb, var(--border-default) 92%, transparent);
+    overflow-x: auto;
+}
+
+.tab {
+    display: inline-flex;
+    align-items: center;
+    min-height: 38px;
+    padding: 0 14px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+    color: var(--text-secondary);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.tabActive {
+    background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-surface));
+    color: var(--text-primary);
+}
+
+.surfaceBody {
+    padding: var(--surface-padding);
+}
+
+.regionStack,
+.cardStack,
+.editorMain,
+.editorSidebar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--surface-gap);
+}
+
+.heroCard,
+.surfaceCard,
+.timelineCard,
+.composerCard {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px;
+    border-radius: 24px;
+    border: 1px solid color-mix(in srgb, var(--border-default) 94%, transparent);
+    background: color-mix(in srgb, var(--bg-surface) 94%, transparent);
+    box-shadow: var(--shadow-sm);
+}
+
+.heroCard {
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 20px;
+    background:
+        radial-gradient(circle at top left, color-mix(in srgb, var(--accent-tertiary) 14%, transparent), transparent 28%),
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 98%, transparent), color-mix(in srgb, var(--bg-surface) 92%, transparent));
+}
+
+.heroCopy {
+    flex: 1;
+}
+
+.heroLabel {
+    margin: 0 0 8px;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent-primary);
+}
+
+.heroTitle {
+    margin: 0;
+    font-size: clamp(24px, 4vw, 34px);
+    line-height: 1.12;
+    color: var(--text-primary);
+}
+
+.heroBody {
+    margin: 12px 0 0;
+    max-width: 620px;
+    font-size: var(--text-lg);
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.heroAside {
+    width: min(360px, 100%);
+}
+
+.metricOrbit,
+.metricStrip,
+.workstreamGrid,
+.protocolGrid,
+.memoryGrid,
+.notesGrid,
+.indexGrid {
+    display: grid;
+    gap: var(--surface-gap);
+}
+
+.metricOrbit {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.metricStrip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.metricCard,
+.stripCard {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 16px;
+    border-radius: 20px;
+    background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-default) 92%, transparent);
+}
+
+.metricLabel,
+.contextLabel {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: var(--font-weight-semibold);
+}
+
+.metricValue,
+.previewTitle {
+    color: var(--text-primary);
+    font-size: var(--text-3xl);
+}
+
+.metricDetail,
+.stripCard small {
+    color: var(--text-secondary);
+    font-size: var(--text-md);
+    line-height: 1.4;
+}
+
+.stripCard strong {
+    font-size: var(--text-2xl);
+    color: var(--text-primary);
+}
+
+.contentGrid,
+.conversationLayout,
+.editorLayout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: var(--surface-gap);
+}
+
+.conversationLayout {
+    grid-template-columns: minmax(0, 1fr) 300px;
+}
+
+.editorLayout {
+    grid-template-columns: 240px minmax(0, 1fr) 300px;
+}
+
+.sideRail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--surface-gap);
+}
+
+.surfaceCardHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.surfaceCardHeader h5 {
+    margin: 0;
+    font-size: var(--text-2xl);
+    color: var(--text-primary);
+}
+
+.surfaceCardHeader span {
+    color: var(--text-secondary);
+    font-size: var(--text-md);
+    text-align: right;
+    line-height: 1.4;
+}
+
+.workstreamGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.workstreamCard,
+.indexCard {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 18px;
+    border-radius: 22px;
+    border: 1px solid color-mix(in srgb, var(--border-default) 92%, transparent);
+    background: color-mix(in srgb, var(--bg-surface) 96%, transparent);
+    text-decoration: none;
+    color: inherit;
+    transition:
+        transform var(--duration-fast) var(--ease-standard),
+        border-color var(--duration-fast) var(--ease-standard);
+}
+
+.workstreamCard:hover,
+.indexCard:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--accent-primary) 28%, transparent);
+}
+
+.workstreamCard strong,
+.indexTitle {
+    font-size: var(--text-xl);
+    color: var(--text-primary);
+}
+
+.workstreamCard p,
+.indexBody,
+.protocolBody,
+.previewBody,
+.contextCard strong,
+.surfaceCard p {
+    margin: 0;
+    font-size: var(--text-md);
+    line-height: 1.55;
+    color: var(--text-secondary);
+}
+
+.workstreamStatus,
+.indexKicker,
+.studySignal,
+.studyStatus,
+.indexAction,
+.liveBadge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+}
+
+.workstreamStatus,
+.indexKicker,
+.studySignal {
+    background: color-mix(in srgb, var(--accent-secondary) 12%, var(--bg-surface));
+    color: var(--accent-secondary-hover);
+}
+
+.studyStatus,
+.indexAction,
+.liveBadge {
+    background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-surface));
+    color: var(--accent-primary-dark);
+}
+
+.activityList,
+.timelineList,
+.studyTable,
+.sectionList,
+.previewFacts {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.activityRow,
+.studyRow,
+.sectionRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--bg-secondary) 86%, transparent);
+}
+
+.activityIcon {
+    font-size: 18px;
+    color: var(--accent-primary);
+}
+
+.activityBody {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.activityBody strong,
+.studyRow strong,
+.sectionRow strong {
+    color: var(--text-primary);
+    font-size: var(--text-md);
+}
+
+.activityBody span,
+.studyRow p,
+.sectionRow span {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.45;
+    margin: 0;
+}
+
+.bulletList {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 10px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.timelineItem {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 18px;
+    border-radius: 20px;
+    border: 1px solid color-mix(in srgb, var(--border-default) 92%, transparent);
+}
+
+.timelineUser {
+    background: color-mix(in srgb, var(--accent-tertiary) 10%, var(--bg-surface));
+}
+
+.timelineAssistant {
+    background: color-mix(in srgb, var(--bg-surface) 98%, transparent);
+}
+
+.timelineArtifact {
+    background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-surface));
+}
+
+.timelineMeta,
+.studyMeta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.timelineMeta strong,
+.timelineItem p {
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.timelineItem p {
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.receiptRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.receiptChip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-secondary) 96%, transparent);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+
+.progressStrip {
+    padding: 12px 16px;
+    border-radius: 16px 16px 10px 10px;
+    background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface));
+    color: var(--accent-primary-dark);
+    font-size: var(--text-md);
+    font-weight: var(--font-weight-medium);
+}
+
+.composerBox {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px;
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--bg-secondary) 90%, transparent);
+}
+
+.composerPlaceholder {
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.composerActions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.contextCard {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 16px;
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--bg-secondary) 86%, transparent);
+}
+
+.studyRowActive,
+.sectionRowActive,
+.protocolHighlight,
+.memoryHighlight,
+.noteHighlight {
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 28%, transparent);
+    background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface));
+}
+
+.previewFacts span {
+    display: flex;
+    align-items: center;
+    min-height: 36px;
+    padding: 0 12px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+}
+
+.emptySurface {
+    padding: 52px 24px;
+}
+
+.indexGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 1180px) {
+    .contentGrid,
+    .conversationLayout {
+        grid-template-columns: 1fr;
+    }
+
+    .editorLayout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 900px) {
+    .heroCard {
+        flex-direction: column;
+    }
+
+    .metricStrip,
+    .metricOrbit,
+    .workstreamGrid,
+    .protocolGrid,
+    .memoryGrid,
+    .notesGrid,
+    .indexGrid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 767px) {
+    .canvas {
+        border-radius: 24px;
+    }
+
+    .projectHeader,
+    .projectHeaderActions,
+    .stageMeta {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .projectTitle {
+        font-size: 22px;
+    }
+
+    .surfaceCard,
+    .timelineCard,
+    .composerCard,
+    .heroCard {
+        padding: 16px;
+        border-radius: 20px;
+    }
+}

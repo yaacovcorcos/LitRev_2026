@@ -10,6 +10,7 @@ type SidebarProps = {
   collapsed?: boolean;
   onToggle?: () => void;
   responsiveV2Enabled?: boolean;
+  hideUserMenu?: boolean;
 };
 
 export function Sidebar({
@@ -19,6 +20,7 @@ export function Sidebar({
   collapsed = false,
   onToggle,
   responsiveV2Enabled = false,
+  hideUserMenu = false,
 }: SidebarProps) {
   const mainNavId = "sidebar-main-nav";
   const bottomNavId = "sidebar-bottom-nav";
@@ -79,7 +81,7 @@ export function Sidebar({
         </div>
       ) : null}
 
-      <UserMenu collapsed={collapsed} />
+      {hideUserMenu ? null : <UserMenu collapsed={collapsed} />}
     </aside>
   );
 }

@@ -28,6 +28,8 @@ type AppShellProps = {
   mainClassName?: string;
   initiallyCollapsed?: boolean;
   forceAdminNav?: boolean;
+  skipAdminStatusCheck?: boolean;
+  skipUserMenu?: boolean;
 };
 
 function resolveDefaultCollapse(
@@ -51,6 +53,8 @@ export function AppShell({
   mainClassName = "",
   initiallyCollapsed,
   forceAdminNav = false,
+  skipAdminStatusCheck = false,
+  skipUserMenu = false,
 }: AppShellProps) {
   const pathname = usePathname();
   const shellV2Enabled = isMobileShellV2Enabled();
@@ -115,6 +119,11 @@ export function AppShell({
       return;
     }
 
+    if (skipAdminStatusCheck) {
+      setIsPlatformAdmin(false);
+      return;
+    }
+
     let cancelled = false;
     const controller = new AbortController();
 
@@ -167,7 +176,7 @@ export function AppShell({
       }
       controller.abort();
     };
-  }, [forceAdminNav]);
+  }, [forceAdminNav, skipAdminStatusCheck]);
 
   const cssVars = useMemo(() => {
     const shellSidebarWidth = shellV2Enabled && viewportClass === "phone"
@@ -249,6 +258,7 @@ export function AppShell({
           collapsed={collapsed}
           onToggle={toggleSidebar}
           responsiveV2Enabled={shellV2Enabled}
+          hideUserMenu={skipUserMenu}
         />
         <main
           className={mainClassNames}

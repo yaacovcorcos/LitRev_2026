@@ -333,4 +333,19 @@ describe("AppShell default sidebar collapse", () => {
     });
     expect(mockFetch).not.toHaveBeenCalled();
   });
+
+  it("skips admin status loading when requested", async () => {
+    mockUsePathname.mockReturnValue("/design");
+
+    render(
+      <AppShell activeNav="projects" skipAdminStatusCheck>
+        <div>content</div>
+      </AppShell>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar").getAttribute("data-has-admin")).toBe("false");
+    });
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
 });

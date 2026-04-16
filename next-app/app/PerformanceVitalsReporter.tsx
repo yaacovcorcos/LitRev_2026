@@ -111,6 +111,7 @@ export function PerformanceVitalsReporter() {
       : null;
 
     const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
+    if (pathname.startsWith("/design")) return;
     const routeContext = resolvePerformanceRouteContext(pathname);
     const network = getNetwork();
 

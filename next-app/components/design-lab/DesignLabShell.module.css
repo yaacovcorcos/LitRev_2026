@@ -1,0 +1,302 @@
+.main {
+    background:
+        radial-gradient(circle at top left, color-mix(in srgb, var(--accent-tertiary) 18%, transparent), transparent 28%),
+        radial-gradient(circle at top right, color-mix(in srgb, var(--accent-secondary) 18%, transparent), transparent 26%),
+        var(--bg-body);
+}
+
+.scrollBody {
+    padding-top: 28px;
+    padding-bottom: calc(36px + var(--safe-area-bottom));
+}
+
+.header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.headerCopy {
+    max-width: 760px;
+}
+
+.eyebrow {
+    margin: 0 0 10px;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-secondary);
+}
+
+.title {
+    margin: 0;
+    font-size: clamp(28px, 4vw, 42px);
+    line-height: 1.05;
+    color: var(--text-primary);
+}
+
+.description {
+    margin: 12px 0 0;
+    max-width: 720px;
+    font-size: var(--text-xl);
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.headerActions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+    min-width: 220px;
+}
+
+.primaryAction,
+.secondaryAction {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--touch-target-min);
+    padding: 0 16px;
+    border-radius: 999px;
+    font-size: var(--text-md);
+    font-weight: var(--font-weight-semibold);
+    text-decoration: none;
+    transition:
+        background-color var(--duration-fast) var(--ease-standard),
+        border-color var(--duration-fast) var(--ease-standard),
+        transform var(--duration-fast) var(--ease-standard);
+}
+
+.primaryAction {
+    border: none;
+    background: var(--accent-primary);
+    color: var(--color-white);
+    cursor: pointer;
+}
+
+.primaryAction:hover,
+.secondaryAction:hover {
+    transform: translateY(-1px);
+}
+
+.secondaryAction {
+    border: 1px solid var(--border-default);
+    background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+    color: var(--text-primary);
+}
+
+.primaryAction:focus-visible,
+.secondaryAction:focus-visible,
+.surfaceLink:focus-visible,
+.choiceButton:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-ring-strong);
+}
+
+.copyStatus {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
+.workspace {
+    display: grid;
+    grid-template-columns: minmax(280px, 320px) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+}
+
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: sticky;
+    top: calc(var(--content-top-offset) + 8px);
+}
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 18px;
+    border: 1px solid color-mix(in srgb, var(--border-default) 88%, transparent);
+    border-radius: 24px;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-surface) 92%, transparent), color-mix(in srgb, var(--bg-surface) 78%, transparent)),
+        var(--glass-bg);
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(18px);
+}
+
+.panelHeader {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.panelHeader .material-icons-round {
+    font-size: 20px;
+    color: var(--accent-primary);
+}
+
+.panelTitle {
+    margin: 0 0 4px;
+    font-size: var(--text-xl);
+    color: var(--text-primary);
+}
+
+.panelCopy {
+    margin: 0;
+    font-size: var(--text-md);
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.surfaceNav {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.surfaceLink {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px;
+    border-radius: 18px;
+    text-decoration: none;
+    color: inherit;
+    background: color-mix(in srgb, var(--bg-surface) 76%, transparent);
+    border: 1px solid transparent;
+    transition:
+        border-color var(--duration-fast) var(--ease-standard),
+        background-color var(--duration-fast) var(--ease-standard),
+        transform var(--duration-fast) var(--ease-standard);
+}
+
+.surfaceLink:hover {
+    border-color: color-mix(in srgb, var(--accent-primary) 28%, transparent);
+    transform: translateY(-1px);
+}
+
+.surfaceLinkActive {
+    border-color: color-mix(in srgb, var(--accent-primary) 32%, transparent);
+    background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-surface));
+}
+
+.surfaceKicker {
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--accent-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.surfaceTitle {
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+}
+
+.surfaceSummary {
+    font-size: var(--text-md);
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+
+.choiceGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.choiceLabel {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.choiceRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.choiceButton {
+    min-height: 38px;
+    padding: 0 14px;
+    border: 1px solid color-mix(in srgb, var(--border-default) 96%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+    color: var(--text-secondary);
+    font-size: var(--text-md);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+}
+
+.choiceButtonActive {
+    border-color: color-mix(in srgb, var(--accent-primary) 36%, transparent);
+    background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-surface));
+    color: var(--text-primary);
+}
+
+.editList {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 10px;
+    color: var(--text-secondary);
+    font-size: var(--text-md);
+    line-height: 1.5;
+}
+
+.editList code {
+    font-size: var(--text-sm);
+}
+
+.canvasColumn {
+    min-width: 0;
+}
+
+@media (max-width: 1100px) {
+    .workspace {
+        grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+        position: static;
+    }
+
+    .header {
+        flex-direction: column;
+    }
+
+    .headerActions {
+        align-items: flex-start;
+    }
+}
+
+@media (max-width: 767px) {
+    .scrollBody {
+        padding-top: 20px;
+    }
+
+    .panel {
+        border-radius: 20px;
+    }
+
+    .title {
+        font-size: 30px;
+    }
+
+    .description {
+        font-size: var(--text-lg);
+    }
+}

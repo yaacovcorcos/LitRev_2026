@@ -14,6 +14,7 @@ Domain-specific execution plans remain canonical for their domains:
 - Reliability blockers and thresholds: `docs/plans/reliability-a0-brief.md`
 
 ## Current Architecture (Code-Verified)
+- A frontend-only design sandbox now lives under `next-app/app/design/**`: it reuses the real app shell, drives viewport/state/density scenarios through URL params, and renders fixture-backed project surfaces from `next-app/components/design-lab/**` and `next-app/lib/design-lab/**` so UI redesign can happen without backend coupling.
 - Project route pages use `ProjectPageLayout` for shell embedding/standalone parity (`next-app/components/project/ProjectPageLayout.tsx`) and are wired from notes/memory/protocol/ledger/draft/study-detail pages.
 - Ledger PDF processing is now a visible durable workflow contract:
   - PDF import enqueues `StudyProcessingJob` quick-extract work immediately instead of relying on a request-local in-memory extraction lock.
