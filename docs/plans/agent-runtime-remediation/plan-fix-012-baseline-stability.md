@@ -52,10 +52,10 @@ This fix does not own:
 
 This file is not a second owner for runtime, transparency, or prompt architecture.
 
-- [plan-agentic.md](../plan-agentic.md) owns `FIX-012` status, ordering, and retirement.
-- [chat-runtime.md](../chat-runtime.md) owns shared runtime and recovery truth.
-- [transparency-ui.md](../transparency-ui.md) owns trace, receipt, summary, and visible-message UX contracts.
-- [plan-prompts.md](../plan-prompts.md) owns prompt-side hygiene and degradation rules.
+- [plan-agentic.md](../plan-agentic.md) owns `FIX-012` status, ordering, retirement, and the active runtime/transparency roadmap.
+- [plan-memory.md](../plan-memory.md) owns prompt-side hygiene, grounding, and extraction rules.
+- [plan-agent-quality.md](../plan-agent-quality.md) owns validation, rollout, and quality-evidence expectations.
+- [chat-runtime.md](../chat-runtime.md), [transparency-ui.md](../transparency-ui.md), and [plan-prompts.md](../plan-prompts.md) remain supporting historical references only.
 - this file owns only the remaining `FIX-012` rescue sequencing, evidence, and closeout criteria.
 
 Canonical evidence record for `FIX-012`:
@@ -490,7 +490,7 @@ These are valuable, but they are not first-wave `FIX-012` blockers:
 
 ## Relationship To Other Plans
 
-- [plan-agentic.md](../plan-agentic.md) remains the canonical owner of `FIX-012` status, severity, ordering, and completion rules.
-- [chat-runtime.md](../chat-runtime.md) owns shared runtime parity, shared terminal-state semantics, and later-stage `U1.6` burn-in positioning.
-- [transparency-ui.md](../transparency-ui.md) owns the facts-first UI contract, semantic receipts, summary semantics, and visible-message boundaries.
-- [plan-prompts.md](../plan-prompts.md) owns prompt-side visible-answer hygiene, anti-echo rules, and degradation behavior.
+- [plan-agentic.md](../plan-agentic.md) remains the canonical owner of `FIX-012` status, severity, ordering, completion rules, and the active runtime/transparency roadmap.
+- [plan-memory.md](../plan-memory.md) owns prompt-side visible-answer hygiene, grounding, extraction, and degradation behavior.
+- [plan-agent-quality.md](../plan-agent-quality.md) owns the quality gates and sign-off posture required for safe closeout.
+- [chat-runtime.md](../chat-runtime.md), [transparency-ui.md](../transparency-ui.md), and [plan-prompts.md](../plan-prompts.md) remain supporting historical references only.

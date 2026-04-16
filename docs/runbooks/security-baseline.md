@@ -21,7 +21,7 @@ Load these repo-local sources first:
 3. [`docs/runbooks/internal-advisory-reviews.md`](internal-advisory-reviews.md)
 4. the owner docs for the touched subsystem:
    - backend/admin/storage/auth: [`docs/plans/plan-backend.md`](../plans/plan-backend.md), [`docs/runbooks/admin-access.md`](admin-access.md), [`docs/runbooks/db-architecture.md`](db-architecture.md)
-   - agent/tool/runtime: [`docs/plans/plan-agentic.md`](../plans/plan-agentic.md), [`docs/plans/plan-memory.md`](../plans/plan-memory.md), [`docs/plans/plan-prompts.md`](../plans/plan-prompts.md)
+   - agent/tool/runtime: [`docs/plans/plan-agentic.md`](../plans/plan-agentic.md), [`docs/plans/plan-memory.md`](../plans/plan-memory.md), [`docs/plans/plan-agent-quality.md`](../plans/plan-agent-quality.md)
    - repo workflow / CI / supply chain: [`docs/runbooks/github-flow.md`](github-flow.md)
 
 ## LitRev Trust Model

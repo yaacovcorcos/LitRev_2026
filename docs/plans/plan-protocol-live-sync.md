@@ -33,7 +33,7 @@ Define the canonical current-state plan for protocol live sync: shared project-s
 - Changing the proposal-only contract of `update_protocol`
 - Multi-user collaborative editing or CRDT-style merging
 - Generalizing this pattern into an app-wide live-state framework
-- Cross-surface chat-runtime parity work that is owned by `docs/plans/chat-runtime.md`
+- Cross-surface agent-runtime parity work that is owned by `docs/plans/plan-agentic.md`
 
 ## Governance and Ownership
 
@@ -50,7 +50,7 @@ Define the canonical current-state plan for protocol live sync: shared project-s
 - `PRD.md` should remain unchanged unless protocol editing or artifact acceptance behavior changes at the product-contract level.
 
 ### Related Plan Ownership
-- `docs/plans/chat-runtime.md` owns cross-surface runtime parity across `/ai`, project copilot, and popup.
+- `docs/plans/plan-agentic.md` owns cross-surface runtime parity across `/ai`, project copilot, and popup.
 - `docs/plans/plan-guided-setup.md` owns onboarding-specific protocol editing and setup flow behavior.
 
 ## Current Architecture
@@ -160,7 +160,7 @@ Define the canonical current-state plan for protocol live sync: shared project-s
 ## Known Boundaries and Remaining Follow-Up
 - `/ai` artifact review currently dispatches protocol-domain invalidation without attaching `protocolPatch`, so protocol views affected by `/ai` acceptance or undo still rely on refetch rather than immediate patching.
   - This is a real cross-surface parity gap.
-  - Track it in `docs/plans/chat-runtime.md`, not as a duplicate active task here.
+  - Track it in `docs/plans/plan-agentic.md`, not as a duplicate active task here.
 - Multi-user collaborative editing remains out of scope. The current contract is single-user editing with visible conflict handling for incoming accepted artifacts.
 - `migrate-local-storage.ts` intentionally still uses `getProtocolAction()` and `saveProtocolAction()` for legacy migration flows; that is not a live-sync regression.
 - The legacy ledger event bridge still exists as a compatibility tail while all listeners converge on `project-data-events.ts`.

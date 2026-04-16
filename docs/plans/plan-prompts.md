@@ -1,85 +1,26 @@
-# System Prompts & LLM Extraction Plan
+# Prompting Supporting Note
 
-## Authority and Scope
+## Status
 
-This is the canonical plan for:
+This file is now a supporting reference, not an active tracker.
 
-- prompt text and prompt-pack behavior
-- prompt-owned output schemas and extraction contracts
-- model-parameter policy where it is prompt-coupled
-- prompt-side hygiene, degradation, and anti-echo rules
+Active ownership moved to:
+- [`plan-memory.md`](./plan-memory.md) for prompt-library, extraction, grounding, and knowledge-quality work
+- [`plan-agentic.md`](./plan-agentic.md) for runtime-owned interaction and structured-message contracts
 
-Use this file for:
+## What This File Still Preserves
 
-- current prompt/extraction architecture truth
-- open prompt-domain quality debt
-- mode-specific prompt-pack work
+Use this file only for historical prompt rationale when needed:
+- mode-pack evolution
+- earlier visible-answer hygiene decisions
+- compatibility-era hidden metadata guidance
 
-Do not use this file for:
+## Active Work Has Moved
 
-- runtime-owned summary semantics
-- shared recovery or terminal-state contracts
-- transparency UI ownership
-- general agent-runtime orchestration status
+Do not track prompt-domain active work here anymore.
 
-Those are owned by:
+Use:
+- [`plan-memory.md`](./plan-memory.md)
+- [`plan-agentic.md`](./plan-agentic.md)
 
-- `docs/plans/plan-agentic.md`
-- `docs/plans/chat-runtime.md`
-- `docs/plans/transparency-ui.md`
-
-## Current Architecture
-*How this domain works right now, based on actual committed code.*
-
-- **Copilot Base (`lib/ai/prompts/assistant-prompts.ts`):** Foundation identity for all modes. Enforces markdown and strict verifiable hyperlinking to studies (via DOI/PMID).
-- **Copilot Modes:** 7 variants (Protocol, Scoping, Search, Screening, Drafting, QA, General) that prepend Base + append mode-specific behavior.
-- **Scoping Prompt Contract:** Scoping now teaches a broad-first evidence pass, avoids forcing early population/intervention/outcome commitments before evidence, recommends a default direction after synthesis, and reserves `ask_user` for hard blockers or the rare no-safe-default handoff case.
-- **Clarification Prompt Contract:** Base prompt now aligns with the runtime-owned clarification controller: `ask_user` is the only blocking clarification primitive, the assistant should do non-blocked work first, include a safe `recommendedAnswer` / `recommendedReason` when available, treat resolved clarifications as authoritative, and never re-ask the same blocker after runtime suppression.
-- **Structured Mention Contract:** Base prompt currently requires hidden `MENTIONED_STUDIES` JSON comments whenever a response names specific studies so UI can render actionable study chips; parser fallback remains as a last-resort path when metadata is omitted. This is a compatibility-era prompt contract and should not spread beyond the current mixed-channel architecture.
-- **Context Assembly (`lib/server/ai/ai-service.ts` + `lib/ai/prompts/assistant-prompts.ts`):** Prompt assembly follows a stable-to-variable sequence for caching and grounding: Mode Prompt -> Scope -> Project -> Protocol -> Autonomy -> Ledger -> Location -> Study -> Memory -> Additional.
-- **Runtime-Led Summary Alignment:** Summary mode semantics are runtime-owned. Prompts must support process-trace-first UX, but they do not define or own summary-mode meaning.
-- **Visible-Answer And Continuation Hygiene:** Prompt rules now explicitly forbid echoing `[CONTINUATION_CONTEXT]`, `payload_json`, machine-only runtime labels, hidden protocol blocks, or raw provider reasoning into normal visible answer prose; continuation seeds have also shifted toward machine-oriented fields.
-- **PDF Extraction Pipeline:** 
-  - Quick Extract (grok-4-1-fast, temp 0.2): Regex fallback + strict JSON for DOI/PMID/year/authors.
-  - Deep Analysis (grok-4-1-fast, temp 0.3): Structured JSON summary, keywords, quality.
-- **Conversation Summarization:** `summarizeConversationAction` (grok-4-1-fast, temp 0.2) summarizes active context to inject into new threads.
-- **Memory Extraction (`lib/server/memory/conversation-extractor.ts`):** Background job (grok-4-1-fast, temp 0.1) mining conversations for Decisions, Facts, and Preferences into strict JSON.
-
-## Active Tasks
-*Open prompt-domain work and quality debt that is not yet fully resolved.*
-
-### P1 — Prompt Hygiene and Runtime Alignment
-- [ ] Visible-answer and reasoning hygiene: align prompt behavior with the runtime-led summary contract, including clean degradation when runtime summary is absent, weak, or intentionally suppressed, so visible prose stays compatible with process-trace-first UX without depending on raw provider reasoning or surfacing search-log/process scaffolding.
-- [ ] Continuation and recovery hygiene: finish reducing prompt-owned runtime glue in the remaining paths still implicated by current failures, keeping continuation/checkpoint seeds machine-oriented and leaving blocked/recovery truth to typed runtime state wherever the prompt does not need to carry it.
-- [ ] Structured assistant metadata migration: retire the prompt requirement for hidden `MENTIONED_STUDIES` markup once server-owned structured message parts become canonical, keeping compatibility fallback only for the migration window.
-
-### P2 — Mode-Specific Prompt Packs
-- [ ] Search Mode: Strengthen explicit Boolean-query and MeSH suggestion guidance for evidence-retrieval requests.
-- [ ] Onboarding V2: Define step-specific prompt pack for guided setup AI assists (`suggest`, `refine`, `generate`) with strict output schemas and deterministic fallback behavior.
-- [ ] Onboarding V2: Add explainer-mode prompt contract for `Explain this` surfaces (plain-language, concise, and grounded to current project context).
-
-### P3 — Context & Extraction Hardening
-- [ ] Memory Extraction: Raise temp slightly or add examples of implicit vs explicit decisions to fix under-extraction.
-- [ ] Memory Extraction: Add priority/importance signal to extracted facts.
-- [ ] Memory Extraction: Expand 200-char limit for statements and add "negative extraction" (capturing rejected ideas).
-- [ ] Resolve conversation-summary vs memory-extraction overlap so “decisions” are not duplicated across two prompt-owned extraction paths without a clear separation of purpose.
-
-## Recently Completed
-*Finished work that might still be fragile or require monitoring. Prune oldest first.*
-
-- [x] Visible-answer and continuation hygiene now explicitly forbids echoing `[CONTINUATION_CONTEXT]`, `payload_json`, machine-only runtime labels, or raw provider reasoning into the normal visible answer path; continuation seeds were also shifted toward machine-oriented fields so prompt echo is less likely even before renderer sanitation.
-- [x] Runtime-aligned clarification guidance now teaches the bounded `ask_user` contract end to end: do non-blocked work first, include a safe recommended default when possible, treat resolved clarifications as authoritative, and never re-ask the same blocker after runtime suppression.
-- [x] Search/scoping visible-answer prompts now explicitly keep raw query logs and search-iteration mechanics in receipts/checkpoints/process details by default; visible prose should synthesize findings unless the user explicitly asks for the search strategy.
-- [x] Tightened the hidden `MENTIONED_STUDIES` response contract so study-naming answers are expected to emit machine-readable metadata, while keeping graceful parser fallback behavior when the model still omits it.
-- [x] Prompt assembly order stabilized for caching and grounding (Mode/Scope/Project/Protocol/Autonomy before variable context blocks).
-- [x] Base prompt includes explicit tool-awareness guidance for action-oriented requests.
-- [x] Base prompt includes concise-vs-structured response guidance for simple vs analytical requests.
-- [x] Base prompt includes DOI/PMID anti-fabrication and verification guardrails.
-- [x] Screening mode includes explicit decision policy and auditable output format (decision/rationale/confidence).
-- [x] Injected context blocks include explicit grounding/usage and prompt-injection safety instructions.
-
-## Deferred / Parking Lot
-*Ideas acknowledged but explicitly not active right now.*
-
-- [ ] Add AI quality feedback loop (no mechanism currently adjusts future prompts based on user accept/reject behavior).
-- [ ] More robust context sanitization (currently a shallow blocklist).
+The repo should no longer maintain separate active truth for prompts when that work is really part of knowledge quality or runtime contracts.

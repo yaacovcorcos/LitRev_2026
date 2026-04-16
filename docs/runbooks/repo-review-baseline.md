@@ -16,7 +16,7 @@ This is not a changelog. Keep it as a compact current-state baseline.
 
 - Canonical agent-runtime review tracker: `docs/plans/plan-agentic.md`
 - Canonical diagnosis report: `docs/reports/diagnosis-03-02.md`
-- Current review-derived open work lives in `Active Fixes` inside `docs/plans/plan-agentic.md`
+- Current review-derived open work lives in the active tracks inside `docs/plans/plan-agentic.md` and the quality program inside `docs/plans/plan-agent-quality.md`
 
 ## Review Update Rules
 

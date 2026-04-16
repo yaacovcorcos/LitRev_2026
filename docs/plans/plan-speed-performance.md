@@ -516,7 +516,7 @@ Precedence rules:
 ## Cross-Plan Guardrails
 - `docs/plans/plan-ledger.md` owns ledger-specific product sequencing and acceptance for study-list/detail architecture, duplicate-safe ingestion, PDF/file review UX, and the ledger cache-consolidation wave; this plan remains the authority for freshness/preload/memory policy and performance budgets.
 - Draft-surface performance and cache work must remain consistent with `docs/plans/plan-drafting-experience.md`; this plan owns performance policy, not draft architecture.
-- `/ai`, project copilot, and popup performance work must preserve the shared runtime and truthful trace contracts in `docs/plans/chat-runtime.md` and `docs/plans/transparency-ui.md`.
+- `/ai`, project copilot, and popup performance work must preserve the shared runtime and truthful trace contracts owned by `docs/plans/plan-agentic.md`; use `docs/plans/transparency-ui.md` only as supporting design detail when trace presentation specifics matter.
 - Performance work must not fork shared chat/runtime behavior as a shortcut for one route.
 - The durable navigation program in `docs/plans/plan-ux-ui.md` owns the route-identity migration that makes `/project/[id]` overview-only and moves exact conversation restore into URL-owned destinations; when those PRs land, keep this plan current wherever project-entry restore or route boot assumptions change.
 - Supporting rule for perf-sensitive route normalization:
