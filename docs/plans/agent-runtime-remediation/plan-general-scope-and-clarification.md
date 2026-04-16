@@ -58,7 +58,7 @@ Documentation updates are required.
 
 - Update `docs/plans/plan-agentic.md`
   - change current architecture to reflect explicit general-mode scoping once shipped
-- Update any prompt-specific notes in `docs/plans/plan-prompts.md` if clarification semantics change materially
+- Update `docs/plans/plan-memory.md` if clarification semantics change memory, extraction, or prompt-library behavior materially
 
 ## Minimal-Sufficient Strategy
 

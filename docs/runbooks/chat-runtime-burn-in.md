@@ -1,8 +1,8 @@
 # Chat Runtime Burn-In Runbook
 
-This runbook operationalizes `U1.6` from `docs/plans/chat-runtime.md`.
+This runbook operationalizes `U1.6` from `docs/plans/plan-agent-quality.md`, sequenced by `docs/plans/plan-agentic.md`.
 It is the only active U1.6 burn-in operational source.
-Use it before opening `U3` popup migration.
+Use it before opening post-sign-off runtime cleanup such as `A-002` / `U4`.
 
 Do not use this runbook as a substitute for baseline product rescue. If ordinary manual agent use is still exposing visible prompt/runtime leakage, obviously broken reconnect/recovery behavior, or generally unusable long-running runs, return to `FIX-012` in `docs/plans/plan-agentic.md` before opening or continuing a burn-in window.
 
@@ -250,6 +250,6 @@ If strict gate fails:
 
 1. Owner signs the final report as pass/fail.
 2. Backup reviewer independently validates thresholds and cohort scope.
-3. `docs/plans/chat-runtime.md` implementation status is updated with factual outcome.
-4. `U3` becomes the next task only within `docs/plans/chat-runtime.md`; broader roadmap ordering still follows `docs/plans/plan-agentic.md` unless explicitly changed there.
-5. Only after sign-off, start `U3` popup migration.
+3. `docs/plans/plan-agent-quality.md` is updated with the factual sign-off outcome, and `docs/plans/plan-agentic.md` is updated if runtime sequencing changes.
+4. `A-002` / `U4` becomes the next runtime-cleanup task only within `docs/plans/plan-agentic.md` unless broader roadmap ordering changes there explicitly.
+5. Only after sign-off, start the next runtime-cleanup wave that `plan-agentic.md` currently sequences after `U1.6`.

@@ -24,7 +24,7 @@ This plan is the long-term implementation contract for how LitRev adapts across 
   - `NEXT_PUBLIC_MOBILE_NOTES_V2`
   - `NEXT_PUBLIC_MOBILE_DRAFT_V2`
 - Shell responsive adoption is now gated behind `NEXT_PUBLIC_MOBILE_SHELL_V2`; home, auth, protocol, and admin follow-up waves are not yet organized behind dedicated public flags.
-- Shared chat-runtime direction exists for `/ai` and project copilot via the chat runtime plan; popup full runtime convergence remains pending (`U3` in `chat-runtime.md`).
+- Shared agent-platform/runtime direction exists for `/ai` and project copilot via `plan-agentic.md`; popup remains a truthful reduced subset, and later runtime sign-off/cleanup work now flows through `plan-agentic.md` and `plan-agent-quality.md`.
 - Shared interaction ergonomics now use the existing `--touch-target-min` baseline across the highest-friction phone controls, including mobile nav, project tabs, toast dismiss, popup dismiss, study-file actions, export-history actions, and copilot remove/clear controls.
 - Responsive foundation certification now exists as a real route-level contract for home, auth, project shell, protocol, and `/ai` entry, backed by reliability telemetry, `test:e2e:mobile:foundation`, and the responsive certification runbook.
 - Required foundation certification hardening is now shipped:
@@ -335,8 +335,8 @@ Targeted validation matrix:
 8. relevant flag combinations as each new wave is introduced
 
 ## Dependencies
-- `docs/plans/chat-runtime.md`
-- `docs/plans/transparency-ui.md`
+- `docs/plans/plan-agentic.md`
+- `docs/plans/plan-agent-quality.md`
 - `docs/runbooks/reliability-a3-canary.md`
 
 ## Future Sections (To Expand)

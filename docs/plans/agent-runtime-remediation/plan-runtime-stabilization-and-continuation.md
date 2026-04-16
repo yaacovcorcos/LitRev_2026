@@ -39,7 +39,7 @@ Use this file for detailed execution thinking about stabilization and continuati
 - Treat `FIX-011b` as a targeted shared-runtime remediation program, not as burn-in paperwork and not as a greenfield runtime rewrite.
 - If `FIX-012` is still open because ordinary manual agent use is visibly broken, treat this file as blocked by that broader baseline rescue work instead of treating burn-in as the current rescue task.
 - Prefer hard execution-boundary fixes over prompt or surface patches. Reopen persistence when that is the simplest honest way to enforce authority or durable truth.
-- Use this file for supporting detail only. [plan-agentic.md](../plan-agentic.md) remains the canonical fix-status owner, and `U1.6` in [chat-runtime.md](../chat-runtime.md) plus [chat-runtime-burn-in.md](../../runbooks/chat-runtime-burn-in.md) remains the operational sign-off owner.
+- Use this file for supporting detail only. [plan-agentic.md](../plan-agentic.md) remains the canonical fix-status owner, [plan-agent-quality.md](../plan-agent-quality.md) owns burn-in and runtime sign-off posture, and [chat-runtime-burn-in.md](../../runbooks/chat-runtime-burn-in.md) remains the only operational canary/sign-off source.
 - If a real runtime drift is found, patch only the shared ownership/convergence/recovery path and add focused tests for that uncovered case.
 
 ## Active Delta Checklist

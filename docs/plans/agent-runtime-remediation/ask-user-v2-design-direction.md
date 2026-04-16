@@ -29,7 +29,7 @@ Current local grounding:
 - shared reducer/runtime: [next-app/lib/ai/shared-stream-reducer.ts](../../../next-app/lib/ai/shared-stream-reducer.ts), [next-app/lib/ai/ai-stream-runtime.ts](../../../next-app/lib/ai/ai-stream-runtime.ts)
 - project adapter: [next-app/contexts/project-conversation-stream-events.ts](../../../next-app/contexts/project-conversation-stream-events.ts)
 - UI card: [next-app/components/artifacts/UserInputCard.tsx](../../../next-app/components/artifacts/UserInputCard.tsx)
-- current runtime contract docs: [chat-runtime.md](../chat-runtime.md), [transparency-ui.md](../transparency-ui.md), [plan-agentic.md](../plan-agentic.md)
+- current runtime contract docs: [plan-agentic.md](../plan-agentic.md), [plan-agent-quality.md](../plan-agent-quality.md), with historical supporting notes in [chat-runtime.md](../chat-runtime.md) and [transparency-ui.md](../transparency-ui.md)
 
 Preserve these invariants:
 

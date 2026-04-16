@@ -206,7 +206,7 @@ For docs-only plan or runbook changes:
 |---|---|---|
 | migrate deploy or schema drift | DB owner | `docs/runbooks/db-ops.md`, `docs/runbooks/db-architecture.md` |
 | governance required or informational | lint governance owner | `docs/plans/plan-lint-governance.md` |
-| chat stream architecture guard | agent-runtime owner | `docs/plans/plan-agentic.md`, `docs/plans/chat-runtime.md` |
+| chat stream architecture guard | agent-runtime owner | `docs/plans/plan-agentic.md`, `docs/plans/plan-agent-quality.md` |
 | mobile foundation | responsive/mobile owner | `docs/runbooks/responsive-foundation-certification.md`, `docs/runbooks/browser-tooling-readiness.md` |
 | performance certification | performance owner | `docs/plans/plan-speed-performance.md` |
 | citation compatibility smoke | citation/provider owner | `docs/runbooks/citation-preview-ops.md` |
