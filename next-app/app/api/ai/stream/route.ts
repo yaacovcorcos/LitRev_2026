@@ -176,12 +176,15 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        let scopedProjectId = options?.projectId;
+        let scopedStudyId = options?.studyId;
+
         // Validate project ownership before allowing any tool execution
-        if (options?.projectId) {
+        if (scopedProjectId) {
             try {
                 await assertProjectAccess(
                     { ownerId: authResult.context.userId, workspaceId: authResult.context.workspaceId },
-                    options.projectId,
+                    scopedProjectId,
                 );
             } catch {
                 return new Response(
@@ -191,13 +194,15 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        if (options?.studyId) {
+        if (scopedStudyId) {
             try {
-                await assertStudyAccess(
+                const scope = await assertStudyAccess(
                     { ownerId: authResult.context.userId, workspaceId: authResult.context.workspaceId },
-                    options.studyId,
-                    options.projectId,
+                    scopedStudyId,
+                    scopedProjectId,
                 );
+                scopedProjectId = scope.projectId;
+                scopedStudyId = scope.studyId;
             } catch {
                 return new Response(
                     JSON.stringify({ error: "Study not found or access denied" }),
@@ -208,7 +213,7 @@ export async function POST(request: NextRequest) {
 
         if (body.popupContext && body.options?.popupMode) {
             const popupContext = body.popupContext as PopupChatContext;
-            if (!options?.projectId || popupContext.projectId !== options.projectId) {
+            if (!scopedProjectId || popupContext.projectId !== scopedProjectId) {
                 return new Response(
                     JSON.stringify({ error: "Popup context project mismatch" }),
                     { status: 400, headers: { "Content-Type": "application/json" } },
@@ -221,13 +226,13 @@ export async function POST(request: NextRequest) {
             : [];
 
         if (contextTargets.length > 0) {
-            if (!options?.projectId) {
+            if (!scopedProjectId) {
                 return new Response(
                     JSON.stringify({ error: "Context capture targets require a project scope" }),
                     { status: 400, headers: { "Content-Type": "application/json" } },
                 );
             }
-            const hasMismatch = contextTargets.some((target) => target.projectId !== options.projectId);
+            const hasMismatch = contextTargets.some((target) => target.projectId !== scopedProjectId);
             if (hasMismatch) {
                 return new Response(
                     JSON.stringify({ error: "Context capture target project mismatch" }),
@@ -243,6 +248,8 @@ export async function POST(request: NextRequest) {
         const service = getAIService();
         const scopedOptions: StreamRouteOptions = {
             ...options,
+            projectId: scopedProjectId,
+            studyId: scopedStudyId,
             replaceRunId: normalizedReplaceRunId,
             continueFromRunId: normalizedContinueFromRunId,
             preferContinueFromRunId: normalizedPreferContinueFromRunId,

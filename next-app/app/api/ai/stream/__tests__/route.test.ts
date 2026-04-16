@@ -306,6 +306,52 @@ describe("/api/ai/stream route", () => {
     expect(mocks.streamChatWithArtifacts).not.toHaveBeenCalled();
   });
 
+  it("canonicalizes project scope from owned study access before starting the runtime", async () => {
+    mocks.assertStudyAccess.mockResolvedValueOnce({
+      ownerId: "user-1",
+      workspaceId: "ws-1",
+      projectId: "project-owned",
+      studyId: "study-1",
+    });
+    mocks.streamChatWithArtifacts.mockImplementation(async function* () {
+      yield { type: "run_start", runId: "run-1", conversationId: "conv-1" };
+      yield { type: "run_end", runId: "run-1", conversationId: "conv-1", runStatus: "completed", stopReason: null };
+    });
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "Summarize this study",
+        context: "study",
+        options: {
+          studyId: "study-1",
+          page: "study",
+        },
+      }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.assertStudyAccess).toHaveBeenCalledWith(
+      { ownerId: "user-1", workspaceId: "ws-1" },
+      "study-1",
+      undefined,
+    );
+    expect(mocks.streamChatWithArtifacts).toHaveBeenCalledTimes(1);
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[0]).toBe("Summarize this study");
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[1]).toBe("study");
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]).toMatchObject({
+      projectId: "project-owned",
+      studyId: "study-1",
+      page: "study",
+      userId: "user-1",
+      workspaceId: "ws-1",
+    });
+  });
+
   it("rejects mismatched strict continuation and replace targets", async () => {
     const request = new NextRequest("http://localhost/api/ai/stream", {
       method: "POST",
