@@ -13,7 +13,10 @@ describe("draft benchmark harness", () => {
     if (!fixture) return;
 
     const beforeSections = fixture.snapshot.manuscript.sections.map((section) => section.sectionId);
-    const movedBlockId = fixture.snapshot.manuscript.doc.content?.[3]?.content?.[1]?.attrs?.blockId;
+    const resultsSection = fixture.snapshot.manuscript.doc.content?.find(
+      (node) => node.type === "manuscriptSection" && node.attrs?.sectionId === "results",
+    );
+    const movedBlockId = resultsSection?.content?.find((node) => node.type === "paragraph")?.attrs?.blockId;
     expect(typeof movedBlockId).toBe("string");
 
     const reordered = reorderManuscriptSection({

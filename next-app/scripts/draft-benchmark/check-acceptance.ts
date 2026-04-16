@@ -38,4 +38,7 @@ async function main() {
   }
 }
 
-void main();
+void main().catch((error) => {
+  console.error("Error running acceptance check:", error);
+  process.exitCode = 1;
+});

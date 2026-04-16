@@ -58,4 +58,7 @@ async function main() {
   process.stdout.write(`${targetPath}\n`);
 }
 
-void main();
+void main().catch((error) => {
+  console.error("Error generating DOCX fixture:", error);
+  process.exitCode = 1;
+});
