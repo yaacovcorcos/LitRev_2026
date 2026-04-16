@@ -1,6 +1,6 @@
 # Security Policy
 
-This repository is private and collaborator-managed.
+This repository is public and collaborator-managed.
 
 ## Supported Branch
 
