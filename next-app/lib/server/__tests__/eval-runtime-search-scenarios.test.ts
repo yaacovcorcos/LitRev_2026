@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => {
     markRunFinalizationState: vi.fn(),
     markRunFinalizationFailed: vi.fn(),
     markRunAbnormalEndClassification: vi.fn(),
+    isRunOwnershipError: vi.fn(() => false),
     startRunHeartbeat: vi.fn(() => ({ stop: vi.fn() })),
     startRunTrace: vi.fn(() => trace),
     flushTracing: vi.fn(),
@@ -36,6 +37,12 @@ const mocks = vi.hoisted(() => {
     executeTool: vi.fn(),
     executeToolWithAutonomy: vi.fn(),
     getToolDefinitions: vi.fn(),
+    addAssistantMessageToConversationForRun: vi.fn(async () => ({
+      id: "msg-1",
+      role: "assistant",
+      content: "assistant content",
+      createdAt: new Date("2026-03-11T12:00:00.000Z").toISOString(),
+    })),
     addMessageToConversation: vi.fn(),
     autoSummarizeIfNeeded: vi.fn(),
     retrieveMemories: vi.fn(),
@@ -62,6 +69,7 @@ vi.mock("@/lib/server/ai/rate-limiter", () => ({
 
 vi.mock("@/lib/server/ai/memory", () => ({
   getOrCreateConversation: vi.fn(),
+  addAssistantMessageToConversationForRun: mocks.addAssistantMessageToConversationForRun,
   addMessageToConversation: mocks.addMessageToConversation,
   getConversationWithSummary: mocks.getConversationWithSummary,
   getConversationWithSummaryById: mocks.getConversationWithSummaryById,
@@ -103,6 +111,7 @@ vi.mock("@/lib/server/agent/run", () => ({
   markRunFinalizationState: mocks.markRunFinalizationState,
   markRunFinalizationFailed: mocks.markRunFinalizationFailed,
   markRunAbnormalEndClassification: mocks.markRunAbnormalEndClassification,
+  isRunOwnershipError: mocks.isRunOwnershipError,
   startRunHeartbeat: mocks.startRunHeartbeat,
 }));
 

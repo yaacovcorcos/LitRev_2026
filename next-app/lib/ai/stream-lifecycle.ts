@@ -51,6 +51,7 @@ export function terminalReasonFromRunEnd(params: {
 
   if (runStatus === "completed") return "completed";
   if (runStatus === "paused" || stopReason === "paused_for_input") return "paused_for_input";
+  if (runStatus === "cancelled") return "cancelled_by_user";
   if (stopReason === "cancelled" || stopReason === "aborted") return "cancelled_by_user";
   return "failed_server";
 }

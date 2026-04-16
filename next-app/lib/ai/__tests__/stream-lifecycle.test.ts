@@ -27,6 +27,10 @@ describe("stream lifecycle", () => {
     expect(terminalReasonFromRunEnd({ runStatus: "failed", stopReason: "cancelled" })).toBe("cancelled_by_user");
   });
 
+  it("maps cancelled run status to cancelled_by_user even without stopReason", () => {
+    expect(terminalReasonFromRunEnd({ runStatus: "cancelled", stopReason: null })).toBe("cancelled_by_user");
+  });
+
   it("maps paused run_end to paused_for_input", () => {
     expect(terminalReasonFromRunEnd({ runStatus: "paused", stopReason: "paused_for_input" })).toBe("paused_for_input");
   });

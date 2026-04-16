@@ -428,6 +428,46 @@ describe("run recovery", () => {
     expect(mocks.resolveDurableContinuationSource).not.toHaveBeenCalled();
   });
 
+  it("preserves cancelled stopReason in synthetic terminal recovery chunks", async () => {
+    mocks.runEventFindMany.mockResolvedValue([]);
+    mocks.runEventFindFirst.mockResolvedValue({ sequence: 3 });
+    mocks.artifactFindMany.mockResolvedValue([]);
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-cancelled",
+      conversationId: "conv-1",
+      status: "cancelled",
+      runPhase: "finalize",
+      phaseEnteredAt: new Date("2026-03-11T11:59:30.000Z"),
+      model: null,
+      costTokensIn: 0,
+      costTokensOut: 0,
+      lastActivityAt: new Date("2026-03-11T11:59:55.000Z"),
+      lastDurableProgressAt: new Date("2026-03-11T11:59:50.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
+      finalizationState: "completed",
+      abnormalEndClassification: null,
+    });
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-cancelled",
+    });
+
+    expect(result.terminalEvent).toEqual({
+      chunk: {
+        type: "run_end",
+        runId: "run-cancelled",
+        runStatus: "cancelled",
+        runCostTokensIn: 0,
+        runCostTokensOut: 0,
+        actualModelSource: "unknown",
+        conversationId: "conv-1",
+        stopReason: "cancelled",
+      },
+    });
+  });
+
   it("treats stale durable progress as no-forward-progress even when the heartbeat is fresh", async () => {
     mocks.runEventFindMany.mockResolvedValue([]);
     mocks.runEventFindFirst.mockResolvedValue(null);

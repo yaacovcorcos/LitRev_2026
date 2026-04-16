@@ -164,6 +164,7 @@ This must never be the default product transparency path.
 - ephemeral progress is not replayed
 - checkpoints shown after recovery must be persisted checkpoints, not reconstructed narration
 - paused-for-input is a successful handoff state, not a failure
+- cancelled terminal state must round-trip as cancelled across live stream, replay, recovery, and client lifecycle classification; blocked-card dismissal cannot replay as paused source-run truth
 - if continuation is degraded, the trace must say so explicitly rather than pretending full replay parity
 
 ## Facts-First UI Contract

@@ -6,6 +6,11 @@
 import { prisma } from "@/lib/server/prisma";
 import type { Prisma } from "@prisma/client";
 import { logServerError } from "@/lib/server/logging";
+import {
+    assertRunWritableInTransaction,
+    noteObservedRunActivity,
+} from "@/lib/server/agent/run";
+import { emitEventWithinTransaction } from "@/lib/server/agent/events";
 import type {
     AIMessage,
     ConversationContext,
@@ -218,6 +223,57 @@ export async function addMessageToConversation(
         where: { id: conversationId },
         data: { updatedAt: new Date() },
     });
+
+    return {
+        id: created.id,
+        role: created.role as AIMessage["role"],
+        content: created.content,
+        toolCalls: parseToolCalls(created.toolCalls),
+        toolResultId: created.toolResultId ?? undefined,
+        createdAt: created.createdAt.toISOString(),
+    };
+}
+
+export async function addAssistantMessageToConversationForRun(params: {
+    runId: string;
+    conversationId: string;
+    content: string;
+    attachments?: ConversationMessageAttachment[];
+}): Promise<AIMessage> {
+    const created = await prisma.$transaction(async (tx) => {
+        await assertRunWritableInTransaction(tx, {
+            runId: params.runId,
+            allowedStatuses: ["running"],
+            requireIncomplete: true,
+        });
+        const message = await tx.aIMessage.create({
+            data: {
+                conversationId: params.conversationId,
+                role: "assistant",
+                content: params.content,
+                attachments: params.attachments && params.attachments.length > 0
+                    ? (params.attachments as unknown as Prisma.InputJsonValue)
+                    : undefined,
+            },
+        });
+
+        await tx.aIConversation.update({
+            where: { id: params.conversationId },
+            data: { updatedAt: new Date() },
+        });
+
+        await emitEventWithinTransaction(
+            tx,
+            params.runId,
+            "message",
+            { content: params.content },
+            { messageRole: "assistant" },
+        );
+
+        return message;
+    });
+
+    noteObservedRunActivity(params.runId, created.createdAt);
 
     return {
         id: created.id,

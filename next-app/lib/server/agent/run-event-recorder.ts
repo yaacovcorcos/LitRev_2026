@@ -1,7 +1,10 @@
 import "server-only";
 
 import { emitEvent, type EmitEventExtras } from "@/lib/server/agent/events";
-import { markRunDurabilityDegraded } from "@/lib/server/agent/run";
+import {
+    isRunOwnershipError,
+    markRunDurabilityDegraded,
+} from "@/lib/server/agent/run";
 import { logServerError, logServerWarn } from "@/lib/server/logging";
 import type { RunEventType } from "@/types/agent";
 
@@ -59,6 +62,9 @@ export async function recordRunEvent(
         await emitEvent(params.runId, params.type, params.payload, params.extras);
         return { persisted: true, degraded: false };
     } catch (error) {
+        if (isRunOwnershipError(error)) {
+            throw error;
+        }
         const logContext = params.logContext ?? `run-event:${params.type}`;
 
         if (failureMode === "soft") {

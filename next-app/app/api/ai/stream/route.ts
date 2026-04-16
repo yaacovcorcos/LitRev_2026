@@ -37,6 +37,7 @@ import type { ContextCaptureTarget } from "@/types/context-capture";
 import { buildContextCapturePromptBlock } from "@/lib/server/ai/context-capture";
 import { logServerError } from "@/lib/server/logging";
 import { resolveRequestedContinuation } from "@/lib/server/agent/requested-continuation";
+import { settleClarificationDismissedRun } from "@/lib/server/agent/run";
 import {
     buildClarificationResolutionUserMessage,
     buildUserInputResolutionContinuationContext,
@@ -443,6 +444,9 @@ export async function POST(request: NextRequest) {
                             const isTerminalDismissal = isCancelledResolution && explicitUserMessage.length === 0;
 
                             if (isTerminalDismissal) {
+                                await settleClarificationDismissedRun(
+                                    pendingUserInputSource.sourceRunId,
+                                );
                                 runtimeOptions = {
                                     ...runtimeOptions,
                                     continueFromRunId: undefined,

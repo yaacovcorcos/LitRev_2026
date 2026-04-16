@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   hydrateClarificationControllerState: vi.fn(),
   buildUserInputResolutionContinuationContext: vi.fn(),
   buildClarificationResolutionUserMessage: vi.fn(),
+  settleClarificationDismissedRun: vi.fn(),
   buildPopupSystemPrompt: vi.fn(),
   createPopupToolGuard: vi.fn(),
   getAllowedPopupToolNames: vi.fn(),
@@ -87,6 +88,10 @@ vi.mock("@/lib/server/ai/clarification-controller", () => ({
   buildClarificationResolutionUserMessage: mocks.buildClarificationResolutionUserMessage,
 }));
 
+vi.mock("@/lib/server/agent/run", () => ({
+  settleClarificationDismissedRun: mocks.settleClarificationDismissedRun,
+}));
+
 const { POST } = await import("../route");
 
 describe("/api/ai/stream route", () => {
@@ -125,6 +130,7 @@ describe("/api/ai/stream route", () => {
       hasDurableProgressSinceLastResolution: false,
       lastResolvedDecisionBoundaryKey: "scoping-direction",
     });
+    mocks.settleClarificationDismissedRun.mockResolvedValue(1);
     mocks.buildUserInputResolutionContinuationContext.mockReturnValue("[CONTINUATION_CONTEXT]\nResolved clarification");
     mocks.buildClarificationResolutionUserMessage.mockImplementation(({ userMessage, resolution, request }) => (
       userMessage
@@ -769,6 +775,7 @@ describe("/api/ai/stream route", () => {
         type: "ask_user_cancelled",
       }),
     );
+    expect(mocks.settleClarificationDismissedRun).toHaveBeenCalledWith("run-paused");
     expect(mocks.ingestChatUnificationMetric).not.toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({

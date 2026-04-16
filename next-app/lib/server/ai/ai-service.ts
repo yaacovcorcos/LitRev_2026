@@ -26,7 +26,14 @@ import {
 } from "@/lib/ai/error-envelope";
 import { buildFailureFallbackMessage, deriveRunOutcome, type RunFacts } from "@/lib/ai/run-outcome";
 import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider, getGoogleProvider } from "./providers";
-import { getOrCreateConversation, addMessageToConversation, getConversationWithSummary, getConversationWithSummaryById, autoSummarizeIfNeeded } from "./memory";
+import {
+    getOrCreateConversation,
+    addAssistantMessageToConversationForRun,
+    addMessageToConversation,
+    getConversationWithSummary,
+    getConversationWithSummaryById,
+    autoSummarizeIfNeeded,
+} from "./memory";
 import { validateRateLimits, recordUsage } from "./rate-limiter";
 import { retrieveMemories, formatMemoriesForContext, markMemoriesUsedInAnswer, type RetrievedMemory } from "@/lib/server/memory";
 import { AI_CONFIG, getProviderForModel, getContextBudget } from "@/lib/ai/config";
@@ -41,6 +48,7 @@ import {
 } from "@/lib/agent/compaction";
 import { AVAILABLE_TOOLS, executeTool } from "./tools";
 import {
+    isRunOwnershipError,
     startRun,
     endRun,
     startRunHeartbeat,
@@ -1073,14 +1081,22 @@ class AIService {
             status: "completed" | "failed" | "cancelled" | "paused",
             costTokensIn?: number,
             costTokensOut?: number,
-        ) => {
-            if (!run || runFinalized) return;
+        ): Promise<boolean> => {
+            if (!run || runFinalized) return true;
             runHeartbeat?.stop();
             runHeartbeat = null;
-            await markRunFinalizationState(run.id, "in_progress");
+            const startedFinalization = await markRunFinalizationState(run.id, "in_progress");
+            if (startedFinalization === 0) {
+                runFinalized = true;
+                return false;
+            }
             try {
                 await endRun(run.id, status, costTokensIn, costTokensOut);
             } catch (error) {
+                if (isRunOwnershipError(error)) {
+                    runFinalized = true;
+                    return false;
+                }
                 const activeRunId = run.id;
                 await markRunFinalizationFailed(run.id).catch((markError) => {
                     logServerError("ai-service", "failed to persist finalization failure", {
@@ -1092,6 +1108,7 @@ class AIService {
             }
             runFinalized = true;
             finalizedRunStatus = status;
+            return true;
         };
         const closeTraceOnce = async (metadata: Record<string, unknown>) => {
             if (!trace || traceEnded) return;
@@ -1584,7 +1601,10 @@ class AIService {
                             conversationId: conversation.id,
                         };
 
-                        await finalizeRunOnce("completed");
+                        const finalized = await finalizeRunOnce("completed");
+                        if (!finalized) {
+                            return;
+                        }
                         const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
                         yield {
                             type: "run_end",
@@ -1864,25 +1884,20 @@ class AIService {
                             const fallbackContent = buildFailureFallbackMessage(terminalClassifiedError.message);
                             fullContent = fallbackContent;
                             runFacts.hadFinalAssistantAnswer = true;
-                            await addMessageToConversation(conversation.id, {
-                                role: "assistant",
-                                content: fallbackContent,
-                            });
-                            await recordRunEvent({
+                            await addAssistantMessageToConversationForRun({
                                 runId: activeRun.id,
-                                type: "message",
-                                payload: { content: fallbackContent },
-                                extras: { messageRole: "assistant" },
-                                failureMode: "degrade",
-                                degradationReason: "assistant_message_persistence_failed",
-                                logContext: "assistant_message_fallback",
+                                conversationId: conversation.id,
+                                content: fallbackContent,
                             });
                             yield { type: "content", content: fallbackContent, conversationId: conversation.id };
                         }
                         loop.markStopped("error");
                         await persistRecoveryErrorChunk(terminalErrorChunk);
                         yield terminalErrorChunk;
-                        await finalizeRunOnce("failed");
+                        const finalized = await finalizeRunOnce("failed");
+                        if (!finalized) {
+                            return;
+                        }
                         const runModelMeta = resolveRunActualModelMeta(iterationChatOptions.model, observedRunModel, invokedModel);
                         yield {
                             type: "run_end",
@@ -2244,53 +2259,45 @@ class AIService {
                 if (forcedClarificationStop) {
                     yield { type: "content", content: fullContent, conversationId: conversation.id };
                 }
-                await addMessageToConversation(conversation.id, {
-                    role: "assistant",
-                    content: fullContent,
-                });
-                await recordRunEvent({
+                await addAssistantMessageToConversationForRun({
                     runId: activeRun.id,
-                    type: "message",
-                    payload: { content: fullContent },
-                    extras: { messageRole: "assistant" },
-                    failureMode: "degrade",
-                    degradationReason: "assistant_message_persistence_failed",
-                    logContext: "assistant_message_final",
+                    conversationId: conversation.id,
+                    content: fullContent,
                 });
                 await markMemoriesUsedInAnswer(retrievedMemoriesForRun, fullContent).catch(() => {});
 
                 if (!executionMode) {
-                    const generatedTitle = await this.maybeGenerateConversationTitle({
-                        conversationId: conversation.id,
-                        projectId: projectId || undefined,
-                        model: options?.model,
-                        historicalAssistantCount,
-                        firstUserMessage: firstPersistedUserMessage || persistedUserContentForTitle || userMessage,
-                        assistantMessage: fullContent,
-                    });
-                    if (generatedTitle) {
-                        yield {
-                            type: "conversation_title",
+                    try {
+                        const generatedTitle = await this.maybeGenerateConversationTitle({
                             conversationId: conversation.id,
-                            conversationTitle: generatedTitle,
-                        };
+                            projectId: projectId || undefined,
+                            model: options?.model,
+                            historicalAssistantCount,
+                            firstUserMessage: firstPersistedUserMessage || persistedUserContentForTitle || userMessage,
+                            assistantMessage: fullContent,
+                        });
+                        if (generatedTitle) {
+                            yield {
+                                type: "conversation_title",
+                                conversationId: conversation.id,
+                                conversationTitle: generatedTitle,
+                            };
+                        }
+                    } catch (error) {
+                        logServerWarn("ai-service", "failed to generate conversation title", {
+                            conversationId: conversation.id,
+                            runId: activeRun.id,
+                            error: error instanceof Error ? error.message : String(error),
+                        });
                     }
                 }
             } else if (runFacts.hadDeterministicNonRetryableFailure && !runFacts.hadSuccessfulToolOrArtifact) {
                 fullContent = buildFailureFallbackMessage(stopReasonMessage(finalStopReason as StopReason));
                 runFacts.hadFinalAssistantAnswer = true;
-                await addMessageToConversation(conversation.id, {
-                    role: "assistant",
-                    content: fullContent,
-                });
-                await recordRunEvent({
+                await addAssistantMessageToConversationForRun({
                     runId: activeRun.id,
-                    type: "message",
-                    payload: { content: fullContent },
-                    extras: { messageRole: "assistant" },
-                    failureMode: "degrade",
-                    degradationReason: "assistant_message_persistence_failed",
-                    logContext: "assistant_message_failure_fallback",
+                    conversationId: conversation.id,
+                    content: fullContent,
                 });
                 yield { type: "content", content: fullContent, conversationId: conversation.id };
             }
@@ -2330,27 +2337,6 @@ class AIService {
                 runFacts.hadSuccessfulToolOrArtifact = true;
             }
 
-            // Trigger auto-summarization if conversation is growing large.
-            // Awaited so the function can block when near budget (Vercel cuts fire-and-forget).
-            const totalMsgs = conversation.messages.length + 2; // +user +assistant
-            const currentTokens = estimateMessagesTokensWithSafetyMargin(conversation.messages);
-            await autoSummarizeIfNeeded(
-                conversation.id, totalMsgs,
-                conversation.summaryData?.messageCount ?? 0,
-                budget, currentTokens
-            );
-
-            // Finalize trace
-            await closeTraceOnce({
-                stopReason: finalStopReason,
-                iterations: loop.iterations,
-                toolCalls: loop.totalToolCalls,
-                totalTokensIn,
-                totalTokensOut,
-                scopingSearchCalls: scopingSearchCallsThisRun,
-                protocolHandoffExecuted,
-            });
-
             const finalOutcome = deriveRunOutcome({
                 facts: runFacts,
                 stopReason: finalStopReason,
@@ -2358,7 +2344,52 @@ class AIService {
             finalStopReason = finalOutcome.stopReason;
             const runStatus = finalOutcome.runStatus;
 
-            await finalizeRunOnce(runStatus, totalTokensIn, totalTokensOut);
+            const finalized = await finalizeRunOnce(runStatus, totalTokensIn, totalTokensOut);
+            if (!finalized) {
+                await closeTraceOnce({
+                    externallyFinalized: true,
+                    attemptedRunStatus: runStatus,
+                    stopReason: finalStopReason,
+                });
+                return;
+            }
+
+            // Trigger auto-summarization only after the authoritative run outcome is durable.
+            // Auxiliary follow-on work must never retro-fail an already completed answer.
+            const totalMsgs = conversation.messages.length + 2; // +user +assistant
+            const currentTokens = estimateMessagesTokensWithSafetyMargin(conversation.messages);
+            try {
+                await autoSummarizeIfNeeded(
+                    conversation.id, totalMsgs,
+                    conversation.summaryData?.messageCount ?? 0,
+                    budget, currentTokens
+                );
+            } catch (error) {
+                logServerWarn("ai-service", "auto-summarization failed after run completion", {
+                    conversationId: conversation.id,
+                    runId: activeRun.id,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+
+            try {
+                await closeTraceOnce({
+                    stopReason: finalStopReason,
+                    iterations: loop.iterations,
+                    toolCalls: loop.totalToolCalls,
+                    totalTokensIn,
+                    totalTokensOut,
+                    scopingSearchCalls: scopingSearchCallsThisRun,
+                    protocolHandoffExecuted,
+                });
+            } catch (error) {
+                logServerWarn("ai-service", "failed to close trace after run completion", {
+                    conversationId: conversation.id,
+                    runId: activeRun.id,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+
             const runModelMeta = resolveRunActualModelMeta(baseChatOptions.model, observedRunModel, invokedModel);
             yield {
                 type: "run_end",
@@ -2379,23 +2410,30 @@ class AIService {
                 (error instanceof Error && error.name === "AbortError") ||
                 (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError");
 
+            if (isRunOwnershipError(error)) {
+                logServerWarn("ai-service", "run ownership lost during stream; suppressing stale writer", {
+                    runId: error.runId,
+                    status: error.status,
+                    finalizationState: error.finalizationState,
+                });
+                await closeTraceOnce({
+                    externallyFinalized: true,
+                    runId: error.runId,
+                    status: error.status,
+                    finalizationState: error.finalizationState,
+                });
+                return;
+            }
+
             if (isAbortError) {
                 runFacts.cancelledByUser = true;
                 const activeRunId = run?.id;
                 if (fullContent) {
-                    await addMessageToConversation(conversation.id, {
-                        role: "assistant",
-                        content: fullContent,
-                    });
                     if (activeRunId) {
-                        await recordRunEvent({
+                        await addAssistantMessageToConversationForRun({
                             runId: activeRunId,
-                            type: "message",
-                            payload: { content: fullContent },
-                            extras: { messageRole: "assistant" },
-                            failureMode: "degrade",
-                            degradationReason: "assistant_message_persistence_failed",
-                            logContext: "assistant_message_plan_failure",
+                            conversationId: conversation.id,
+                            content: fullContent,
                         });
                     }
                 }
@@ -2409,13 +2447,14 @@ class AIService {
                         });
                     });
                 }
-                await finalizeRunOnce("cancelled");
+                const finalized = await finalizeRunOnce("cancelled");
                 const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
-                if (activeRunId) {
+                if (activeRunId && finalized) {
                     yield {
                         type: "run_end",
                         runId: activeRunId,
                         runStatus: "cancelled",
+                        stopReason: "cancelled",
                         conversationId: conversation.id,
                         actualModel: runModelMeta.actualModel ?? undefined,
                         actualModelSource: runModelMeta.actualModelSource,
@@ -2461,26 +2500,21 @@ class AIService {
                 const fallbackContent = buildFailureFallbackMessage(classifiedError.message);
                 fullContent = fallbackContent;
                 runFacts.hadFinalAssistantAnswer = true;
-                await addMessageToConversation(conversation.id, {
-                    role: "assistant",
-                    content: fallbackContent,
-                });
                 const activeRunId = run?.id;
                 if (activeRunId) {
-                    await recordRunEvent({
+                    await addAssistantMessageToConversationForRun({
                         runId: activeRunId,
-                        type: "message",
-                        payload: { content: fallbackContent },
-                        extras: { messageRole: "assistant" },
-                        failureMode: "degrade",
-                        degradationReason: "assistant_message_persistence_failed",
-                        logContext: "assistant_message_catch_fallback",
+                        conversationId: conversation.id,
+                        content: fallbackContent,
                     });
                 }
                 yield { type: "content", content: fallbackContent, conversationId: conversation.id };
             }
 
-            await finalizeRunOnce("failed");
+            const finalized = await finalizeRunOnce("failed");
+            if (!finalized) {
+                return;
+            }
             const terminalErrorChunk = buildStreamErrorChunk(
                 toAIErrorEnvelope(error, {
                     kind: "runtime",
