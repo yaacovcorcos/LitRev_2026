@@ -401,7 +401,9 @@ describe("AIService scoping runtime", () => {
     expect(chunks.some((chunk) => (chunk as { type?: string }).type === "user_input_required")).toBe(false);
     expect(chunks.some((chunk) => (chunk as { type?: string }).type === "content")).toBe(true);
     expect(chunks.some((chunk) => (chunk as { type?: string; runStatus?: string }).type === "run_end" && (chunk as { runStatus?: string }).runStatus === "failed")).toBe(true);
-    expect(mocks.markRunAbnormalEndClassification).toHaveBeenCalledWith("run-1", "no_forward_durable_progress");
+    expect(mocks.markRunAbnormalEndClassification).toHaveBeenCalledWith("run-1", "no_forward_durable_progress", {
+      requireActive: true,
+    });
     expect(mocks.persistRecoveryAuthoritativeRuntimeEvent).not.toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({ type: "user_input_required" }),

@@ -43,6 +43,7 @@ const {
   RUN_HEARTBEAT_INTERVAL_MS,
   getRunLineage,
   markRunAbnormalEndClassification,
+  markRunDurabilityDegraded,
   markRunFinalizationFailed,
   markRunFinalizationState,
   settleClarificationDismissedRun,
@@ -334,6 +335,34 @@ describe("run freshness lifecycle", () => {
         abnormalEndClassification: null,
       },
     });
+  });
+
+  it("throws a run ownership error when strict abnormal-end writes lose ownership", async () => {
+    mocks.agentRunUpdateMany.mockResolvedValueOnce({ count: 0 });
+    mocks.agentRunFindUnique.mockResolvedValueOnce({
+      id: "run-1",
+      status: "cancelled",
+      completedAt: new Date("2026-03-14T12:00:00.000Z"),
+      finalizationState: "completed",
+    });
+
+    await expect(
+      markRunAbnormalEndClassification("run-1", "unknown", { requireActive: true }),
+    ).rejects.toBeInstanceOf(RunOwnershipError);
+  });
+
+  it("throws a run ownership error when strict durability degradation loses ownership", async () => {
+    mocks.agentRunUpdateMany.mockResolvedValueOnce({ count: 0 });
+    mocks.agentRunFindUnique.mockResolvedValueOnce({
+      id: "run-1",
+      status: "cancelled",
+      completedAt: new Date("2026-03-14T12:00:00.000Z"),
+      finalizationState: "completed",
+    });
+
+    await expect(
+      markRunDurabilityDegraded("run-1", "tool_result_persistence_failed", { requireActive: true }),
+    ).rejects.toBeInstanceOf(RunOwnershipError);
   });
 
   it("heartbeats only after the quiet interval elapses", async () => {

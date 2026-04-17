@@ -242,8 +242,10 @@ export async function markRunFinalizationState(
 export async function markRunAbnormalEndClassification(
     runId: string,
     classification: RunAbnormalEndClassification,
-    at = new Date(),
+    options?: Date | { at?: Date; requireActive?: boolean },
 ) {
+    const at = options instanceof Date ? options : options?.at ?? new Date();
+    const requireActive = options instanceof Date ? false : options?.requireActive ?? false;
     const result = await prisma.agentRun.updateMany({
         where: {
             id: runId,
@@ -257,6 +259,10 @@ export async function markRunAbnormalEndClassification(
     });
     if (result.count > 0) {
         notifyRunActivity(runId, at);
+        return result.count;
+    }
+    if (requireActive) {
+        await throwRunOwnershipError({ agentRun: prisma.agentRun }, runId);
     }
     return result.count;
 }
@@ -264,8 +270,10 @@ export async function markRunAbnormalEndClassification(
 export async function markRunDurabilityDegraded(
     runId: string,
     reason: string,
-    at = new Date(),
+    options?: Date | { at?: Date; requireActive?: boolean },
 ) {
+    const at = options instanceof Date ? options : options?.at ?? new Date();
+    const requireActive = options instanceof Date ? false : options?.requireActive ?? false;
     const result = await prisma.agentRun.updateMany({
         where: {
             id: runId,
@@ -281,11 +289,20 @@ export async function markRunDurabilityDegraded(
     });
     if (result.count > 0) {
         notifyRunActivity(runId, at);
+        return result.count;
+    }
+    if (requireActive) {
+        await throwRunOwnershipError({ agentRun: prisma.agentRun }, runId);
     }
     return result.count;
 }
 
-export async function markRunFinalizationFailed(runId: string, at = new Date()) {
+export async function markRunFinalizationFailed(
+    runId: string,
+    options?: Date | { at?: Date; requireActive?: boolean },
+) {
+    const at = options instanceof Date ? options : options?.at ?? new Date();
+    const requireActive = options instanceof Date ? false : options?.requireActive ?? false;
     const result = await prisma.agentRun.updateMany({
         where: {
             id: runId,
@@ -300,6 +317,10 @@ export async function markRunFinalizationFailed(runId: string, at = new Date()) 
     });
     if (result.count > 0) {
         notifyRunActivity(runId, at);
+        return result.count;
+    }
+    if (requireActive) {
+        await throwRunOwnershipError({ agentRun: prisma.agentRun }, runId);
     }
     return result.count;
 }
@@ -488,8 +509,10 @@ export async function cancelRun(runId: string) {
 
 export async function settleClarificationDismissedRun(
     runId: string,
-    at = new Date(),
+    options?: Date | { at?: Date; requireActive?: boolean },
 ) {
+    const at = options instanceof Date ? options : options?.at ?? new Date();
+    const requireActive = options instanceof Date ? false : options?.requireActive ?? false;
     const result = await prisma.agentRun.updateMany({
         where: {
             id: runId,
@@ -506,6 +529,10 @@ export async function settleClarificationDismissedRun(
     });
     if (result.count > 0) {
         notifyRunActivity(runId, at);
+        return result.count;
+    }
+    if (requireActive) {
+        await throwRunOwnershipError({ agentRun: prisma.agentRun }, runId);
     }
     return result.count;
 }
