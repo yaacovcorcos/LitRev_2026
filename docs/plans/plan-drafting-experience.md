@@ -3,7 +3,7 @@
 ## Purpose
 This is the single canonical plan for LitRev's drafting surface.
 
-It defines the canonical drafting direction for LitRev and the sequence of work around it. The current authoritative route baseline is the restored section-first drafting experience anchored to the March 12, 2026 `8998296` interaction model: top section tabs, real `Section` / `Full Draft`, a dedicated left Evidence Ledger, and an obvious center drafting surface. The canonical manuscript model, citation compiler, and export foundation remain active under that UI, but the rejected continuous-workspace, drawer-first, and segmented-sidebar route shells are not the current product truth.
+It defines the canonical drafting direction for LitRev and the sequence of work around it. The current authoritative route baseline is the restored section-first drafting experience anchored to the March 12, 2026 `8998296` interaction model: top section tabs, real `Section` / `Full Draft`, a dedicated left Evidence Ledger, and an obvious center drafting surface. The canonical manuscript model, citation compiler, and export foundation remain active under that UI, but the rejected continuous-workspace, drawer-first, and segmented-sidebar route shells are not the current product truth. That left Evidence Ledger remains the current baseline, but the planned direction is one draft-owned left context panel that can later switch between `Evidence`, `Assets`, `Pages`, and `Review` without introducing shadow sidebars or shadow document state.
 
 Supporting execution detail for the next editorial-quality rebuild now lives in [plan-draft-authoring-platform.md](./plan-draft-authoring-platform.md).
 The completed non-visual `DAP-00` benchmark/harness baseline now lives in [2026-04-16-draft-benchmark-baseline.md](../reviews/2026-04-16-draft-benchmark-baseline.md) and the shipped corpus/harness code under `next-app/lib/draft-benchmark/**` plus `next-app/test/fixtures/draft/**`.
@@ -30,7 +30,8 @@ Current route contract:
 - the center section editor is the primary visible writing surface
 - evidence targets the active named section during normal drafting
 - `Full Draft` only renders written sections; otherwise it shows the start-drafting empty state
-- left Evidence Ledger is the only draft-owned support surface
+- current baseline: left Evidence Ledger is the only draft-owned support surface
+- planned direction: evolve that same lane into one left context panel with `Evidence`, `Assets`, `Pages`, and `Review`
 - right side remains owned by the existing project copilot shell
 - compatibility or stale states with zero writable named sections must disable `Section` mode and fall back to `Full Draft` as the only valid projection
 - zero-section evidence targeting resolves to `Whole draft` until a writable named section exists
@@ -640,6 +641,7 @@ These are implementation tracks for one target state, not separate product versi
 ## Recently Completed
 - `DAP-00` shipped the non-visual benchmark baseline for the draft rebuild: LitRev now has a committed corpus under `next-app/lib/draft-benchmark/**`, import and measurement fixtures under `next-app/test/fixtures/draft/**`, runnable benchmark scripts under `next-app/scripts/draft-benchmark/**`, and a durable decision record in `docs/reviews/2026-04-16-draft-benchmark-baseline.md`.
 - `DAP-03A` shipped the non-UI import/interoperability foundation: LitRev now has canonical import contracts under `next-app/lib/draft-import/**`, a server-owned `executeDraftImport` path, prioritized bibliography and manuscript adapters, checkpoint-safe draft reconciliation, and durable completion memory in `docs/reviews/2026-04-17-draft-import-interoperability.md`.
+- `DAP-01` first-pass minimal-change foundation shipped: the current draft shell still looks familiar, the left rail now has an explicit support-panel seam for the future context panel, and local draft snapshots now synchronize back into canonical manuscript state during persistence/export prep. Durable completion memory lives in `docs/reviews/2026-04-17-draft-vnext-minimal-change.md`.
 - `DRX-006A` hardened the backend draft proposal contract: fresh `draft_diff` artifacts now carry deterministic section metadata plus base-section state, accepted apply rejects stale target-section changes instead of overwriting newer draft text, and accepted proposals now create whole-draft `ai_apply` checkpoints in addition to per-section `DraftVersion` provenance.
 - `DRX-005A` shipped the backend-first diagnostics contract: draft/export warning derivation now compiles from one canonical normalized diagnostics report, citation-derived issues reuse the existing citation taxonomy, section-level coverage signals are advisory warnings only, and strict export blocking still tracks only current citation-integrity failures.
 - `DRX-007` replaced the placeholder draft export path with a real server-owned compiler pipeline: DOCX and Markdown now compile from normalized manuscript state, generated exports store real file assets, and visible export history stays truthful and DOCX-only in the current UI.
