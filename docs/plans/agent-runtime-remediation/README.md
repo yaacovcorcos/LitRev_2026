@@ -16,6 +16,10 @@ Current active supporting detail:
 - [Baseline Stability and Transparency Reset](./plan-fix-012-baseline-stability.md) for `FIX-012`
 - [Runtime Stabilization and Continuation](./plan-runtime-stabilization-and-continuation.md) for the remaining `FIX-011b` closeout path
 
+Historical/supporting remediation memory:
+
+- [Stream Scope Canonicalization for Study-Scoped Runs](./plan-stream-scope-canonicalization.md) for the route-level owned-scope bug where `studyId`-only stream requests could degrade to global runtime scope if canonicalized `projectId` was not carried forward.
+
 Reference design direction:
 
 - [Ask User V2 Design Direction](./ask-user-v2-design-direction.md) for the planned clarification/decision-system redesign. This file is design guidance only; canonical status and execution order still belong in [plan-agentic.md](../plan-agentic.md).

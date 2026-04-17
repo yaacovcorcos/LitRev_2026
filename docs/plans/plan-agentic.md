@@ -95,6 +95,7 @@ The agent should not merely "feel smart." It should be:
   - shared query/count/source semantics
   - continuation tokens hidden behind server-owned contracts
 - Popup is now a truthful reduced subset of the shared runtime rather than a separate runtime model.
+- Study-scoped stream entry now canonicalizes owned `projectId` before runtime start, popup/context validation, and tool-scope selection, so `studyId`-only requests no longer degrade into accidental global-scope runs.
 - The remaining major platform debt is no longer "invent the architecture." It is:
   - finish convergence
   - remove duplication
@@ -255,6 +256,7 @@ It is done when:
 
 ## Recently Completed
 
+- [x] Stream-entry owned-scope canonicalization for study-scoped runs is now documented as part of current runtime truth; `studyId`-only requests carry the resolved owning `projectId` into runtime options instead of degrading tool scope to global.
 - [x] Checkpoint-backed retry/replace continuation is now shipped for the main surfaces.
 - [x] Shared blocked clarification identity and resolution are now materially runtime-owned.
 - [x] Popup now runs on the shared runtime as a truthful reduced subset.
