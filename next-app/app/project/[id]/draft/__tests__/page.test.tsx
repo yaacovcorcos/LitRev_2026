@@ -284,6 +284,29 @@ function textDoc(text: string) {
   };
 }
 
+function extractTextFromNode(node: unknown): string {
+  if (!node || typeof node !== "object") return "";
+  const typedNode = node as { text?: unknown; content?: unknown[] };
+  const ownText = typeof typedNode.text === "string" ? typedNode.text : "";
+  const childText = Array.isArray(typedNode.content)
+    ? typedNode.content.map((child) => extractTextFromNode(child)).join("")
+    : "";
+  return `${ownText}${childText}`;
+}
+
+function getManuscriptSectionText(state: ReturnType<typeof createDraftState>, sectionId: string): string {
+  const content = state.manuscript?.doc?.content;
+  if (!Array.isArray(content)) return "";
+  const sectionNode = content.find((node) => (
+    typeof node === "object"
+    && node !== null
+    && (node as { type?: unknown }).type === "manuscriptSection"
+    && typeof (node as { attrs?: { sectionId?: unknown } }).attrs?.sectionId === "string"
+    && (node as { attrs?: { sectionId?: string } }).attrs?.sectionId === sectionId
+  ));
+  return extractTextFromNode(sectionNode);
+}
+
 function setSearchParams(query: string) {
   mockSearchParams.forEach((_, key) => {
     mockSearchParams.delete(key);
@@ -348,10 +371,9 @@ function createDraftState(overrides: Record<string, unknown> = {}) {
       references: [],
     },
     manuscript: {
-      version: 2,
-      root: { type: "doc", content: [] },
+      schemaVersion: 2,
+      doc: { type: "doc", content: [] },
       sections: [],
-      references: { orderedStudyIds: [] },
     },
     ...overrides,
   };
@@ -559,7 +581,8 @@ describe("Draft page", () => {
     expect(mockSaveDraftAction).not.toHaveBeenCalled();
 
     const [, savedState] = mockSaveDraftState.mock.lastCall as [string, ReturnType<typeof createDraftState>];
-    expect(savedState.contentBySection.abstract).toEqual(textDoc("Updated abstract"));
+    expect(extractTextFromNode(savedState.contentBySection.abstract)).toContain("Updated abstract");
+    expect(getManuscriptSectionText(savedState, "abstract")).toContain("Updated abstract");
   });
 
   it("flushes pending editor updates to local storage on pagehide", async () => {
@@ -578,7 +601,8 @@ describe("Draft page", () => {
 
     expect(mockSaveDraftState).toHaveBeenCalled();
     const [, savedState] = mockSaveDraftState.mock.lastCall as [string, ReturnType<typeof createDraftState>];
-    expect(savedState.contentBySection.abstract).toEqual(textDoc("Updated abstract"));
+    expect(extractTextFromNode(savedState.contentBySection.abstract)).toContain("Updated abstract");
+    expect(getManuscriptSectionText(savedState, "abstract")).toContain("Updated abstract");
     expect(mockSaveDraftAction).not.toHaveBeenCalled();
   });
 });

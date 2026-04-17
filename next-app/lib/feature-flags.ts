@@ -25,6 +25,19 @@ export function isScrollOwnershipA1Enabled(): boolean {
   return readFlag(process.env.NEXT_PUBLIC_SCROLL_OWNERSHIP_A1) ?? false;
 }
 
+/**
+ * Draft VNext minimal-change rollout gate.
+ * Enabled by default so the architecture-first draft route improvements ship
+ * unless explicitly disabled during burn-in.
+ */
+export function isDraftVNextMinimalChangeEnabled(): boolean {
+  return (
+    readFlag(process.env.NEXT_PUBLIC_DRAFT_VNEXT_MINIMAL_CHANGE)
+    ?? readFlag(process.env.ENABLE_DRAFT_VNEXT_MINIMAL_CHANGE)
+    ?? true
+  );
+}
+
 export type ProgressiveAnswerStreamingConfig = {
   enabled: boolean;
   contentFirstFlushMinChars: number;

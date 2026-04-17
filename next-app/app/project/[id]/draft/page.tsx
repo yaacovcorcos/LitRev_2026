@@ -62,7 +62,7 @@ import {
 import { useDraftExport } from "./useDraftExport";
 import { useDraftSections } from "./useDraftSections";
 import { useDraftCopilot } from "./useDraftCopilot";
-import { buildReferencesDoc, compileDraftCitations } from "@/lib/citation-compiler";
+import { compileDraftCitations } from "@/lib/citation-compiler";
 import { COARSE_POINTER_MEDIA_QUERY, MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileDraftV2Enabled } from "@/lib/mobile/feature-flags";
 import { isContextToolbarV1Enabled } from "@/lib/context-capture/feature-flags";
@@ -82,26 +82,29 @@ import {
   resolveSectionModeActiveSection,
 } from "@/lib/draft-state-contracts";
 import { useWindowEvent } from "@/hooks/useWindowEvent";
+import { synchronizeDraftState } from "./draft-workspace-state";
+import { DraftSupportPanel } from "./DraftSupportPanel";
+import { isDraftVNextMinimalChangeEnabled } from "@/lib/feature-flags";
 
 function createCitationUid(sectionId: DraftSectionId): string {
   const rand = Math.random().toString(36).slice(2, 8);
   return `cit-${sectionId}-${Date.now().toString(36)}-${rand}`;
 }
 
-function withCompiledCitations(state: DraftState, studies: Study[], includeNumberInNodes: boolean): DraftState {
+function compileDraftStateForProjection(
+  state: DraftState,
+  studies: Study[],
+  includeNumberInNodes: boolean,
+): DraftState {
   const compiled = compileDraftCitations({
     contentBySection: state.contentBySection,
     sectionOrder: state.sectionOrder,
     studies,
     includeNumberInNodes,
   });
-  const referencesDoc = buildReferencesDoc(compiled.orderedStudyIds, studies);
   return {
     ...state,
-    contentBySection: {
-      ...compiled.normalizedContentBySection,
-      references: referencesDoc,
-    },
+    contentBySection: compiled.normalizedContentBySection,
   };
 }
 
@@ -138,15 +141,24 @@ function DraftContent() {
   const rewriteSelectionAction = getContextCaptureAction("rewrite_selection");
   const checkClaimSupportAction = getContextCaptureAction("check_claim_support");
   const draftRouteState = useMemo(() => readDraftRouteState(searchParams), [searchParams]);
+  const draftVNextEnabled = isDraftVNextMinimalChangeEnabled();
 
   const [draft, setDraft] = useState<DraftState>(createDefaultDraftState);
   const normalizeForEditor = useCallback(
-    (state: DraftState) => withCompiledCitations(state, studies, true),
-    [studies]
+    (state: DraftState) => (
+      draftVNextEnabled
+        ? synchronizeDraftState({ state, studies, includeNumberInNodes: true })
+        : compileDraftStateForProjection(state, studies, true)
+    ),
+    [draftVNextEnabled, studies]
   );
   const normalizeForPersistence = useCallback(
-    (state: DraftState) => withCompiledCitations(state, studies, false),
-    [studies]
+    (state: DraftState) => (
+      draftVNextEnabled
+        ? synchronizeDraftState({ state, studies, includeNumberInNodes: false })
+        : compileDraftStateForProjection(state, studies, false)
+    ),
+    [draftVNextEnabled, studies]
   );
 
   const routeStateRef = useRef<DraftRouteState>(draftRouteState);
@@ -327,7 +339,6 @@ function DraftContent() {
     ? activeFormat.fontFamily
     : DEFAULT_SECTION_FORMAT.fontFamily;
   const activeFormatVars = formatVarsById[activeFormatSectionId] ?? formatToVars(DEFAULT_SECTION_FORMAT);
-  const ledgerPanelId = "draft-ledger-panel";
   const copilotPanelId = "draft-copilot-panel";
   const draftMainClassName = `${styles.appMainOverride} ${mobileDraftV2Enabled ? styles.appMainOverrideMobileV2 : ""}`;
 
@@ -404,16 +415,16 @@ function DraftContent() {
   }, [updateDraft]);
 
   const getDraftSnapshot = useCallback((): DraftState => {
-    if (dirtyContentKeysRef.current.size === 0) return draft;
+    if (dirtyContentKeysRef.current.size === 0) return normalizeForEditor(draft);
     const nextContent = { ...draft.contentBySection };
     for (const key of dirtyContentKeysRef.current) {
       nextContent[key] = pendingContentRef.current[key];
     }
-    return {
+    return normalizeForEditor({
       ...draft,
       contentBySection: nextContent,
-    };
-  }, [draft]);
+    });
+  }, [draft, normalizeForEditor]);
 
   const queueContentUpdate = useCallback(
     (key: DraftSectionId, json: JSONContent) => {
@@ -1072,102 +1083,28 @@ function DraftContent() {
         ) : null}
 
         <div className={styles.body} style={layoutVars}>
-          {!draft.panels.ledgerCollapsed ? (
-            <aside className={styles.ledger} aria-label="Evidence ledger" id={ledgerPanelId}>
-              <div className={styles.ledgerHeader}>
-                <div className={styles.ledgerHeaderTop}>
-                  <span className={styles.ledgerTitle}>Evidence Ledger</span>
-                  <div className={styles.panelHeaderActions}>
-                    {!isReferencesSection && (
-                      <button
-                        type="button"
-                        className={styles.iconBtn}
-                        aria-label="Add evidence"
-                        onClick={() => setAddEvidenceOpen(true)}
-                      >
-                        <span className="material-icons-round">add</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className={styles.panelToggle}
-                      aria-label="Collapse evidence ledger"
-                      aria-controls={ledgerPanelId}
-                      aria-expanded={!draft.panels.ledgerCollapsed}
-                      onClick={() =>
-                        updateDraft((prev) => ({
-                          ...prev,
-                          panels: { ...prev.panels, ledgerCollapsed: true },
-                        }))
-                      }
-                    >
-                      <span className="material-icons-round">menu_open</span>
-                    </button>
-                  </div>
-                </div>
-                <div className={styles.ledgerContext}>
-                  <span className={styles.ledgerContextLabel}>for</span>
-                  <span className={styles.ledgerContextSection}>{evidenceTargetMeta.label}</span>
-                </div>
-              </div>
-
-              <div className={styles.panelBody}>
-                {isReferencesSection ? (
-                  <div className={styles.emptyPanel}>
-                    <div className={styles.emptyIcon}>
-                      <span className="material-icons-round">auto_awesome</span>
-                    </div>
-                    <h3>Auto-generated section</h3>
-                    <p>References are generated from citation nodes in manuscript sections.</p>
-                  </div>
-                ) : usedEvidence.length === 0 ? (
-                  <div className={styles.emptyPanel}>
-                    <div className={styles.emptyIcon}>
-                      <span className="material-icons-round">library_add</span>
-                    </div>
-                    <h3>No evidence yet</h3>
-                    <p>Add papers you’ll cite for this section.</p>
-                    <button type="button" className="header-btn header-btn-primary" onClick={() => setAddEvidenceOpen(true)}>
-                      Add evidence
-                    </button>
-                  </div>
-                ) : (
-                  <div className={styles.ledgerList}>
-                    {usedEvidence.map((study) => (
-                      <div key={study.id} className={styles.ledgerItem}>
-                        <div className={styles.ledgerMeta}>
-                          <div className={styles.ledgerLabel}>{studyLabel(study)}</div>
-                          <div className={styles.ledgerTitle}>{study.title}</div>
-                        </div>
-                        <div className={styles.ledgerActions}>
-                          <button type="button" className={styles.smallBtn} onClick={() => insertCitation(study)}>
-                            Cite
-                          </button>
-                          <button type="button" className={styles.smallBtnGhost} onClick={() => handleRemoveEvidence(study.id)}>
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </aside>
-          ) : (
-            <div className={styles.collapsedRailLeft} aria-label="Evidence ledger (collapsed)">
-              <button
-                type="button"
-                className={styles.panelToggle}
-                aria-label="Expand evidence ledger"
-                aria-controls={ledgerPanelId}
-                aria-expanded={false}
-                onClick={() => updateDraft((prev) => ({ ...prev, panels: { ...prev.panels, ledgerCollapsed: false } }))}
-              >
-                <span className="material-icons-round">menu_open</span>
-              </button>
-              <span className={styles.collapsedLabel}>Evidence</span>
-            </div>
-          )}
+          <DraftSupportPanel
+            collapsed={draft.panels.ledgerCollapsed}
+            activeSectionLabel={evidenceTargetMeta.label}
+            isReferencesSection={isReferencesSection}
+            usedEvidence={usedEvidence}
+            onAddEvidence={() => setAddEvidenceOpen(true)}
+            onCollapse={() =>
+              updateDraft((prev) => ({
+                ...prev,
+                panels: { ...prev.panels, ledgerCollapsed: true },
+              }))
+            }
+            onExpand={() =>
+              updateDraft((prev) => ({
+                ...prev,
+                panels: { ...prev.panels, ledgerCollapsed: false },
+              }))
+            }
+            onInsertCitation={insertCitation}
+            onRemoveEvidence={handleRemoveEvidence}
+            studyLabel={studyLabel}
+          />
 
           <div
             className={`${styles.resizeHandle} ${draft.panels.ledgerCollapsed ? styles.resizeHandleHidden : ""}`}

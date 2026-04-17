@@ -651,10 +651,16 @@ Implementation note (April 16, 2026): this slice shipped as a non-visual baselin
 - Blast radius: low/medium
 
 ### `DAP-01` Draft VNext shell and one-editor core
+Implementation note (April 17, 2026): the first minimal-change foundation pass shipped. The current draft shell remains visually familiar, but the route now has an explicit `DraftSupportPanel` seam for the future left context panel, a dedicated rollout flag (`isDraftVNextMinimalChangeEnabled`), and draft snapshots/local persistence now synchronize back into canonical manuscript state instead of treating the manuscript model as passive metadata. The larger shell/controller split and stronger one-editor projection model still remain before `DAP-01` can be considered fully complete.
 - Create a new draft surface behind a feature flag rather than mutating the existing route in place.
 - Reduce route responsibilities to shell/layout/URL state.
 - Build one canonical manuscript editor with section-focus and manuscript projections.
 - Preserve current project shell, copilot embedding, and export hooks.
+- Prepare the current left Evidence Ledger lane to evolve into a shared context panel with:
+  - `Evidence`
+  - `Assets`
+  - `Pages`
+  - `Review`
 - Blast radius: high, approval-gated UI change
 - Approval gate:
   - this slice changes visible draft behavior and must be explicitly approved before implementation

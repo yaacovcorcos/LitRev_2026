@@ -59,14 +59,20 @@ export function DraftContextRail({
       <div className={styles.panelBody}>
         {isReferencesSection ? (
           <div className={styles.emptyPanel}>
+            <div className={styles.emptyIcon}>
+              <span className="material-icons-round">auto_awesome</span>
+            </div>
             <h3>Auto-generated section</h3>
-            <p>References are generated from citations in the manuscript.</p>
+            <p>References are generated from citation nodes in manuscript sections.</p>
           </div>
         ) : usedEvidence.length === 0 ? (
           <div className={styles.emptyPanel}>
+            <div className={styles.emptyIcon}>
+              <span className="material-icons-round">library_add</span>
+            </div>
             <h3>No evidence yet</h3>
-            <p>Add papers you will cite for this section.</p>
-            <button type="button" className={styles.smallBtn} onClick={onAddEvidence}>
+            <p>Add papers you’ll cite for this section.</p>
+            <button type="button" className="header-btn header-btn-primary" onClick={onAddEvidence}>
               Add evidence
             </button>
           </div>
