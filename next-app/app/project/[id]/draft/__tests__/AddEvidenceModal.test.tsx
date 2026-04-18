@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { Study } from "@/types/ledger";
 import { describe, expect, it, vi } from "vitest";
-import { AddEvidenceModal } from "./AddEvidenceModal";
+import { AddEvidenceModal } from "../AddEvidenceModal";
 
 vi.mock("next/link", async () => {
   const { nextLinkPrefetchMock } = await import("@/test-utils/next-link-prefetch-mock");

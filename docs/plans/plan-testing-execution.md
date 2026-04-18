@@ -56,6 +56,7 @@ This plan does not own:
   - `next-app/scripts/check-runtime-test-impact.mjs` for governed runtime test-impact enforcement
 - `docs/reviews/repo-health.md` currently records raw `npm run lint` at `0` errors and `0` warnings on `main`, and raw lint now runs inside the protected `check` contract through `governance:ci-required`.
 - LitRev now has a coherent shared testing execution reference plus canonical lane aliases; the remaining execution gap is the absence of a truthful `test:unit` / `test:integration` split and any future proof that a repo-root wrapper is still worth adding.
+- The default placement model remains domain-local `__tests__` directories, and the first small normalization pass is to finish that pattern inside feature folders that already mix sibling `.test.*` files with a nearby `__tests__` directory.
 
 ## External Pattern Position
 
@@ -168,6 +169,7 @@ Missing:
 - [ ] Introduce `test:unit` and `test:integration` only after the repo has a truthful, maintainable boundary for that split rather than a cosmetic label.
 
 ## Recently Completed
+- [x] Normalized the draft route's local test layout by moving the remaining sibling `.test.*` files into `app/project/[id]/draft/__tests__/`, establishing the preferred "finish the nearby `__tests__` pattern before inventing a second local style" rule for future cleanup.
 - [x] Introduced canonical shared lane aliases in `next-app/package.json` for typecheck, Vitest, governance, E2E foundation/local, smoke, chat-stream architecture, and PR-ready validation while keeping the historical command names backward compatible.
 - [x] Closed the repo-root wrapper decision for now: keep the package-level aliases and shared testing runbook as the single ergonomic front door until evidence shows they are not enough.
 - [x] Established a durable repo-wide testing doctrine in `docs/agents/testing-agent-contract.md` and linked it from Tier 3 retrieval.

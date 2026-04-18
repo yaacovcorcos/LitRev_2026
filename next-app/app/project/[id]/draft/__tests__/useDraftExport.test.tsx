@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useDraftExport } from "./useDraftExport";
+import { useDraftExport } from "../useDraftExport";
 import { UNSECTIONED_DRAFT_ID } from "@/types/draft";
 
 const mockGenerateDraftExportAction = vi.fn();
@@ -16,7 +16,7 @@ vi.mock("@/app/actions/files", () => ({
   deleteFileAssetAction: vi.fn(async () => ({ success: true })),
 }));
 
-vi.mock("./useProjectExportHistory", () => ({
+vi.mock("../useProjectExportHistory", () => ({
   useProjectExportHistory: () => ({
     exportHistory: [],
     latestExport: null,
