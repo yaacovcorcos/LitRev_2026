@@ -74,11 +74,11 @@ The agent should not merely "feel smart." It should be:
 
 - The main chat surfaces already share one runtime/reducer foundation for normalized stream events, tool lifecycle, checkpoints, structured terminal errors, and blocked clarification.
 - Runtime ownership and terminal truth are materially stronger on current `main`, but `FIX-011b` remains open as a narrow shared-runtime delta rather than a new architecture program.
-- A fresh runtime audit on `2026-04-16` found the currently active `FIX-011b` delta:
-  - stale-writer exclusion after replace/cancel is still too soft
+- A runtime audit on `2026-04-16` and follow-up hardening on current `main` narrowed the active `FIX-011b` delta to:
   - cancelled terminal truth still needs parity across live stream, replay, recovery, and blocked-card dismissal
   - clarification hydration on long lineages still needs the newest relevant window
   - post-answer auxiliary work still needs a degrade-only success boundary
+- Shared write helpers now fail closed on ownership loss, so stale replaced/cancelled workers stop instead of continuing to mutate winning-run truth.
 - Durable continuation is materially stronger than before:
   - strict continue remains strict
   - retry/replace can now prefer checkpoint-backed or durable continuation over restart-from-zero when the source is proven
@@ -256,6 +256,7 @@ It is done when:
 
 ## Recently Completed
 
+- [x] Shared write helpers now fail closed on ownership loss, so stale replaced/cancelled workers stop instead of persisting stale writes or stale finalization.
 - [x] Stream-entry owned-scope canonicalization for study-scoped runs is now documented as part of current runtime truth; `studyId`-only requests carry the resolved owning `projectId` into runtime options instead of degrading tool scope to global.
 - [x] Checkpoint-backed retry/replace continuation is now shipped for the main surfaces.
 - [x] Shared blocked clarification identity and resolution are now materially runtime-owned.
