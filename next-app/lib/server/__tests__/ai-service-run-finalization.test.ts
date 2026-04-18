@@ -626,6 +626,63 @@ describe("AIService run finalization", () => {
     expect(mocks.markRunFinalizationFailed).not.toHaveBeenCalled();
   });
 
+  it("does not retro-fail a completed run when conversation title generation throws", async () => {
+    vi.spyOn(
+      AIService.prototype as unknown as {
+        maybeGenerateConversationTitle: (params: unknown) => Promise<string | null>;
+      },
+      "maybeGenerateConversationTitle",
+    ).mockRejectedValueOnce(new Error("title write failed"));
+
+    const service = new AIService();
+
+    const stream = service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    });
+
+    const chunks: Array<{ type?: string; runStatus?: string; stopReason?: string }> = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      runStatus: "completed",
+      stopReason: "natural",
+    });
+    expect(mocks.endRun).toHaveBeenCalledWith("run-1", "completed", expect.any(Number), expect.any(Number));
+    expect(mocks.markRunFinalizationFailed).not.toHaveBeenCalled();
+  });
+
+  it("does not retro-fail a completed run when trace flushing throws after finalization", async () => {
+    mocks.flushTracing.mockRejectedValueOnce(new Error("trace flush failed"));
+
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    });
+
+    const chunks: Array<{ type?: string; runStatus?: string; stopReason?: string }> = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      runStatus: "completed",
+      stopReason: "natural",
+    });
+    expect(mocks.trace.end).toHaveBeenCalledTimes(1);
+    expect(mocks.endRun).toHaveBeenCalledWith("run-1", "completed", expect.any(Number), expect.any(Number));
+    expect(mocks.markRunFinalizationFailed).not.toHaveBeenCalled();
+  });
+
   it("suppresses stale assistant writes after ownership loss instead of finalizing the replaced run", async () => {
     const ownershipError = new Error("run no longer writable");
     mocks.addAssistantMessageToConversationForRun.mockRejectedValueOnce(ownershipError);
