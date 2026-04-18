@@ -103,6 +103,10 @@ function isDurableArtifactProgress(event: ClarificationLineageEventRecord): bool
     return event.type === "artifact_proposed" || event.type === "artifact_reviewed";
 }
 
+function isDurableClarificationProgress(event: ClarificationLineageEventRecord): boolean {
+    return isDurableToolProgress(event) || isDurableArtifactProgress(event);
+}
+
 function canSurfaceBoundedTerminalDecision(userInputRequest: UserInputRequest): boolean {
     if (Array.isArray(userInputRequest.options) && userInputRequest.options.length > 0) {
         return true;
@@ -206,31 +210,40 @@ export async function hydrateClarificationControllerState(params: {
             createdAt: true,
         },
     }) as ClarificationLineageEventRecord[];
-    events.reverse();
 
     let totalClarificationCount = 0;
     let hasDurableProgressSinceLastResolution = true;
     let lastResolvedDecisionBoundaryKey: string | null = null;
-    let sawResolvedClarification = false;
+    let sawClarificationEvent = false;
+    let sawLatestResolvedClarification = false;
+    let sawNewerDurableProgress = false;
 
+    // Walk newest -> oldest and stop once we cross the next older durable-progress
+    // boundary after entering a clarification segment. Older windows should not
+    // influence the current suppression policy.
     for (const event of events) {
+        if (isDurableClarificationProgress(event)) {
+            if (sawClarificationEvent) {
+                break;
+            }
+            sawNewerDurableProgress = true;
+            continue;
+        }
+
         if (event.type === "user_input_required") {
             totalClarificationCount += 1;
+            sawClarificationEvent = true;
             continue;
         }
 
         if (event.type === "user_input_resolved") {
-            const payload = asObject(event.payload) as UserInputResolution | null;
-            sawResolvedClarification = true;
-            hasDurableProgressSinceLastResolution = false;
-            lastResolvedDecisionBoundaryKey = payload?.decisionBoundaryKey
-                ?? null;
-            continue;
-        }
-
-        if (!sawResolvedClarification) continue;
-        if (isDurableToolProgress(event) || isDurableArtifactProgress(event)) {
-            hasDurableProgressSinceLastResolution = true;
+            sawClarificationEvent = true;
+            if (!sawLatestResolvedClarification) {
+                const payload = asObject(event.payload) as UserInputResolution | null;
+                sawLatestResolvedClarification = true;
+                hasDurableProgressSinceLastResolution = sawNewerDurableProgress;
+                lastResolvedDecisionBoundaryKey = payload?.decisionBoundaryKey ?? null;
+            }
         }
     }
 
