@@ -98,8 +98,8 @@ Use for frontend-only UX/UI changes in `next-app/` where backend contracts alrea
 9. Run:
    - `npm run lint`
    - `npm run lint:styles` if CSS files were touched
-   - `npx tsc --noEmit`
-   - `npx vitest run`
+   - `npm run typecheck`
+   - `npm run test:vitest`
 
 ## Failure Modes to Watch
 

@@ -318,7 +318,7 @@ A change is well tested only when:
 - mocks do not hide the real behavior
 - the coverage fits the repo's actual architecture and current plan direction
 
-Passing `npx vitest run` alone does not mean the change is well tested.
+Passing `npm run test:vitest` alone does not mean the change is well tested.
 
 ## Testing-Agent Review Questions
 

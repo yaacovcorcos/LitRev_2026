@@ -105,8 +105,8 @@ Run the route-appropriate commands defined by repo governance.
 At minimum for meaningful frontend work, from `next-app/`:
 - `npm run lint`
 - `npm run lint:styles` if CSS changed
-- `npx tsc --noEmit`
-- `npx vitest run`
+- `npm run typecheck`
+- `npm run test:vitest`
 
 Use any additional route-specific validation required by `AGENTS.md` and the frontend specialist.
 
