@@ -81,12 +81,17 @@ export async function recordRunEvent(
         if (failureMode === "degrade") {
             const degradationReason =
                 params.degradationReason ?? `${params.type}_persistence_failed`;
-            await markRunDurabilityDegraded(params.runId, degradationReason).catch((markError) => {
+            await markRunDurabilityDegraded(params.runId, degradationReason, {
+                requireActive: true,
+            }).catch((markError) => {
                 logServerError("run-event-recorder", "failed to persist degraded durability state", {
                     runId: params.runId,
                     type: params.type,
                     error: formatError(markError),
                 });
+                if (isRunOwnershipError(markError)) {
+                    throw markError;
+                }
             });
             logServerError("run-event-recorder", "degraded run after persistence failure", {
                 logContext,

@@ -2228,7 +2228,12 @@ class AIService {
 
             if (forcedClarificationStop) {
                 fullContent = forcedClarificationStop.content;
-                await markRunAbnormalEndClassification(activeRun.id, "no_forward_durable_progress").catch((markError) => {
+                await markRunAbnormalEndClassification(activeRun.id, "no_forward_durable_progress", {
+                    requireActive: true,
+                }).catch((markError) => {
+                    if (isRunOwnershipError(markError)) {
+                        return;
+                    }
                     logServerWarn("ai-service", "failed to persist clarification stop abnormal-end classification", {
                         runId: activeRun.id,
                         error: markError instanceof Error ? markError.message : String(markError),
@@ -2440,7 +2445,12 @@ class AIService {
 
                 await closeTraceOnce({ aborted: true });
                 if (activeRunId) {
-                    await markRunAbnormalEndClassification(activeRunId, "client_abort").catch((markError) => {
+                    await markRunAbnormalEndClassification(activeRunId, "client_abort", {
+                        requireActive: true,
+                    }).catch((markError) => {
+                        if (isRunOwnershipError(markError)) {
+                            return;
+                        }
                         logServerError("ai-service", "failed to persist client abort classification", {
                             runId: activeRunId,
                             error: markError,
@@ -2484,7 +2494,12 @@ class AIService {
             await closeTraceOnce({ error: error instanceof Error ? error.message : "Unknown" });
             if (run?.id) {
                 const activeRunId = run.id;
-                await markRunAbnormalEndClassification(run.id, "unknown").catch((markError) => {
+                await markRunAbnormalEndClassification(run.id, "unknown", {
+                    requireActive: true,
+                }).catch((markError) => {
+                    if (isRunOwnershipError(markError)) {
+                        return;
+                    }
                     logServerError("ai-service", "failed to persist abnormal end classification", {
                         runId: activeRunId,
                         error: markError,

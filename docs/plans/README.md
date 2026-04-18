@@ -9,6 +9,7 @@ This file is the active plan registry and the canonical owner for plan-maintenan
 - [**Testing Execution**](plan-testing-execution.md): Canonical tracker for shared test command taxonomy, CI lane clarity, changed-scope execution policy, smoke-lane discipline, and cross-cutting testing operations.
 - [**Agent Platform**](plan-agentic.md): Single canonical plan for the agent platform: runtime architecture, orchestration, decisioning, tool boundaries, shared-surface truth, and the long-range agent product roadmap.
   - Supporting execution detail for active fixes still lives under [**agent-runtime-remediation/**](agent-runtime-remediation/README.md).
+  - Cross-owner sequencing and dependency order now lives in [**Agent Platform Delivery Map**](agent-platform-delivery-map.md).
   - Historical/supporting runtime and transparency notes remain in [**Chat Runtime**](chat-runtime.md) and [**Transparency UI**](transparency-ui.md), but active status now lives in `plan-agentic.md`.
 - [**Agent Quality**](plan-agent-quality.md): Canonical plan for agent reliability, security, executable evals, rollout discipline, observability, performance efficiency, and long-term benchmark intake.
 - [**Memory, Grounding, and Prompting**](plan-memory.md): The only active memory tracker, now expanded to also own grounding, retrieval-quality, prompt-library, and extraction work for the agent's knowledge layer.

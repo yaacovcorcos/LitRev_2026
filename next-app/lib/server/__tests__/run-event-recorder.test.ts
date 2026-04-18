@@ -62,6 +62,7 @@ describe("run event recorder", () => {
     expect(mocks.markRunDurabilityDegraded).toHaveBeenCalledWith(
       "run-1",
       "tool_result_persistence_failed",
+      { requireActive: true },
     );
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
@@ -95,5 +96,21 @@ describe("run event recorder", () => {
     })).rejects.toBe(ownershipError);
 
     expect(mocks.markRunDurabilityDegraded).not.toHaveBeenCalled();
+  });
+
+  it("rethrows ownership loss when degraded durability cannot be persisted for an inactive run", async () => {
+    const ownershipError = new Error("run no longer writable");
+    mocks.emitEvent.mockRejectedValueOnce(new Error("write failed"));
+    mocks.markRunDurabilityDegraded.mockRejectedValueOnce(ownershipError);
+    mocks.isRunOwnershipError.mockReturnValueOnce(false).mockReturnValueOnce(true);
+
+    await expect(recordRunEvent({
+      runId: "run-1",
+      type: "tool_result",
+      payload: { callId: "call-1", result: { ok: true } },
+      failureMode: "degrade",
+      degradationReason: "tool_result_persistence_failed",
+      logContext: "tool_result:search_pubmed",
+    })).rejects.toBe(ownershipError);
   });
 });
