@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Lexend } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { Providers } from "./providers";
 
@@ -23,6 +24,8 @@ export const viewport: Viewport = {
 
 export const runtime = "nodejs";
 
+const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var t=localStorage.getItem("litrev-theme");if(t==="dark"||t==="light-carbon"||t==="light"){document.documentElement.setAttribute("data-theme",t)}else{document.documentElement.setAttribute("data-theme","light");localStorage.setItem("litrev-theme","light")}}catch(e){document.documentElement.setAttribute("data-theme","light")}})()`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -38,11 +41,9 @@ export default function RootLayout({
           rel="stylesheet"
           href="https://fonts.googleapis.com/icon?family=Material+Icons+Round"
         />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("litrev-theme");if(t==="dark"||t==="light-carbon"||t==="light"){document.documentElement.setAttribute("data-theme",t)}else{document.documentElement.setAttribute("data-theme","light");localStorage.setItem("litrev-theme","light")}}catch(e){document.documentElement.setAttribute("data-theme","light")}})()`,
-          }}
-        />
+        <Script id="litrev-theme-bootstrap" strategy="beforeInteractive">
+          {THEME_BOOTSTRAP_SCRIPT}
+        </Script>
       </head>
       <body className={`${lexend.className} antialiased`}>
         <Providers>{children}</Providers>

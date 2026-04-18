@@ -89,6 +89,13 @@ function loadInitialContextHistory(projectId: string): ContextCaptureHistoryEntr
     return loadContextCaptureHistory(projectId);
 }
 
+function panelStateMatches(
+    left: ProjectConversationState["panel"],
+    right: ProjectConversationState["panel"],
+) {
+    return left.collapsed === right.collapsed && left.width === right.width;
+}
+
 export function ProjectConversationProvider({
     projectId,
     routeConversationId = null,
@@ -111,14 +118,7 @@ function ProjectConversationRuntime({
     children,
 }: ProjectConversationProviderProps) {
     const router = useRouter();
-    const [state, setState] = useState<ProjectConversationState>(() => {
-        const local = loadProjectConversationState(projectId);
-        return {
-            ...createDefaultProjectConversationState(),
-            panel: local.panel,
-            messages: [],
-        };
-    });
+    const [state, setState] = useState<ProjectConversationState>(() => createDefaultProjectConversationState());
     const stateRef = useRef<ProjectConversationState>(state);
     const [isLoading, setIsLoading] = useState(false);
     const [streamPhase, setStreamPhase] = useState<StreamPhase>("idle");
@@ -234,6 +234,19 @@ function ProjectConversationRuntime({
         },
         [scheduleSave]
     );
+
+    useEffect(() => {
+        const local = loadProjectConversationState(projectId);
+        setState((prev) => {
+            if (panelStateMatches(prev.panel, local.panel)) {
+                return prev;
+            }
+            return {
+                ...prev,
+                panel: local.panel,
+            };
+        });
+    }, [projectId]);
 
     useEffect(() => {
         return () => {
