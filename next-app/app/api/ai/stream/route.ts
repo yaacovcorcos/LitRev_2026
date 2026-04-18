@@ -468,6 +468,7 @@ export async function POST(request: NextRequest) {
                             if (isTerminalDismissal) {
                                 await settleClarificationDismissedRun(
                                     pendingUserInputSource.sourceRunId,
+                                    { requireActive: true },
                                 );
                                 runtimeOptions = {
                                     ...runtimeOptions,
@@ -494,6 +495,10 @@ export async function POST(request: NextRequest) {
                                     clarificationResumeConversationId,
                                 );
                             } else if (startsFreshRun) {
+                                await settleClarificationDismissedRun(
+                                    pendingUserInputSource.sourceRunId,
+                                    { requireActive: true },
+                                );
                                 runtimeOptions = {
                                     ...runtimeOptions,
                                     continueFromRunId: undefined,
