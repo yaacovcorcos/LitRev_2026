@@ -18,11 +18,12 @@ If either flag is off, hover cards remain single-shot and bibliography-first.
 Run from `next-app/`:
 
 ```bash
-RUN_CITATION_PROVIDER_TESTS=1 npm run citation:smoke
+npm run test:smoke:citation
 ```
 
 Notes:
 - This is an opt-in compatibility smoke, not a correctness proof.
+- The canonical shared alias sets `RUN_CITATION_PROVIDER_TESTS=1` and the required `react-server` condition automatically.
 - Override default fixtures with environment variables when needed:
   - `CITATION_SMOKE_PUBMED_URL`
   - `CITATION_SMOKE_PUBMED_WITH_DOI_URL`

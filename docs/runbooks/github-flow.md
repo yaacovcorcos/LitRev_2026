@@ -54,8 +54,8 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
 - `YY/**` push CI is the branch-protection backstop for auto-created PRs, so the required `check` must not depend only on the PR event path.
 - Raw repo lint is now a required part of `check`:
   - `npm run lint`
-- The required governance portion of `check` is reproduced locally by `cd next-app && npm run governance:ci-required`.
-- The informational governance reporting portion of `check` is reproduced locally by `cd next-app && npm run governance:ci-informational`.
+- The required governance portion of `check` is reproduced locally by `cd next-app && npm run test:governance`.
+- The informational governance reporting portion of `check` is reproduced locally by `cd next-app && npm run test:governance:informational`.
 - `governance:ci-required` is the frozen phase-owned governance inventory:
   - `npm run governance:check`
   - `npm run lint`
@@ -68,6 +68,10 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
   - `npm run lint:governance:logging`
   - `npm run check:runtime-test-impact`
 - `governance:ci-informational` always runs broad governance lint and the governance audit on every `check` execution, but it remains non-blocking.
+- Prefer the canonical aliases in handoffs and local instructions:
+  - `npm run test:governance`
+  - `npm run test:governance:informational`
+  - `npm run check:pr`
 - Governance audit artifact upload should remain `if: always()`.
 - Required governance exceptions must be made in the owning phase config/rule/docs, not by workflow-level `continue-on-error`, path skips, or conditional omission.
 - Schema drift check uses a dedicated shadow database URL in CI.

@@ -36,6 +36,36 @@ It does not replace:
 5. Update docs when lane truth changes.
    - If a lane's trigger, command, blocking posture, or owner changes materially, update this runbook, `docs/plans/plan-testing-execution.md`, and the relevant owner doc in the same task.
 
+## Canonical Shared Commands
+
+Use the canonical shared aliases in `next-app/package.json` when referring to cross-cutting testing lanes in docs, reviews, and handoffs.
+
+- `npm run typecheck`
+  - canonical local typecheck entrypoint
+- `npm run test:vitest`
+  - canonical full Vitest regression lane
+- `npm run test:governance`
+  - canonical required governance lane (`governance:ci-required`)
+- `npm run test:governance:informational`
+  - canonical non-blocking governance reporting lane (`governance:ci-informational`)
+- `npm run test:e2e:foundation`
+  - canonical high-signal browser foundation lane
+- `npm run test:e2e:local`
+  - canonical broader local Playwright lane
+- `npm run test:smoke:mobile`
+  - canonical broader mobile smoke lane
+- `npm run test:smoke:citation`
+  - canonical citation-provider compatibility smoke lane
+- `npm run check:chat-stream-architecture`
+  - canonical local reproduction for the shared architecture guard in `check`
+- `npm run check:pr`
+  - canonical local reproduction for the shared non-database portion of the protected `check` workflow
+
+Historical script names remain valid for compatibility, but new docs and reviews should prefer the canonical aliases above.
+
+The repo does not yet expose canonical `test:unit` or `test:integration` commands.
+That split remains intentionally deferred until the Vitest corpus has a truthful, maintainable boundary for those labels.
+
 ## Shared Lane Taxonomy
 
 - `route-required local validation`
@@ -60,19 +90,19 @@ For code changes:
 1. Run the route-specific mandatory checks from `AGENTS.md`.
 2. Add shared lanes when the touched surface intersects them:
    - governance inventory, shared CI contract, or workflow truth:
-     - `cd next-app && npm run governance:ci-required`
+    - `cd next-app && npm run test:governance`
    - governance reporting or audit reproduction:
-     - `cd next-app && npm run governance:ci-informational`
+    - `cd next-app && npm run test:governance:informational`
    - responsive/mobile certification surfaces or Playwright contract changes:
-     - `cd next-app && npm run test:e2e:mobile:foundation`
+    - `cd next-app && npm run test:e2e:foundation`
    - broader mobile-sensitive flows beyond the narrow foundation routes:
-     - `cd next-app && npm run test:e2e:mobile:smoke`
+    - `cd next-app && npm run test:smoke:mobile`
    - citation-provider changes or provider drift triage:
-     - `cd next-app && RUN_CITATION_PROVIDER_TESTS=1 npm run citation:smoke`
+    - `cd next-app && npm run test:smoke:citation`
 3. If the change spans multiple domains and the safest shared baseline is not obvious, use the conservative fallback:
-   - `cd next-app && npx tsc --noEmit`
+   - `cd next-app && npm run typecheck`
    - `cd next-app && npm run lint`
-   - `cd next-app && npx vitest run`
+   - `cd next-app && npm run test:vitest`
 
 For docs-only plan or runbook changes:
 
@@ -83,10 +113,10 @@ For docs-only plan or runbook changes:
 ### CI / check
 
 - Local reproduction:
-  - `cd next-app && npx tsc --noEmit`
-  - `cd next-app && npm run governance:ci-required`
-  - `cd next-app && node scripts/check-chat-stream-architecture.mjs --mode=enforce`
-  - `cd next-app && npx vitest run`
+  - `cd next-app && npm run typecheck`
+  - `cd next-app && npm run test:governance`
+  - `cd next-app && npm run check:chat-stream-architecture`
+  - `cd next-app && npm run test:vitest`
   - `cd next-app && npx next build`
 - CI-only pieces:
   - Prisma migrate deploy
@@ -107,7 +137,7 @@ For docs-only plan or runbook changes:
 ### Governance Informational Reporting
 
 - Local reproduction:
-  - `cd next-app && npm run governance:ci-informational`
+  - `cd next-app && npm run test:governance:informational`
 - Automation:
   - always runs inside `CI / check` with `continue-on-error`
 - Blocking posture:
@@ -120,7 +150,7 @@ For docs-only plan or runbook changes:
 ### Mobile Foundation / mobile-foundation
 
 - Local reproduction:
-  - `cd next-app && npm run test:e2e:mobile:foundation`
+  - `cd next-app && npm run test:e2e:foundation`
 - Automation:
   - `.github/workflows/mobile-smoke.yml`
   - runs on `main`
@@ -137,7 +167,7 @@ For docs-only plan or runbook changes:
 ### Broader Mobile Smoke
 
 - Local reproduction:
-  - `cd next-app && npm run test:e2e:mobile:smoke`
+  - `cd next-app && npm run test:smoke:mobile`
 - Automation:
   - none currently
 - Blocking posture:
@@ -169,7 +199,7 @@ For docs-only plan or runbook changes:
 ### Citation Provider Smoke
 
 - Local reproduction:
-  - `cd next-app && RUN_CITATION_PROVIDER_TESTS=1 npm run citation:smoke`
+  - `cd next-app && npm run test:smoke:citation`
 - Automation:
   - none currently
 - Blocking posture:
@@ -188,7 +218,7 @@ For docs-only plan or runbook changes:
 - required governance inventory, including raw `npm run lint`
 - informational governance reporting visibility
 - chat stream architecture guard
-- full `npx vitest run`
+- full `npm run test:vitest`
 - production `next build`
 
 `CI / check` does not guarantee:
@@ -221,8 +251,8 @@ For docs-only plan or runbook changes:
 - Changed-scope execution is not allowed for:
   - `CI / check`
   - raw `npm run lint`
-  - full `npx vitest run`
-  - `npx tsc --noEmit`
+  - full `npm run test:vitest`
+  - `npm run typecheck`
   - `npx next build`
 
 Any new changed-scope optimization must ship with:
@@ -238,11 +268,11 @@ Any new changed-scope optimization must ship with:
 The shared smoke inventory is intentionally small.
 Today it contains only:
 
-- `test:e2e:mobile:foundation`
+- `test:e2e:foundation`
   - narrow browser route-certification for home, auth, project shell, protocol, and `/ai` entry smoke
-- `test:e2e:mobile:smoke`
+- `test:smoke:mobile`
   - broader local-only mobile-sensitive smoke beyond the narrow foundation routes
-- `citation:smoke`
+- `test:smoke:citation`
   - provider compatibility smoke after citation-provider changes or incidents
 
 Do not add a new shared smoke lane unless it names:
