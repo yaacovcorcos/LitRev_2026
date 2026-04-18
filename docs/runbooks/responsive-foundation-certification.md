@@ -83,20 +83,20 @@ Required route templates:
 Run from `next-app/`:
 
 ```bash
-npx tsc --noEmit
-npx vitest run
-npm run test:e2e:mobile:foundation
+npm run typecheck
+npm run test:vitest
+npm run test:e2e:foundation
 ```
 
 Broader mobile smoke is no longer part of the required `check` job by default.
 Use it separately when mobile-sensitive code paths changed:
 
 ```bash
-npm run test:e2e:mobile:smoke
+npm run test:smoke:mobile
 ```
 
 GitHub automation contract:
-- `Mobile Foundation / mobile-foundation` runs `test:e2e:mobile:foundation` on pushes to `main` and on pull requests that touch:
+- `Mobile Foundation / mobile-foundation` runs `test:e2e:foundation` on pushes to `main` and on pull requests that touch:
   - `next-app/app/**`
   - `next-app/components/**`
   - `next-app/styles/**`
@@ -108,7 +108,7 @@ GitHub automation contract:
   - `next-app/lib/ai/reliability-telemetry.ts`
   - `next-app/app/PerformanceVitalsReporter.tsx`
   - `.github/workflows/**`
-- `test:e2e:mobile:smoke` is currently a local-only adjunct lane; if a dedicated automated broader-smoke workflow is added later, update this runbook, `docs/runbooks/testing-ci-strategy.md`, and `docs/plans/plan-testing-execution.md` in the same task
+- `test:smoke:mobile` is currently a local-only adjunct lane; if a dedicated automated broader-smoke workflow is added later, update this runbook, `docs/runbooks/testing-ci-strategy.md`, and `docs/plans/plan-testing-execution.md` in the same task
 - docs-only mobile plan/runbook changes do not trigger the foundation workflow by default
 
 Foundation Playwright setup now uses seeded dev fixture routes so auth, home, sample/demo project setup, blank project setup, and protocol-ready setup do not share one ambient workspace:
@@ -118,8 +118,8 @@ Foundation Playwright setup now uses seeded dev fixture routes so auth, home, sa
 - `/api/dev/test-home-state`
 
 Certification rule:
-- `test:e2e:mobile:foundation` is allowed to run with `--workers=2` because the fixture contract is seed-aware per worker/test.
-- Broader `test:e2e:mobile` smoke remains conservative until non-foundation mobile flows prove the same isolation guarantees.
+- `test:e2e:foundation` is allowed to run with `--workers=2` because the fixture contract is seed-aware per worker/test.
+- Broader `test:smoke:mobile` coverage remains conservative until non-foundation mobile flows prove the same isolation guarantees.
 
 Required responsive behavior coverage:
 - home:
@@ -151,8 +151,8 @@ If a regression affects `compact` only, do not treat it as “mobile fixed” ju
 Before declaring the responsive foundation certified:
 1. Reliability route events are ingesting successfully for `home`, `auth`, `project`, and `protocol`.
 2. `phone` and `compact` viewport classes both appear in telemetry during validation or canary evidence.
-3. `npm run test:e2e:mobile:foundation` passes as the required route-certification gate.
-4. `npm run test:e2e:mobile:smoke` passes when the pull request or rollout wave touches mobile-sensitive code paths beyond the minimum certification routes.
+3. `npm run test:e2e:foundation` passes as the required route-certification gate.
+4. `npm run test:smoke:mobile` passes when the pull request or rollout wave touches mobile-sensitive code paths beyond the minimum certification routes.
 5. Existing `/ai` and stream reliability signals remain healthy under the current rollout.
 6. No open P0/P1 responsive incidents remain on home/auth/project/protocol.
 

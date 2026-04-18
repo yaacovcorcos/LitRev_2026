@@ -25,19 +25,27 @@ This plan does not own:
   - `test:e2e`, `test:e2e:mobile`, `test:e2e:mobile:foundation`, `test:e2e:mobile:smoke`
   - `governance:ci-required`, `governance:ci-informational`
   - `perf:budget-check`, `perf:generate-results`, and related performance tooling
-- The current command surface is broad but still partially historical rather than conceptual; names mix tool identity, local history, and lane purpose.
-- There is no thin repo-root wrapper layer such as a `justfile`; contributors and agents still need to remember or rediscover the right `next-app/` commands from docs and local knowledge.
+- `next-app/package.json` now exposes canonical shared aliases for the lanes contributors actually need to reason about:
+  - `typecheck`
+  - `test:vitest`
+  - `test:governance`, `test:governance:informational`
+  - `test:e2e:foundation`, `test:e2e:local`
+  - `test:smoke:mobile`, `test:smoke:citation`
+  - `check:chat-stream-architecture`
+  - `check:pr`
+- Historical script names remain in place as compatibility aliases, but the canonical shared vocabulary is now lane-shaped rather than tool-history-shaped.
+- The repo-root wrapper layer remains intentionally deferred; the package-level canonical aliases plus the strategy runbook are sufficient for current ergonomics without adding a second command front door.
 - `docs/runbooks/testing-ci-strategy.md` now provides the short cross-cutting execution reference for:
   - what contributors should run locally before push beyond route-specific `AGENTS.md` requirements
   - what the required `check` gate guarantees versus what remains outside it
   - first-owner triage, local reproduction, changed-scope discipline, and lane-promotion rules
 - Required `check` in `.github/workflows/ci.yml` already provides a meaningful base lane:
   - Prisma migrate deploy + schema-drift check
-  - `npx tsc --noEmit`
-  - `npm run governance:ci-required` (now including raw `npm run lint`)
-  - `npm run governance:ci-informational` as non-blocking reporting
-  - chat stream architecture guard
-  - full `npx vitest run`
+  - `npm run typecheck`
+  - `npm run test:governance` (still backed by `governance:ci-required`, including raw `npm run lint`)
+  - `npm run test:governance:informational` as non-blocking reporting
+  - `npm run check:chat-stream-architecture`
+  - `npm run test:vitest`
   - production build
 - Heavier or orthogonal lanes already exist outside the required `check` path:
   - `.github/workflows/mobile-smoke.yml` runs the mobile foundation Playwright suite on `main` and on PRs that touch relevant UI/e2e paths
@@ -47,7 +55,7 @@ This plan does not own:
   - path filtering for the mobile foundation workflow
   - `next-app/scripts/check-runtime-test-impact.mjs` for governed runtime test-impact enforcement
 - `docs/reviews/repo-health.md` currently records raw `npm run lint` at `0` errors and `0` warnings on `main`, and raw lint now runs inside the protected `check` contract through `governance:ci-required`.
-- LitRev now has a coherent shared testing execution reference, but command ergonomics and historical lane naming still lag behind the underlying doctrine.
+- LitRev now has a coherent shared testing execution reference plus canonical lane aliases; the remaining execution gap is the absence of a truthful `test:unit` / `test:integration` split and any future proof that a repo-root wrapper is still worth adding.
 
 ## External Pattern Position
 
@@ -63,7 +71,7 @@ Use `OPEN_SOURCE_REFERENCES.md` for the current GitHub URLs behind those named u
 LitRev should adapt those ideas to its existing owner model, not import a foreign CI matrix or duplicate truth across multiple wrapper layers.
 
 ## Program Status
-The testing doctrine is already strong. The remaining work is to make that doctrine easier to run, easier to understand, and harder to misuse.
+The testing doctrine is already strong. Shared execution ergonomics are now materially clearer; the remaining work is to keep the command front door honest without adding fake precision or unnecessary wrapper layers.
 
 ## Phase Status
 
@@ -81,22 +89,23 @@ Missing:
 - Nothing material for the initial inventory/doctrine scope
 
 ### Phase 1 — Shared Local Entry Points and Test Taxonomy
-Status: Active
+Status: Done
 
 Shipped:
 - Existing package scripts already cover the main tools and several higher-value lanes
 - Route-specific mandatory validation remains clearly documented in `AGENTS.md`
+- `next-app/package.json` now exposes canonical shared aliases for the main cross-cutting lanes:
+  - `typecheck`
+  - `test:vitest`
+  - `test:governance`, `test:governance:informational`
+  - `test:e2e:foundation`, `test:e2e:local`
+  - `test:smoke:mobile`, `test:smoke:citation`
+  - `check:chat-stream-architecture`
+  - `check:pr`
+- The wrapper decision is now explicit: do not add a repo-root wrapper layer unless future evidence shows the canonical package aliases and runbook are still insufficient.
 
 Missing:
-- A thin repo-root wrapper layer that calls canonical package commands without becoming a second source of truth
-- Stable conceptual entrypoints for common shared lanes, such as:
-  - `check:pr`
-  - `test:unit`
-  - `test:integration`
-  - `test:governance`
-  - `test:e2e:foundation`
-  - `test:e2e:local`
-- A backward-compatible alias policy so historical script names can be retired intentionally rather than abruptly
+- An honest repo-wide `test:unit` versus `test:integration` split; the current Vitest corpus still mixes those layers by design, so introducing those names now would over-promise precision the repo has not earned yet.
 
 ### Phase 2 — CI Strategy and Lane Ownership Clarity
 Status: Done
@@ -155,10 +164,12 @@ Missing:
 - Additional install/startup/perf smoke layers that do not yet have a clear first owner or maintenance budget
 
 ## Active Tasks
-- [ ] Decide whether a thin repo-root wrapper layer is still worth the maintenance cost now that lane inventory, local reproduction, and promotion rules are documented in one place; if yes, keep it minimal and canonical.
-- [ ] Introduce a stable shared test taxonomy in `next-app/package.json` with backwards-compatible aliases for the current historically named scripts.
+- [ ] Revisit whether a thin repo-root wrapper layer is needed only if the canonical package aliases plus `docs/runbooks/testing-ci-strategy.md` still prove insufficient in real contributor and agent usage.
+- [ ] Introduce `test:unit` and `test:integration` only after the repo has a truthful, maintainable boundary for that split rather than a cosmetic label.
 
 ## Recently Completed
+- [x] Introduced canonical shared lane aliases in `next-app/package.json` for typecheck, Vitest, governance, E2E foundation/local, smoke, chat-stream architecture, and PR-ready validation while keeping the historical command names backward compatible.
+- [x] Closed the repo-root wrapper decision for now: keep the package-level aliases and shared testing runbook as the single ergonomic front door until evidence shows they are not enough.
 - [x] Established a durable repo-wide testing doctrine in `docs/agents/testing-agent-contract.md` and linked it from Tier 3 retrieval.
 - [x] Landed a stable governance-required versus governance-informational split so cross-cutting testing policy can evolve without making broad warning debt an accidental merge blocker.
 - [x] Closed the raw lint baseline from broadly red to `0` errors / `0` warnings on `main` and promoted raw lint into the protected `check` contract through `governance:ci-required`.
@@ -167,8 +178,10 @@ Missing:
 
 ## Implementation Rules
 - Wrapper commands must call canonical package or script entrypoints; they must never become a second hidden implementation layer.
+- Do not add a repo-root wrapper layer unless the canonical package aliases and current runbook still leave common shared lanes meaningfully hard to discover or reproduce.
 - Keep route-specific mandatory validation in `AGENTS.md`; this plan owns shared execution ergonomics, not domain routing.
 - Use changed-scope execution only where the lane is expensive, ownership is clear, and the false-negative risk is acceptably low.
+- Do not introduce `test:unit` or `test:integration` labels until the underlying Vitest corpus is partitioned clearly enough that those names are honest rather than aspirational.
 - New smoke lanes must name:
   - the user journey they protect
   - the intended trigger surface
