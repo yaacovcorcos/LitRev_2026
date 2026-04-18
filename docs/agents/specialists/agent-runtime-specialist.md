@@ -29,8 +29,8 @@ Use for planner/executor/orchestrator behavior, sub-agent flows, routing, autono
 1. Identify whether change affects planning, execution, retrieval, or autonomy policies.
 2. Update tests under `next-app/lib/agent/__tests__/` or `next-app/lib/server/__tests__/` as needed.
 3. Run:
-   - `npx tsc --noEmit`
-   - `npx vitest run`
+   - `npm run typecheck`
+   - `npm run test:vitest`
 
 ## Failure Modes to Watch
 

@@ -52,11 +52,11 @@ All run from `next-app/` except deploy.
 
 | Task | Command | Run from |
 |---|---|---|
-| Typecheck | `npx tsc --noEmit` | `next-app/` |
+| Typecheck | `npm run typecheck` | `next-app/` |
 | Lint | `npm run lint` | `next-app/` |
 | Style lint | `npm run lint:styles` | `next-app/` |
 | Build | `npm run build` | `next-app/` |
-| Test | `npx vitest run` | `next-app/` |
+| Test | `npm run test:vitest` | `next-app/` |
 | Deploy | `vercel --prod` | repo root |
 
 ## Global Workflow
@@ -81,10 +81,10 @@ All run from `next-app/` except deploy.
 | Trigger signal | Required Tier 2 specialist | Required Tier 3 retrieval before editing | Mandatory checks before done |
 |---|---|---|---|
 | Prisma schema/migrations, DB runtime errors (`column does not exist`, `Invalid prisma.* invocation`) | `db-ops-specialist.md` | `docs/runbooks/db-architecture.md` for schema/domain semantics; `docs/runbooks/db-ops.md` for diagnosis/remediation; `docs/plans/db-production-runbook.md` when production migration/remediation posture is involved | `bash scripts/db-ops.sh diagnose`, `npx prisma validate`, `npx prisma migrate status` |
-| Production deploy request / Vercel production release | `release-deploy-specialist.md` | `docs/runbooks/db-ops.md`, `docs/plans/db-production-runbook.md` | `bash scripts/release-gate-prod.sh`, `npx prisma validate`, `npx prisma migrate status`, `npx tsc --noEmit`, `npx vitest run` |
-| UI changes under `next-app/app/project/[id]/...`, `next-app/components/...`, `next-app/styles/...` | `frontend-ui-specialist.md` | `docs/architecture/frontend-quality-bar.md`; `docs/runbooks/frontend-review-loop.md`; `docs/plans/README.md` to identify the active relevant UI plan; relevant route files | `npm run lint`; if `next-app/styles/**` is touched also run `npm run lint:styles`; `npx tsc --noEmit`; `npx vitest run` |
-| Platform admin control-plane changes (`next-app/app/admin/**`, `next-app/app/api/admin/**`, `next-app/lib/server/admin/**`, `next-app/lib/server/auth/platform-admin.ts`) | `frontend-ui-specialist.md` | `docs/runbooks/admin-access.md`, `docs/plans/plan-backend.md` | `npm run lint`, `npx tsc --noEmit`, `npx vitest run` |
-| Agent runtime/orchestration files (`next-app/lib/agent/**`, `next-app/lib/server/agent/**`, `next-app/app/actions/agent.ts`, `next-app/lib/server/ai/sub-agent.ts`) | `agent-runtime-specialist.md` | `docs/plans/plan-agentic.md`; read `docs/plans/plan-memory.md` if memory is touched; use `docs/plans/README.md` to identify any additional active runtime plans. Do not use superseded source plans marked inactive in `docs/plans/README.md`. | `npx tsc --noEmit`, `npx vitest run` |
+| Production deploy request / Vercel production release | `release-deploy-specialist.md` | `docs/runbooks/db-ops.md`, `docs/plans/db-production-runbook.md` | `bash scripts/release-gate-prod.sh`, `npx prisma validate`, `npx prisma migrate status`, `npm run typecheck`, `npm run test:vitest` |
+| UI changes under `next-app/app/project/[id]/...`, `next-app/components/...`, `next-app/styles/...` | `frontend-ui-specialist.md` | `docs/architecture/frontend-quality-bar.md`; `docs/runbooks/frontend-review-loop.md`; `docs/plans/README.md` to identify the active relevant UI plan; relevant route files | `npm run lint`; if `next-app/styles/**` is touched also run `npm run lint:styles`; `npm run typecheck`; `npm run test:vitest` |
+| Platform admin control-plane changes (`next-app/app/admin/**`, `next-app/app/api/admin/**`, `next-app/lib/server/admin/**`, `next-app/lib/server/auth/platform-admin.ts`) | `frontend-ui-specialist.md` | `docs/runbooks/admin-access.md`, `docs/plans/plan-backend.md` | `npm run lint`, `npm run typecheck`, `npm run test:vitest` |
+| Agent runtime/orchestration files (`next-app/lib/agent/**`, `next-app/lib/server/agent/**`, `next-app/app/actions/agent.ts`, `next-app/lib/server/ai/sub-agent.ts`) | `agent-runtime-specialist.md` | `docs/plans/plan-agentic.md`; read `docs/plans/plan-memory.md` if memory is touched; use `docs/plans/README.md` to identify any additional active runtime plans. Do not use superseded source plans marked inactive in `docs/plans/README.md`. | `npm run typecheck`, `npm run test:vitest` |
 | Plan/PRD/governance edits (`PRD.md`, `docs/plans/**`) | `planning-governance-specialist.md` | `docs/plans/README.md` and target plan file | If code is unchanged, no code gate required |
 | GitHub workflow/governance edits (`.github/workflows/**`, `.github/CODEOWNERS`, git policy in `AGENTS.md`) | `planning-governance-specialist.md` | `docs/runbooks/github-flow.md` | If code is unchanged, no code gate required |
 
@@ -117,7 +117,7 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - After merge, sync repo root `main`, remove the merged task worktree, and delete the merged local branch in the same cleanup sequence.
 - Do not keep finished task worktrees around as passive history.
 - After rescue review, either promote the rescue work, archive it intentionally, or delete the worktree.
-- For code changes, validate with `npx tsc --noEmit` and `npx vitest run` before commit. If validation fails, fix first.
+- For code changes, validate with `npm run typecheck` and `npm run test:vitest` before commit. If validation fails, fix first.
 - Stage only relevant files for the task.
 - One task = one atomic commit unless the task clearly requires a small series of coherent commits.
 - Commit immediately after validation; do not batch completed tasks.
@@ -158,8 +158,8 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
   - `bash scripts/release-gate-prod.sh`
   - `npx prisma validate`
   - `npx prisma migrate status`
-  - `npx tsc --noEmit`
-  - `npx vitest run`
+  - `npm run typecheck`
+  - `npm run test:vitest`
 - For DB-only remediation, use the migration-safe path documented in `docs/runbooks/db-ops.md` and `scripts/migrate-deploy-safe.sh`.
 - If production errors include `column does not exist` or `Invalid prisma.* invocation`, treat as schema drift first.
 - For migration failure recovery, duplicate-sequence repair, and production DB remediation, follow `docs/runbooks/db-ops.md` and `docs/plans/db-production-runbook.md`.
@@ -178,7 +178,7 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - Icon-only buttons require `aria-label`.
 - Preserve keyboard navigation and visible focus behavior.
 - Validate desktop and mobile for UI changes.
-- For meaningful UI behavior changes, run `npm run lint`, `npx tsc --noEmit`, and `npx vitest run`, update tests, and run `npm run lint:styles` when CSS files are touched.
+- For meaningful UI behavior changes, run `npm run lint`, `npm run typecheck`, and `npm run test:vitest`, update tests, and run `npm run lint:styles` when CSS files are touched.
 
 ## Plan Governance (Strict)
 
@@ -195,7 +195,7 @@ Use `docs/plans/README.md` to identify active canonical plans, ignore inactive/s
 - Preserve local design system (`styles/tokens.css`).
 - Respect licenses (MIT/Apache preferred; be careful with AGPL or source-available terms).
 - Port only what is needed.
-- Run `npx tsc --noEmit` and `npx vitest run` after adaptation.
+- Run `npm run typecheck` and `npm run test:vitest` after adaptation.
 
 ## Staleness and Drift Policy
 

@@ -68,8 +68,8 @@ Run from `next-app/`:
    - local: `npx prisma migrate dev`
    - shared/prod: `bash scripts/db-ops.sh migrate`
 5. `npx prisma migrate status`
-6. `npx tsc --noEmit`
-7. `npx vitest run`
+6. `npm run typecheck`
+7. `npm run test:vitest`
 
 Record command outputs in the run report.
 

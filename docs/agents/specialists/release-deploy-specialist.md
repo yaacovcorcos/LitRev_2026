@@ -27,8 +27,8 @@ Use for production deploys, pre-deploy gating, and Vercel release safety checks.
 1. `bash scripts/release-gate-prod.sh`
 2. `npx prisma validate`
 3. `npx prisma migrate status`
-4. `npx tsc --noEmit`
-5. `npx vitest run`
+4. `npm run typecheck`
+5. `npm run test:vitest`
 6. Deploy from repo root only after gates pass: `vercel --prod`
 
 ## Failure Modes to Watch
