@@ -2,7 +2,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { FileAsset } from "@/types/files";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useProjectExportHistory } from "./useProjectExportHistory";
+import { useProjectExportHistory } from "../useProjectExportHistory";
 
 const mockListProjectFilesAction = vi.fn();
 

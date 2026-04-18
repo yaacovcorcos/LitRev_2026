@@ -247,6 +247,7 @@ The contract is:
 
 Current practical rule:
 - when a domain already uses a nearby `__tests__` directory, add the new test there unless governance explicitly requires otherwise
+- when a feature folder already has both sibling `.test.*` files and a nearby `__tests__` directory, prefer normalizing future and touched tests into that `__tests__` directory instead of extending the split pattern
 - when runtime-governed domains require selective colocated coverage, follow the current lint-governance rule and waiver policy instead of inventing a new exception
 
 The lesson to borrow from Factory is deterministic policy, not literal file-layout imitation.
