@@ -47,7 +47,19 @@ describe("clarification controller hydration", () => {
       },
       {
         runId: "run-1",
-        sequence: 204,
+        sequence: 203,
+        type: "user_input_required",
+        payload: {
+          callId: "ask-2",
+          question: "Latest question?",
+          questionType: "yes_no",
+        },
+        toolName: null,
+        createdAt: new Date("2026-04-16T12:03:00.000Z"),
+      },
+      {
+        runId: "run-1",
+        sequence: 202,
         type: "user_input_resolved",
         payload: {
           sourceRunId: "run-1",
@@ -56,7 +68,7 @@ describe("clarification controller hydration", () => {
           resolution: "answered",
         },
         toolName: null,
-        createdAt: new Date("2026-04-16T12:04:00.000Z"),
+        createdAt: new Date("2026-04-16T12:02:00.000Z"),
       },
       {
         runId: "run-1",
@@ -125,6 +137,66 @@ describe("clarification controller hydration", () => {
       totalClarificationCount: 1,
       hasDurableProgressSinceLastResolution: true,
       lastResolvedDecisionBoundaryKey: "latest-boundary",
+    });
+  });
+
+  it("resets the counted clarification window after the newest durable progress boundary", async () => {
+    mocks.runEventFindMany.mockResolvedValue([
+      {
+        runId: "run-1",
+        sequence: 305,
+        type: "user_input_required",
+        payload: {
+          callId: "ask-3",
+          question: "Current question?",
+          questionType: "yes_no",
+        },
+        toolName: null,
+        createdAt: new Date("2026-04-16T13:05:00.000Z"),
+      },
+      {
+        runId: "run-1",
+        sequence: 304,
+        type: "tool_result",
+        payload: { callId: "tool-2", result: { ok: true } },
+        toolName: "search_pubmed",
+        createdAt: new Date("2026-04-16T13:04:00.000Z"),
+      },
+      {
+        runId: "run-1",
+        sequence: 203,
+        type: "user_input_required",
+        payload: {
+          callId: "ask-2",
+          question: "Older question?",
+          questionType: "yes_no",
+        },
+        toolName: null,
+        createdAt: new Date("2026-04-16T12:03:00.000Z"),
+      },
+      {
+        runId: "run-1",
+        sequence: 202,
+        type: "user_input_resolved",
+        payload: {
+          sourceRunId: "run-1",
+          callId: "ask-2",
+          decisionBoundaryKey: "older-boundary",
+          resolution: "answered",
+        },
+        toolName: null,
+        createdAt: new Date("2026-04-16T12:02:00.000Z"),
+      },
+    ]);
+
+    const result = await hydrateClarificationControllerState({
+      sourceRunId: "run-1",
+    });
+
+    expect(result).toEqual({
+      totalClarificationCount: 1,
+      hasDurableProgressSinceLastResolution: true,
+      lastResolvedDecisionBoundaryKey: null,
     });
   });
 });
