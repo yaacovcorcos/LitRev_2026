@@ -93,6 +93,7 @@ This must hold true with AI disabled, while also leaving room for:
 ### Relationship to existing plans
 - `plan-drafting-experience.md` remains the canonical draft-domain owner.
 - This plan is the execution companion for the next rebuild program and should be treated as the detailed implementation map for `DRX-010` in the canonical plan.
+- The detailed finish plan for `DAP-01` now lives in [plan-draft-vnext-core.md](./plan-draft-vnext-core.md).
 - The completed `DAP-00` baseline now lives in [2026-04-16-draft-benchmark-baseline.md](../reviews/2026-04-16-draft-benchmark-baseline.md), with durable assets in `next-app/lib/draft-benchmark/**`, `next-app/test/fixtures/draft/**`, and `next-app/scripts/draft-benchmark/**`.
 - `plan-agentic.md` remains authoritative for runtime and artifact behavior, while `plan-agent-quality.md` owns the release/eval posture for risky draft-side agent changes; this plan may constrain draft-side integration seams but must not fork runtime truth.
 
@@ -652,6 +653,7 @@ Implementation note (April 16, 2026): this slice shipped as a non-visual baselin
 
 ### `DAP-01` Draft VNext shell and one-editor core
 Implementation note (April 17, 2026): the first minimal-change foundation pass shipped. The current draft shell remains visually familiar, but the route now has an explicit `DraftSupportPanel` seam for the future left context panel, a dedicated rollout flag (`isDraftVNextMinimalChangeEnabled`), and draft snapshots/local persistence now synchronize back into canonical manuscript state instead of treating the manuscript model as passive metadata. The larger shell/controller split and stronger one-editor projection model still remain before `DAP-01` can be considered fully complete.
+- Detailed finish plan: [plan-draft-vnext-core.md](./plan-draft-vnext-core.md).
 - Create a new draft surface behind a feature flag rather than mutating the existing route in place.
 - Reduce route responsibilities to shell/layout/URL state.
 - Build one canonical manuscript editor with section-focus and manuscript projections.

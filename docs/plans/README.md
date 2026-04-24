@@ -18,6 +18,7 @@ This file is the active plan registry and the canonical owner for plan-maintenan
   - [**Evidence Ledger**](plan-ledger.md): Canonical plan for the Evidence Ledger as a product area: study list/detail architecture, duplicate-safe ingestion, PDF/file processing UX, cross-surface evidence reuse, and ledger-specific state/performance sequencing.
   - [**Draft Experience**](plan-drafting-experience.md): Canonical plan for the manuscript editor, evidence-linked drafting, review workflows, inline AI proposals, and export-grade manuscript compilation.
   - [**Draft Authoring Platform**](plan-draft-authoring-platform.md): Supporting implementation plan for rebuilding the draft surface around non-AI-first writing quality, scientific authoring primitives, reliability/performance, and agent-ready seams.
+  - [**Draft VNext Core**](plan-draft-vnext-core.md): Supporting implementation plan for finishing `DAP-01` with minimal visual change, route/controller extraction, projection hardening, and the one-editor foundation.
   - [**Context Capture Plan**](plan-context-capture.md): Canonical plan for scoped AI entrypoints, semantic selection targets, context receipts/history, and cross-surface context reuse.
   - [**Protocol Live Sync**](plan-protocol-live-sync.md): Canonical plan for shared live protocol state, local durability, immediate copilot acceptance patching, and conflict-safe protocol UX.
   - [**Reliability A0 brief**](reliability-a0-brief.md): Deterministic repro + baseline threshold contract for Track A blocker reliability work.
