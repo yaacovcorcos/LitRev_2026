@@ -6,6 +6,7 @@ This is the single canonical plan for LitRev's drafting surface.
 It defines the canonical drafting direction for LitRev and the sequence of work around it. The current authoritative route baseline is the restored section-first drafting experience anchored to the March 12, 2026 `8998296` interaction model: top section tabs, real `Section` / `Full Draft`, a dedicated left Evidence Ledger, and an obvious center drafting surface. The canonical manuscript model, citation compiler, and export foundation remain active under that UI, but the rejected continuous-workspace, drawer-first, and segmented-sidebar route shells are not the current product truth. That left Evidence Ledger remains the current baseline, but the planned direction is one draft-owned left context panel that can later switch between `Evidence`, `Assets`, `Pages`, and `Review` without introducing shadow sidebars or shadow document state.
 
 Supporting execution detail for the next editorial-quality rebuild now lives in [plan-draft-authoring-platform.md](./plan-draft-authoring-platform.md).
+The detailed finish plan for `DAP-01` now lives in [plan-draft-vnext-core.md](./plan-draft-vnext-core.md).
 The completed non-visual `DAP-00` benchmark/harness baseline now lives in [2026-04-16-draft-benchmark-baseline.md](../reviews/2026-04-16-draft-benchmark-baseline.md) and the shipped corpus/harness code under `next-app/lib/draft-benchmark/**` plus `next-app/test/fixtures/draft/**`.
 The completed non-UI `DAP-03A` import/interoperability slice now lives in [2026-04-17-draft-import-interoperability.md](../reviews/2026-04-17-draft-import-interoperability.md) and the shipped import foundation under `next-app/lib/draft-import/**`, `next-app/lib/server/draft-imports.ts`, and `next-app/app/actions/draft-imports.ts`.
 
@@ -650,7 +651,7 @@ These are implementation tracks for one target state, not separate product versi
 - `DRX-002R` shipped the one-left-drawer manuscript shell and removed the draft-owned right panel from the route; it remains documented as an intermediate correction that `DRX-003` superseded.
 
 ## Active Tasks
-- [ ] `DRX-010` Execute the draft authoring platform rebuild under `docs/plans/plan-draft-authoring-platform.md`, front-loading non-AI editorial quality while preserving manuscript normalization, evidence semantics, checkpoints, and agent-ready seams.
+- [ ] `DRX-010` Execute the draft authoring platform rebuild under `docs/plans/plan-draft-authoring-platform.md`, with `DAP-01` completion tracked in `docs/plans/plan-draft-vnext-core.md`.
 - [x] `DRX-002` Establish the canonical manuscript document and structural editing foundation.
 - [x] `DRX-003` Restore the draft route to the seeded section-first drafting baseline with a left Evidence Ledger.
 - [ ] `DRX-004` Add first-class comments, suggestion mode, checkpoints, and compare/restore.
