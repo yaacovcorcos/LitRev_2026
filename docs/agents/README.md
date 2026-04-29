@@ -25,3 +25,8 @@ This directory contains Tier 2 and Tier 3 context for LitRev.
 ## Drift Control
 
 Use `/docs/agents/drift-checklist.md` before commit when task scope affects architecture, DB schema, workflows, or operational runbooks.
+
+
+## Discovery Aid
+
+- `repo-knowledge-map.md` is a fast-path index for cross-domain context discovery; use it after routing through `AGENTS.md` and before deep edits.

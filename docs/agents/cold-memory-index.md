@@ -30,6 +30,7 @@ Routing authority stays in `AGENTS.md`; this file only maps already-matched doma
 | GitHub branch/PR/review automation | `docs/runbooks/github-flow.md` | Any edits to `.github/workflows/**`, branch protections, CODEOWNERS, or agent git policy |
 | Repo-wide health reviews and recurring regression analysis | `docs/reviews/repo-health.md`, latest file under `docs/reviews/`, `docs/architecture/decision-log.md` | Any request to rerun a deep whole-repo analysis, compare against prior reviews, or assess repeated mistakes/drift |
 | Durable repo-review baseline and review comparisons | `docs/runbooks/repo-review-baseline.md`, `docs/reports/diagnosis-03-02.md`, `docs/plans/plan-agentic.md` | Any deep diagnosis rerun, review-quality comparison, or governance update about prior findings |
+| Repo knowledge discovery and canonical context routing | `docs/agents/repo-knowledge-map.md`, `AGENTS.md`, `docs/plans/README.md`, `docs/agents/cold-memory-index.md` | Any request to gather broad repo knowledge, organize retrieval architecture, or improve findability/linking across plans/runbooks and implementation domains |
 | Product contract | `PRD.md` | Changes to product WHAT/WHO/WHY |
 | Plan governance | `docs/plans/README.md` | Any edits to `docs/plans/*.md` |
 | Cross-agent implementation planning contract | `docs/agents/universal-planning-meta-prompt.md` | Any request to draft implementation plans across domains, or any change to planning quality standards |
