@@ -29,7 +29,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 - `DATABASE_URL` is the runtime connection string. In deployed environments this is the pooled/pooler-facing path.
 - `DIRECT_URL` is the direct migration connection string and is required for production migration traffic.
 - Supabase Storage stores uploaded file blobs.
-- `FileAsset` rows store file metadata and server-only storage pointers, not file contents. Raw `storagePath` is never a client contract or trust boundary; clients consume derived URLs while privileged reads validate canonical project-owned namespace first.
+- `FileAsset` rows store file metadata and server-only storage pointers, not file contents. Raw `storagePath` is never a client contract or trust boundary; clients consume derived URLs while privileged reads validate canonical project-owned namespace first. User-uploaded study files must be validated on the server before blob storage, and persisted MIME metadata must come from the server's validated file type rather than caller-provided content metadata.
 - Better Auth is the identity authority. Supabase Auth is not used in this project.
 
 ## Domain Map
@@ -82,7 +82,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 
 - `Project` is the main application hub. Most DB-domain features eventually attach to project scope.
 - `FileAsset` stores metadata and storage paths only. Blob storage lives in Supabase Storage, and app-layer ownership validation must treat `storagePath` as server-owned internal metadata rather than a client-controlled locator.
-- Canonical tenant-scoped `FileAsset` delivery stays behind authenticated app-owned routes and a private storage bucket. Direct public object URLs are not a valid delivery contract for project, study, export, or attachment files.
+- Canonical tenant-scoped `FileAsset` delivery stays behind authenticated app-owned routes and a private storage bucket. Direct public object URLs are not a valid delivery contract for project, study, export, or attachment files. Download routes should default to attachment/no-sniff behavior unless a dedicated preview path deliberately constrains inline rendering.
 - `StudyProcessingJob` is owned by ledger study PDF processing only. It is not a generic background-job framework.
 - Each `(studyId, phase)` uses one mutable row with the lifecycle `queued -> running -> succeeded|failed`.
 - Page-focus priority upgrades may mutate an existing queued/running background job, but they must never create a new job row by themselves.
