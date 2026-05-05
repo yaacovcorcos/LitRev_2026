@@ -120,6 +120,16 @@ const LAST_PROJECT_STORAGE_KEY = "litrev:lastProjectId";
 const loadConversationActions = () => import("@/app/actions/conversations");
 const loadAgentActions = () => import("@/app/actions/agent");
 const loadAiAssistantActions = () => import("@/app/actions/ai-assistant");
+const loadSummarizeConversationActions = () => import("@/app/actions/summarize-conversation");
+
+const desktopQuickActions = [
+  { id: "summarize", icon: "description", label: "Summarize a paper", prompt: "I need help summarizing a paper. Here's the abstract: " },
+  { id: "draft", icon: "edit_note", label: "Help draft a section", prompt: "Help me draft the Introduction section of my literature review." },
+  { id: "find", icon: "search", label: "Find related studies", prompt: "Find me recent papers about " },
+  { id: "analyze", icon: "analytics", label: "Analyze findings", prompt: "Analyze the key findings across my collected papers." },
+  { id: "compare", icon: "compare_arrows", label: "Compare projects", prompt: "Compare inclusion criteria and progress across my projects. Highlight conflicts and give recommendations." },
+  { id: "methodology", icon: "school", label: "Methodology advisor", prompt: "Act as my methodology advisor. Critique my review design and suggest improvements using PRISMA and evidence-quality best practices." },
+];
 
 declare global {
   interface Window {
@@ -167,6 +177,7 @@ export default function AIView() {
 
   const [workspaceContextText, setWorkspaceContextText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
   const [branchingConversationId, setBranchingConversationId] = useState<string | null>(null);
   const [branchingMessageId, setBranchingMessageId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; conversationId: string } | null>(null);
@@ -203,8 +214,7 @@ export default function AIView() {
   const workspaceContextPromiseRef = useRef<Promise<string> | null>(null);
   const aiEntryRestoreAttemptedScopeRef = useRef<string | null>(null);
   const matchesPhoneViewport = useMediaQuery(MOBILE_VIEWPORT_MEDIA_QUERY);
-  const hasHydrated = useHydrated();
-  const isPhoneViewport = hasHydrated && matchesPhoneViewport;
+  const isPhoneViewport = isHydrated && matchesPhoneViewport;
 
   const reasoningSupport: ReasoningSupportTier = useMemo(
     () => getReasoningSupportTier(selectedModel),
@@ -1060,6 +1070,71 @@ export default function AIView() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [isHistoryCollapsed, isPhoneViewport]);
+
+  const handleCompressHistory = useCallback(async () => {
+    const sourceId = activeConversationId;
+    if (!sourceId || isCompressing || isPhoneViewport) return;
+    if (isTyping) cancelStream();
+    setIsCompressing(true);
+    try {
+      const { summarizeConversationAction } = await loadSummarizeConversationActions();
+      const { getConversation } = await loadConversationActions();
+      const result = await summarizeConversationAction(sourceId);
+      if (!result.success) throw new Error(result.error);
+
+      // Remove the archived source conversation from the sidebar even if loading
+      // the replacement conversation later fails, so the archived entry disappears.
+      setConversations((prev) =>
+        sortConversationsByUpdatedAt(prev.filter((c) => c.id !== sourceId))
+      );
+      setTimelineByConversation((prev) => {
+        const next = { ...prev };
+        delete next[sourceId];
+        return next;
+      });
+      timelineLruRef.current = timelineLruRef.current.filter((lruId) => lruId !== sourceId);
+
+      const fullResult = await getConversation(result.data.newConversationId);
+      const full = fullResult.success ? fullResult.data : null;
+      if (!full) {
+        activateConversation(null);
+        return;
+      }
+
+      const mappedItems = mapDbMessagesToTimeline(full.messages, full.artifacts);
+      const newConv: ChatConversation = {
+        id: full.id,
+        title: full.title ?? null,
+        projectId: full.projectId ?? undefined,
+        createdAt: full.createdAt,
+        updatedAt: full.updatedAt,
+      };
+
+      setConversations((prev) =>
+        sortConversationsByUpdatedAt(
+          [newConv, ...prev.filter((c) => c.id !== newConv.id)]
+        )
+      );
+      updateConversationTimeline(full.id, () => mappedItems);
+      activateConversation(full.id);
+      setPendingChoices([]);
+      setPendingUserInput(null);
+      setPrefillCommand(null);
+    } catch (err) {
+      console.error("Failed to compress conversation history", err);
+    } finally {
+      setIsCompressing(false);
+    }
+  }, [
+    activeConversationId,
+    activateConversation,
+    cancelStream,
+    isCompressing,
+    isPhoneViewport,
+    isTyping,
+    sortConversationsByUpdatedAt,
+    updateConversationTimeline,
+  ]);
 
   const handleNewChat = useCallback(async () => {
     emitMobileActionTap("ai_new_chat", 44);
@@ -2439,7 +2514,7 @@ export default function AIView() {
 
   return (
     <>
-    <AppShell activeNav="ai" noMainPadding initiallyCollapsed mobileFullBleed>
+    <AppShell activeNav="ai" noMainPadding initiallyCollapsed mobileFullBleed={isPhoneViewport}>
       <div
         className={styles.layout}
         data-history-collapsed={isHistoryCollapsed}
@@ -2535,13 +2610,23 @@ export default function AIView() {
               initialVisibleCount={AI_VISIBLE_TIMELINE_INITIAL_COUNT}
               visibleStep={AI_VISIBLE_TIMELINE_STEP}
               onTimelineReady={handleTimelineReady}
-              emptyState={{
-                icon: "",
-                title: "How can I help with your research?",
-                description: "",
-                suggestions: [],
-                layout: "minimal",
-              }}
+              emptyState={isPhoneViewport
+                ? {
+                    icon: "",
+                    title: "How can I help with your research?",
+                    description: "",
+                    suggestions: [],
+                    layout: "minimal",
+                  }
+                : {
+                    icon: "auto_awesome",
+                    title: "How can I help with your research?",
+                    description: "Ask me anything about your literature review, or try one of these:",
+                    suggestions: desktopQuickActions.map((action) => ({
+                      label: action.label,
+                      prompt: action.prompt,
+                    })),
+                  }}
               onSuggestionClick={handleSuggestionClick}
               onActionPrompt={handleActionPrompt}
               onRetryLastMessage={handleRetryLastMessage}
@@ -2597,6 +2682,9 @@ export default function AIView() {
                   showAutonomyPreset={false}
                   showAttachments={false}
                   showVoice
+                  onCompress={isPhoneViewport ? undefined : handleCompressHistory}
+                  canCompress={!isPhoneViewport && activeTimeline.length >= 20}
+                  isCompressing={!isPhoneViewport && isCompressing}
                   onReady={markComposerReady}
                 />
               </div>

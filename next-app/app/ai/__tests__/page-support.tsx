@@ -33,6 +33,8 @@ const {
   mockReviewArtifactAction,
 } = aiViewMocks;
 
+let matchMediaMatches = false;
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
 }));
@@ -47,6 +49,13 @@ vi.mock("next/dynamic", () => ({
       projects?: Array<{ id: string; name: string }>;
       returnProject?: { id: string; name: string; href: string } | null;
       onSelectProject?: (projectId: string | null) => void;
+      emptyState?: {
+        icon?: string;
+        title: string;
+        description?: string;
+        suggestions: Array<{ label: string; prompt: string }>;
+        layout?: "default" | "minimal";
+      };
       items?: Array<{
         type: string;
         id: string;
@@ -113,6 +122,25 @@ vi.mock("next/dynamic", () => ({
       }
 
       if (props.items) {
+        if (props.items.length === 0 && props.emptyState) {
+          return (
+            <div>
+              <div data-testid="ai-empty-state" data-layout={props.emptyState.layout ?? "default"}>
+                <span data-testid="ai-empty-state-icon">{props.emptyState.icon ?? ""}</span>
+                <h3>{props.emptyState.title}</h3>
+                {props.emptyState.description ? <p>{props.emptyState.description}</p> : null}
+                <div data-testid="ai-empty-state-suggestion-count">{props.emptyState.suggestions.length}</div>
+                {props.emptyState.suggestions.map((suggestion) => (
+                  <button key={suggestion.label} type="button">
+                    {suggestion.label}
+                  </button>
+                ))}
+              </div>
+              <div data-testid="timeline-suppressed-progress">{props.suppressedProgressId ?? ""}</div>
+            </div>
+          );
+        }
+
         return (
           <div>
             <div data-testid="timeline-suppressed-progress">{props.suppressedProgressId ?? ""}</div>
@@ -201,7 +229,11 @@ vi.mock("next/dynamic", () => ({
 }));
 
 vi.mock("@/components/AppShell", () => ({
-  AppShell: ({ children }: { children: ReactNode }) => <div data-testid="app-shell">{children}</div>,
+  AppShell: ({ children, mobileFullBleed }: { children: ReactNode; mobileFullBleed?: boolean }) => (
+    <div data-testid="app-shell" data-mobile-full-bleed={mobileFullBleed ? "true" : "false"}>
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock("@/components/chat/ChatComposerCoreClient", () => ({
@@ -212,6 +244,11 @@ vi.mock("@/components/chat/ChatComposerCoreClient", () => ({
     hasQueuedFollowUp,
     attachedStack,
     interactionLocked,
+    hideModelControl,
+    compactMobileChrome,
+    onCompress,
+    canCompress,
+    isCompressing,
   }: {
     onReady?: () => void;
     sendMessage?: (text: string, page: "ai") => void | Promise<void>;
@@ -219,11 +256,20 @@ vi.mock("@/components/chat/ChatComposerCoreClient", () => ({
     hasQueuedFollowUp?: boolean;
     attachedStack?: "none" | "attached";
     interactionLocked?: boolean;
+    hideModelControl?: boolean;
+    compactMobileChrome?: boolean;
+    onCompress?: () => void | Promise<void>;
+    canCompress?: boolean;
+    isCompressing?: boolean;
   }) => (
     <div
       data-testid="ai-composer"
       data-attached-stack={attachedStack ?? "none"}
       data-interaction-locked={interactionLocked ? "yes" : "no"}
+      data-hide-model-control={hideModelControl ? "yes" : "no"}
+      data-compact-mobile-chrome={compactMobileChrome ? "yes" : "no"}
+      data-can-compress={canCompress ? "yes" : "no"}
+      data-is-compressing={isCompressing ? "yes" : "no"}
     >
       <button type="button" onClick={() => onReady?.()}>
         composer ready
@@ -234,6 +280,11 @@ vi.mock("@/components/chat/ChatComposerCoreClient", () => ({
       <button type="button" onClick={() => void onQueueFollowUp?.({ text: "Queue this next", page: "ai" })}>
         queue next
       </button>
+      {onCompress ? (
+        <button type="button" onClick={() => void onCompress()}>
+          compress history
+        </button>
+      ) : null}
       <div data-testid="ai-has-queued">{hasQueuedFollowUp ? "yes" : "no"}</div>
     </div>
   ),
@@ -293,7 +344,7 @@ function installMatchMedia() {
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     value: vi.fn().mockImplementation(() => ({
-      matches: false,
+      matches: matchMediaMatches,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
       addListener: vi.fn(),
@@ -305,6 +356,7 @@ function installMatchMedia() {
 export function installAiViewTestLifecycle() {
   beforeEach(() => {
     vi.clearAllMocks();
+    matchMediaMatches = false;
     installMatchMedia();
     window.localStorage.clear();
     vi.stubGlobal("fetch", mockFetch);
@@ -373,6 +425,11 @@ export function installAiViewTestLifecycle() {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
   });
+}
+
+export function setAiViewPhoneViewport(matches: boolean) {
+  matchMediaMatches = matches;
+  installMatchMedia();
 }
 
 export function getAiViewMocks() {
