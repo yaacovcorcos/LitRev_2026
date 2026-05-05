@@ -7,6 +7,7 @@ import { ChatComposerPendingApprovalBar } from "@/components/chat/ChatComposerPe
 import { ChatComposerQueuedFollowUpBar } from "@/components/chat/ChatComposerQueuedFollowUpBar";
 import { useChatPendingApprovalBarState } from "@/components/chat/useChatPendingApprovalBarState";
 import { useProjects } from "@/contexts/ProjectsContext";
+import { useHydrated } from "@/hooks/useHydrated";
 import { useIdleTask } from "@/hooks/useIdleTask";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -159,7 +160,6 @@ export default function AIView() {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const isPhoneViewport = useMediaQuery(PHONE_MEDIA_QUERY);
   const [isComposerReady, setComposerReady] = useState(false);
 
   const [workspaceContextText, setWorkspaceContextText] = useState("");
@@ -199,6 +199,9 @@ export default function AIView() {
   const historyLoadPromiseRef = useRef<Promise<void> | null>(null);
   const workspaceContextPromiseRef = useRef<Promise<string> | null>(null);
   const aiEntryRestoreAttemptedScopeRef = useRef<string | null>(null);
+  const matchesPhoneViewport = useMediaQuery(PHONE_MEDIA_QUERY);
+  const hasHydrated = useHydrated();
+  const isPhoneViewport = hasHydrated && matchesPhoneViewport;
 
   const reasoningSupport: ReasoningSupportTier = useMemo(
     () => getReasoningSupportTier(selectedModel),

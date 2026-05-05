@@ -11,6 +11,8 @@
     padding: 12px 24px calc(12px + env(safe-area-inset-bottom));
     justify-content: space-between;
     z-index: var(--z-mobile-nav);
+    transform: translateY(var(--keyboard-inset, 0px));
+    transition: transform 0.18s ease;
     /* stylelint-disable-next-line declaration-property-value-disallowed-list */
     box-shadow: 0 -4px 20px rgba(var(--rgb-ui-scrim), 0.05);
 }

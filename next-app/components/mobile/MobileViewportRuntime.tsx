@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { isMobileViewportV2Enabled } from "@/lib/mobile/feature-flags";
 import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
-import { getEffectiveViewportHeight, setMobileViewportVars } from "@/lib/mobile/viewport";
+import { getEffectiveViewportHeight, getKeyboardInset, setMobileViewportVars } from "@/lib/mobile/viewport";
 
 export function MobileViewportRuntime() {
   useEffect(() => {
@@ -17,6 +17,7 @@ export function MobileViewportRuntime() {
     const clearViewportVars = () => {
       root.style.removeProperty("--app-vh");
       root.style.removeProperty("--app-height");
+      root.style.removeProperty("--keyboard-inset");
     };
 
     const updateViewport = () => {
@@ -25,7 +26,8 @@ export function MobileViewportRuntime() {
         return;
       }
       const viewportHeight = getEffectiveViewportHeight(window);
-      setMobileViewportVars(root, viewportHeight);
+      const keyboardInset = getKeyboardInset(window);
+      setMobileViewportVars(root, viewportHeight, keyboardInset);
     };
 
     const scheduleUpdate = () => {

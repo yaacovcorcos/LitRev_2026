@@ -29,10 +29,13 @@
 
 .inputBox[data-mobile-chrome="minimal"] {
     margin-bottom: 8px;
+    min-height: 68px;
     background: rgba(var(--rgb-ui-surface), 0.92);
     border-color: rgba(var(--rgb-ui-contrast), 0.1);
     border-radius: 22px;
     box-shadow: var(--shadow-xl);
+    cursor: text;
+    overflow: hidden;
 }
 
 .inputBox::before {
@@ -195,8 +198,8 @@
 }
 
 .inputBox[data-mobile-chrome="minimal"] .inputTextarea {
-    min-height: 34px;
-    padding: 14px 18px 6px;
+    min-height: 68px;
+    padding: 18px 92px 18px 18px;
     font-size: 16px;
     line-height: 1.35;
 }
@@ -230,16 +233,42 @@
 }
 
 .inputBox[data-mobile-chrome="minimal"] .inputBar {
-    padding: 0 10px 10px 12px;
+    position: absolute;
+    inset: 0;
+    display: block;
+    min-height: 0;
+    padding: 0;
+    overflow: visible;
+    pointer-events: none;
 }
 
 .inputBox[data-mobile-chrome="minimal"] .inputBarLeft {
+    position: absolute;
+    top: 50%;
+    left: 10px;
     min-height: 34px;
+    transform: translateY(-50%);
+    pointer-events: auto;
 }
 
 .inputBox[data-mobile-chrome="minimal"] .inputBarRight {
+    position: absolute;
+    top: 50%;
+    right: 10px;
     gap: 6px;
-    margin-left: 8px;
+    margin-left: 0;
+    transform: translateY(-50%);
+    pointer-events: auto;
+}
+
+.inputBox[data-mobile-chrome="minimal"] .inputBarRecording {
+    position: relative;
+    inset: auto;
+    display: flex;
+    min-height: 42px;
+    padding: 0 12px 12px;
+    pointer-events: auto;
+    transform: none;
 }
 
 .recordingControlHint {

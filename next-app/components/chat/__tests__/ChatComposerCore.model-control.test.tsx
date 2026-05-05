@@ -179,4 +179,26 @@ describe("ChatComposerCore model control", () => {
         expect(screen.queryByRole("button", { name: /gpt/i })).toBeNull();
         expect(container.querySelector('form[data-mobile-chrome="minimal"]')).toBeTruthy();
     });
+
+    it("focuses the textarea when the mobile composer surface is clicked", () => {
+        const { container } = render(
+            <ChatComposerCore
+                page="ai"
+                inputPlaceholder="Ask"
+                isLoading={false}
+                sendMessage={vi.fn()}
+                cancelStream={vi.fn()}
+                showVoice={false}
+                compactMobileChrome
+            />,
+        );
+
+        const textarea = screen.getByLabelText("Copilot prompt");
+        const composer = container.querySelector('form[data-mobile-chrome="minimal"]');
+        expect(composer).toBeTruthy();
+
+        fireEvent.click(composer as HTMLFormElement);
+
+        expect(document.activeElement).toBe(textarea);
+    });
 });
