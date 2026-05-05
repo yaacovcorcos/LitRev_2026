@@ -604,6 +604,7 @@ model AgentRun {
   children    AgentRun[]      @relation("AgentRunLineage")
   events      RunEvent[]
   checkpoints RunCheckpoint[]
+  toolIdempotencyRecords ToolIdempotencyRecord[]
   artifacts   Artifact[]
 
   @@index([projectId, startedAt])
@@ -662,6 +663,30 @@ model RunCheckpoint {
   @@index([runId, status, sourceEventSequence(sort: Desc)])
   @@index([conversationId, status, sourceEventSequence(sort: Desc)])
   @@index([sourceArtifactId])
+}
+
+model ToolIdempotencyRecord {
+  id          String    @id @default(cuid())
+  scopeKey    String
+  toolName    String
+  fingerprint String
+  status      String    @default("running") // "running" | "completed"
+  callId      String?
+  runId       String?
+  projectId   String?
+  userId      String?
+  studyId     String?
+  result      Json?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  run AgentRun? @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([scopeKey, toolName, fingerprint])
+  @@index([scopeKey, createdAt])
+  @@index([runId])
+  @@index([projectId])
+  @@index([userId])
 }
 
 model ChatUnificationMetric {

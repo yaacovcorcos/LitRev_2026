@@ -358,6 +358,7 @@ async function resolveToolRepeatKey(
 
 export type ToolRuntimeContext = {
     signal?: AbortSignal;
+    rootRunId?: string | null;
     systemContexts?: {
         projectContext?: string;
         protocolContext?: string;
@@ -2028,6 +2029,7 @@ class AIService {
                         autonomyConfig,
                         {
                             signal: executionSignal,
+                            rootRunId: activeRun.rootRunId ?? activeRun.id,
                             protocolData: (protocolRow?.data as ProtocolData | null) ?? null,
                             systemContexts: {
                                 projectContext,

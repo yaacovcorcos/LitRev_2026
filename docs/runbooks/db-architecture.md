@@ -40,7 +40,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 | Workspace and project core | `Workspace`, `WorkspaceMember`, `Project`, `Protocol`, `Draft`, `DraftVersion`, `DraftCheckpoint`, `Study`, `StudyProcessingJob`, `Note`, `FileAsset` | Collaboration scope, project state, draft history/checkpoints, studies, durable study-PDF processing state, notes, file metadata |
 | AI chat and telemetry | `AIConversation`, `AIMessage`, `AIUsage`, `ChatUnificationMetric` | Conversation storage, message timeline, token/cost attribution, chat surface telemetry |
 | Memory and retrieval | `UserMemory`, `ProjectMemory`, `StudyMemory`, `ConversationSummary`, `MemoryRetrieval`, `MemoryEmbedding` | Durable memory, summarization, retrieval audit trail, vector search |
-| Agent runtime | `AgentRun`, `RunEvent`, `RunCheckpoint`, `Artifact`, `AutonomyConfig` | Event-sourced runs, explicit continuation seeds, run lineage, reviewable artifacts, autonomy presets |
+| Agent runtime | `AgentRun`, `RunEvent`, `RunCheckpoint`, `ToolIdempotencyRecord`, `Artifact`, `AutonomyConfig` | Event-sourced runs, explicit continuation seeds, run lineage, durable mutating-tool receipts, reviewable artifacts, autonomy presets |
 
 ## Table Glossary
 
@@ -73,6 +73,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 | `AgentRun` | Top-level agent execution trace | `projectId -> Project`, `parentRunId -> AgentRun` | Indexes on `projectId + startedAt`, `conversationId`, `conversationId + startedAt`, `conversationId + lastActivityAt`, `conversationId + lastDurableProgressAt`, `userId`, `parentRunId + startedAt`, `rootRunId + startedAt` | `projectId`, `conversationId`, `userId`, `parentRunId`, `rootRunId`, `model`, `completedAt` are intentionally nullable; `runPhase` is the coarse persisted lifecycle phase (`plan | ask | act | verify | finalize`) and `phaseEnteredAt` records when that phase became authoritative; `lastActivityAt` tracks liveness, `lastDurableProgressAt` tracks recovery-authoritative forward progress, `finalizationState` records durable finalize truth, `durabilityState` and `durabilityDegradedReason` record whether recovery-critical persistence remains trustworthy, and `abnormalEndClassification` records the latest known abnormal exit class | No |
 | `RunEvent` | Event stream within a run | `runId -> AgentRun` | Unique on `runId + sequence`; indexes on `runId + sequence`, `runId + type`, `artifactId` | Tool/artifact/error/timing fields are optional because event payloads vary by type | No |
 | `RunCheckpoint` | Explicit reusable continuation seed at a proven-safe durable boundary | `runId -> AgentRun` | Unique on `runId + sourceEventSequence`; indexes on `runId + status + sourceEventSequence`, `conversationId + status + sourceEventSequence`, `sourceArtifactId` | `sourceArtifactId` and `invalidatedReason` are optional because only artifact-backed checkpoints reference artifact rows directly and invalidation is source-drift driven; `seed` stores only the continuation inputs needed for the next validated server step | No |
+| `ToolIdempotencyRecord` | Durable mutating-tool receipt for retry/continuation replay | `runId -> AgentRun` | Unique on `scopeKey + toolName + fingerprint`; indexes on `scopeKey + createdAt`, `runId`, `projectId`, `userId` | `callId`, `runId`, project/user/study scope fields, `result`, and `completedAt` are optional because a receipt is first reserved as `running` before the tool result is known; `scopeKey` is the root run lineage key, not the current retry run | No |
 | `ChatUnificationMetric` | Chat-surface telemetry event record | `projectId -> Project` | `eventId` unique; indexes on `recordedAt`, `type + recordedAt`, `surface + recordedAt`, workspace/run/conversation/project + `recordedAt` | `userId`, `workspaceId`, `projectId`, `runId`, `conversationId`, `clientTimestamp` optional; anonymous home/auth operational telemetry may legitimately store null identity while scoped product telemetry should keep actor attribution when available | No |
 | `Artifact` | Reviewable outputs produced by agent runs | `runId -> AgentRun`, `projectId -> Project` | `applyId` unique; indexes on `runId`, `projectId + status`, `conversationId`, `type + status` | `projectId`, `conversationId`, `userId`, snapshot/review/apply fields optional because artifacts can be proposed before acceptance/application | No |
 | `AutonomyConfig` | Autonomy preset and tool override config | `projectId -> Project` | Unique on `userId + projectId`; indexes on `userId`, `projectId` | `userId`, `projectId` optional to support global and project-scoped config | No |
@@ -88,6 +89,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 - Page-focus priority upgrades may mutate an existing queued/running background job, but they must never create a new job row by themselves.
 - `RunEvent` must remain unique on `(runId, sequence)`. Sequence repair is an operational concern documented in `docs/runbooks/db-ops.md`.
 - `RunCheckpoint` is continuation authority only. It must not replace `RunEvent` as the audit or replay log, and it must never become a sink for transient runtime facts.
+- `ToolIdempotencyRecord` is the durable replay receipt for mutating tools inside one root run lineage. A retry or continuation with the same `scopeKey`, tool name, and request fingerprint must replay a completed result or stop on an unresolved `running` receipt instead of executing the same side effect twice.
 - `AgentRun.lastActivityAt` is the authoritative liveness field for `running` runs. Admission/recovery logic should not fall back to `startedAt` freshness once the field exists.
 - `AgentRun.runPhase` is the coarse persisted lifecycle authority for recovery/readmission/UI consumers. It is intentionally macro-level and does not replace existing event, checkpoint, durability, or finalization truth.
 - `AgentRun.phaseEnteredAt` records when the current coarse lifecycle phase became authoritative and must change only on real phase transitions, not on heartbeat refreshes or same-phase writes.
@@ -118,6 +120,8 @@ These indexes protect major runtime paths. The operational gate owner and verifi
 | `AgentRun_conversationId_startedAt_idx` | Conversation-linked run history queries |
 | `AgentRun_conversationId_lastActivityAt_idx` | Active-run freshness checks and recovery admission |
 | `AgentRun_conversationId_lastDurableProgressAt_idx` | Durable-progress checks for stalled-run convergence |
+| `ToolIdempotencyRecord_scopeKey_toolName_fingerprint_key` | Retry/continuation dedupe for mutating tools within one root run lineage |
+| `ToolIdempotencyRecord_scopeKey_createdAt_idx` | Lineage-scoped receipt inspection and cleanup |
 
 ## Migration Themes
 
@@ -128,7 +132,7 @@ These indexes protect major runtime paths. The operational gate owner and verifi
 - Study PDF processing: durable per-study per-phase queue/lease state via `StudyProcessingJob`.
 - Project FK hardening: project relations added across AI, memory, and runtime tables.
 - Auth foundation: Better Auth session/account/verification support plus later auth/admin indexes.
-- Agent runtime hardening: run lineage fields, uniqueness guarantees, and runtime-supporting indexes.
+- Agent runtime hardening: run lineage fields, mutating-tool idempotency receipts, uniqueness guarantees, and runtime-supporting indexes.
 - Wave/core cleanup: soft-delete and text-search support for notes and studies.
 - Telemetry and admin: chat unification metrics, platform admin flag, and admin audit log.
 - Latest project-keying tweaks: `demoKey` support on `Project`.

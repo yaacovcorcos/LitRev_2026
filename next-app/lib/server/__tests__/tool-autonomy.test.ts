@@ -78,6 +78,7 @@ vi.mock("@/lib/server/ai/tracing", () => ({
 }));
 
 const { executeToolWithAutonomy, executeToolWithAutonomyCore } = await import("@/lib/server/ai/tool-autonomy");
+const { markIdempotencyReplayResult } = await import("@/lib/server/ai/tool-middleware");
 
 describe("tool-autonomy", () => {
   beforeEach(() => {
@@ -249,6 +250,47 @@ describe("tool-autonomy", () => {
         artifactStatus: "auto_applied",
       }),
     ]);
+  });
+
+  it("does not create duplicate artifacts for idempotency replayed tool results", async () => {
+    mocks.getTool.mockReturnValue({
+      definition: { name: "update_protocol", description: "d", parameters: {} },
+      autonomy: { defaultLevel: 3, allowedRange: [2, 4] },
+    });
+    mocks.getToolAutonomyLevel.mockReturnValue(3);
+
+    const result = await executeToolWithAutonomyCore({
+      service: {
+        executeToolWithMiddleware: vi.fn().mockResolvedValue(markIdempotencyReplayResult({
+          callId: "tc1",
+          result: {
+            field: "researchQuestion",
+            value: "RQ",
+            rationale: "User asked",
+          },
+        })),
+      } as never,
+      toolCall: {
+        id: "tc1",
+        name: "update_protocol",
+        arguments: { field: "researchQuestion", value: "RQ", rationale: "User asked" },
+      },
+      runId: "run-1",
+      projectId: "project-1",
+      conversationId: "conversation-1",
+      userId: "user-1",
+      agentMode: "protocol",
+      levelOneBehavior: "suggest",
+    });
+
+    expect(mocks.createArtifact).not.toHaveBeenCalled();
+    expect(mocks.applyArtifact).not.toHaveBeenCalled();
+    expect(result.artifacts).toBeUndefined();
+    expect(result.result).toEqual({
+      field: "researchQuestion",
+      value: "RQ",
+      rationale: "User asked",
+    });
   });
 
   it("propagates typed auto-apply failures from the shared artifact apply core", async () => {

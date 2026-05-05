@@ -166,6 +166,9 @@ Active work:
     - retries are safe
     - duplicate side effects are bounded
     - tool results become easier to reason about and recover from
+    - mutating tools reserve a durable `ToolIdempotencyRecord` before execution, complete it with the successful tool result, and replay completed results across retry/continuation runs in the same root lineage
+    - unresolved in-flight receipts block duplicate execution rather than guessing whether a side effect already happened
+    - idempotency replays are internal semantic replays and must not create a second artifact or apply a second downstream side effect
 
 - [ ] `B-002` Ship `CAG-013` and finish narrowing `general` mode into a coordination surface rather than a superuser mode.
 

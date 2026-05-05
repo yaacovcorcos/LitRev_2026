@@ -68,7 +68,9 @@ const checks = [
           'AgentRun_parentRunId_startedAt_idx',
           'AgentRun_rootRunId_startedAt_idx',
           'AgentRun_conversationId_startedAt_idx',
-          'AgentRun_conversationId_lastActivityAt_idx'
+          'AgentRun_conversationId_lastActivityAt_idx',
+          'ToolIdempotencyRecord_scopeKey_toolName_fingerprint_key',
+          'ToolIdempotencyRecord_scopeKey_createdAt_idx'
         )
       ORDER BY indexname;
     `,

@@ -228,6 +228,7 @@ describe("executeSubAgent", () => {
         conversationId: "conv-1",
         runtimeContext: expect.objectContaining({
           signal: controller.signal,
+          rootRunId: "sub-run-1",
           systemContexts,
         }),
       }),
