@@ -40,7 +40,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 | Workspace and project core | `Workspace`, `WorkspaceMember`, `Project`, `Protocol`, `Draft`, `DraftVersion`, `DraftCheckpoint`, `Study`, `StudyProcessingJob`, `Note`, `FileAsset` | Collaboration scope, project state, draft history/checkpoints, studies, durable study-PDF processing state, notes, file metadata |
 | AI chat and telemetry | `AIConversation`, `AIMessage`, `AIUsage`, `ChatUnificationMetric` | Conversation storage, message timeline, token/cost attribution, chat surface telemetry |
 | Memory and retrieval | `UserMemory`, `ProjectMemory`, `StudyMemory`, `ConversationSummary`, `MemoryRetrieval`, `MemoryEmbedding` | Durable memory, summarization, retrieval audit trail, vector search |
-| Agent runtime | `AgentRun`, `RunEvent`, `RunCheckpoint`, `ToolIdempotencyRecord`, `Artifact`, `AutonomyConfig` | Event-sourced runs, explicit continuation seeds, run lineage, durable mutating-tool receipts, reviewable artifacts, autonomy presets |
+| Agent runtime | `AgentRun`, `RunEvent`, `RunCheckpoint`, `ToolIdempotencyRecord`, `DecisionRequestRecord`, `DecisionResolutionRecord`, `Artifact`, `AutonomyConfig` | Event-sourced runs, explicit continuation seeds, run lineage, durable mutating-tool receipts, first-class user decision requests/resolutions, reviewable artifacts, autonomy presets |
 
 ## Table Glossary
 
@@ -74,6 +74,8 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 | `RunEvent` | Event stream within a run | `runId -> AgentRun` | Unique on `runId + sequence`; indexes on `runId + sequence`, `runId + type`, `artifactId` | Tool/artifact/error/timing fields are optional because event payloads vary by type | No |
 | `RunCheckpoint` | Explicit reusable continuation seed at a proven-safe durable boundary | `runId -> AgentRun` | Unique on `runId + sourceEventSequence`; indexes on `runId + status + sourceEventSequence`, `conversationId + status + sourceEventSequence`, `sourceArtifactId` | `sourceArtifactId` and `invalidatedReason` are optional because only artifact-backed checkpoints reference artifact rows directly and invalidation is source-drift driven; `seed` stores only the continuation inputs needed for the next validated server step | No |
 | `ToolIdempotencyRecord` | Durable mutating-tool receipt for retry/continuation replay | `runId -> AgentRun` | Unique on `scopeKey + toolName + fingerprint`; indexes on `scopeKey + createdAt`, `runId`, `projectId`, `userId` | `callId`, `runId`, project/user/study scope fields, `result`, and `completedAt` are optional because a receipt is first reserved as `running` before the tool result is known; `scopeKey` is the root run lineage key, not the current retry run | No |
+| `DecisionRequestRecord` | Canonical persisted `ask_user` decision request | `sourceRunId -> AgentRun` | Unique on `sourceRunId + callId`; indexes on `conversationId + status + createdAt`, `rootRunId + createdAt`, `projectId + status + createdAt`, `decisionBoundaryKey + status` | Scope columns are nullable for global/unscoped chats; `resolvedAt` is null while pending; `request` stores the canonical decision request plus legacy transport mirror | No |
+| `DecisionResolutionRecord` | Canonical persisted answer/default/cancel decision resolution | `requestId -> DecisionRequestRecord` | `requestId` unique; indexes on `sourceRunId + createdAt`, `callId` | `userId` is optional because some resolutions may be runtime defaults or legacy imported events; `resolution` stores structured answers and resolution kind | No |
 | `ChatUnificationMetric` | Chat-surface telemetry event record | `projectId -> Project` | `eventId` unique; indexes on `recordedAt`, `type + recordedAt`, `surface + recordedAt`, workspace/run/conversation/project + `recordedAt` | `userId`, `workspaceId`, `projectId`, `runId`, `conversationId`, `clientTimestamp` optional; anonymous home/auth operational telemetry may legitimately store null identity while scoped product telemetry should keep actor attribution when available | No |
 | `Artifact` | Reviewable outputs produced by agent runs | `runId -> AgentRun`, `projectId -> Project` | `applyId` unique; indexes on `runId`, `projectId + status`, `conversationId`, `type + status` | `projectId`, `conversationId`, `userId`, snapshot/review/apply fields optional because artifacts can be proposed before acceptance/application | No |
 | `AutonomyConfig` | Autonomy preset and tool override config | `projectId -> Project` | Unique on `userId + projectId`; indexes on `userId`, `projectId` | `userId`, `projectId` optional to support global and project-scoped config | No |
@@ -98,6 +100,8 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 - `AgentRun.durabilityState` records whether recovery-critical persisted truth is still trustworthy for a run (`durable` vs `degraded`); if it is degraded, `durabilityDegradedReason` must preserve the durable reason rather than leaving recovery to infer a clean state.
 - `AgentRun.abnormalEndClassification` stores the latest durable explanation for abnormal exits and must be treated as runtime truth rather than UI-only telemetry.
 - `RunCheckpoint` may exist only when the source durable state and source event were committed together as one authoritative boundary. Invalidating a checkpoint is for later source drift only; it must not be used to paper over partial writes.
+- `DecisionRequestRecord` is the canonical durable state for pending `ask_user` requests. `user_input_required` run events remain transcript/replay mirrors, and legacy runs without decision rows must still resolve through the run-event fallback.
+- `DecisionResolutionRecord` is the canonical durable state for structured user answers, accepted recommendations, and cancellations. It is unique per decision request so replayed or retried resolution handling cannot create divergent answers for the same `sourceRunId + callId`.
 - `MemoryEmbedding` depends on the `vector` extension and the embedding index path documented in the DB ops docs.
 - `Study.deletedAt` and `Note.deletedAt` are soft-delete markers, not archival tables.
 - Nullable `projectId` in runtime-oriented tables such as `AgentRun`, `Artifact`, and attribution tables is intentional and supports global or not-yet-project-bound flows.
@@ -122,6 +126,9 @@ These indexes protect major runtime paths. The operational gate owner and verifi
 | `AgentRun_conversationId_lastDurableProgressAt_idx` | Durable-progress checks for stalled-run convergence |
 | `ToolIdempotencyRecord_scopeKey_toolName_fingerprint_key` | Retry/continuation dedupe for mutating tools within one root run lineage |
 | `ToolIdempotencyRecord_scopeKey_createdAt_idx` | Lineage-scoped receipt inspection and cleanup |
+| `DecisionRequestRecord_sourceRunId_callId_key` | Request-bound clarification lookup by source run and tool call |
+| `DecisionRequestRecord_conversationId_status_createdAt_idx` | Pending decision hydration for conversation surfaces |
+| `DecisionResolutionRecord_requestId_key` | One canonical resolution per decision request |
 
 ## Migration Themes
 
@@ -132,7 +139,7 @@ These indexes protect major runtime paths. The operational gate owner and verifi
 - Study PDF processing: durable per-study per-phase queue/lease state via `StudyProcessingJob`.
 - Project FK hardening: project relations added across AI, memory, and runtime tables.
 - Auth foundation: Better Auth session/account/verification support plus later auth/admin indexes.
-- Agent runtime hardening: run lineage fields, mutating-tool idempotency receipts, uniqueness guarantees, and runtime-supporting indexes.
+- Agent runtime hardening: run lineage fields, mutating-tool idempotency receipts, first-class decision request/resolution persistence, uniqueness guarantees, and runtime-supporting indexes.
 - Wave/core cleanup: soft-delete and text-search support for notes and studies.
 - Telemetry and admin: chat unification metrics, platform admin flag, and admin audit log.
 - Latest project-keying tweaks: `demoKey` support on `Project`.

@@ -10,6 +10,7 @@ import type {
     CopilotPage,
     UserInputQuestionType,
     UserInputOption,
+    UserInputRequest,
     UserInputResolutionKind,
 } from "./ai";
 import type { ContextCaptureTarget } from "./context-capture";
@@ -141,6 +142,7 @@ export interface TimelineUserInputRequest {
     decisionBoundaryKey?: string;
     recommendedAnswer?: string;
     recommendedReason?: string;
+    decisionRequest?: UserInputRequest["decisionRequest"];
     answered: boolean;
     answer?: string;
     resolution?: UserInputResolutionKind;

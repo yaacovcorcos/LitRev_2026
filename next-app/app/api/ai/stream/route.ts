@@ -5,6 +5,7 @@
  */
 
 import { NextRequest } from "next/server";
+import { buildDecisionResolutionFromUserInput } from "@/lib/ai/decision-requests";
 import { resolveUserInputQuestionId } from "@/lib/ai/user-input";
 import { createAIService, getAIService } from "@/lib/server/ai";
 import type { AIMessage, ChatOptions, ConversationContext } from "@/types/ai";
@@ -427,7 +428,7 @@ export async function POST(request: NextRequest) {
                                 clarificationResumeFailureRecorded = true;
                                 throw error;
                             }
-                            const resolvedUserInput = {
+                            const resolvedUserInputBase = {
                                 ...runtimeOptions.userInputResolution,
                                 sourceRunId: pendingUserInputSource.sourceRunId,
                                 callId: pendingUserInputSource.request.callId,
@@ -441,6 +442,13 @@ export async function POST(request: NextRequest) {
                                         decisionBoundaryKey: pendingUserInputSource.request.decisionBoundaryKey ?? null,
                                         question: pendingUserInputSource.request.question,
                                     }),
+                            };
+                            const resolvedUserInput = {
+                                ...resolvedUserInputBase,
+                                decisionResolution: buildDecisionResolutionFromUserInput({
+                                    request: pendingUserInputSource.request,
+                                    resolution: resolvedUserInputBase,
+                                }),
                             };
                             clarificationResumeMetricPayload = {
                                 resolution: resolvedUserInput.resolution,
@@ -468,6 +476,7 @@ export async function POST(request: NextRequest) {
 
                             await persistUserInputResolution({
                                 resolution: resolvedUserInput,
+                                request: pendingUserInputSource.request,
                             });
                             await coalescer.push({
                                 type: "user_input_resolved",

@@ -749,6 +749,9 @@ describe("/api/ai/stream route", () => {
         questionId: "ask-1:question-1",
         resolution: "answered",
       }),
+      request: expect.objectContaining({
+        callId: "ask-1",
+      }),
     });
     expect(mocks.resolveLatestValidRunCheckpoint).not.toHaveBeenCalled();
     expect(mocks.resolveDurableContinuationSource).not.toHaveBeenCalled();
@@ -833,6 +836,9 @@ describe("/api/ai/stream route", () => {
       resolution: expect.objectContaining({
         callId: "ask-legacy",
         questionId: "ask-legacy:question-1",
+      }),
+      request: expect.objectContaining({
+        callId: "ask-legacy",
       }),
     });
   });

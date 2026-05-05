@@ -6,13 +6,12 @@
  * input card on the client. (Wave 1 — CAG-002)
  *
  * Options support label+description pairs for richer presentation.
- * The client always adds an "Other" free-text escape hatch.
  */
 
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { AITool } from "./base";
-import { buildPrimaryUserInputQuestionId } from "@/lib/ai/user-input";
+import { normalizeUserInputRequestWithDecisionRequest } from "@/lib/ai/decision-requests";
 import type { UserInputOption } from "@/types/ai";
 
 const MAX_HEADER_LENGTH = 20;
@@ -94,8 +93,7 @@ export const askUserTool: AITool = {
                     },
                     description:
                         "Required for single_choice and multi_select. Each option has a label and optional description. " +
-                        "For yes_no, defaults to Yes/No. Not used for free_text. " +
-                        "The client automatically adds an 'Other' free-text option.",
+                        "For yes_no, defaults to Yes/No. Not used for free_text.",
                 },
                 header: {
                     type: "string",
@@ -155,15 +153,9 @@ export const askUserTool: AITool = {
         }
 
         const callId = `ask_user_${randomUUID()}`;
-        const questionId = buildPrimaryUserInputQuestionId(callId);
-
-        return {
-            callId,
-            result: { status: "waiting_for_user_input", callId },
-            requiresUserInput: true,
-            userInputRequest: {
+        const userInputRequest = normalizeUserInputRequestWithDecisionRequest({
+            request: {
                 callId,
-                questionId,
                 question,
                 questionType: resolvedQuestionType,
                 options: resolvedOptions,
@@ -173,6 +165,13 @@ export const askUserTool: AITool = {
                 recommendedReason,
                 decisionBoundaryKey,
             },
+        });
+
+        return {
+            callId,
+            result: { status: "waiting_for_user_input", callId },
+            requiresUserInput: true,
+            userInputRequest,
         };
     },
 };

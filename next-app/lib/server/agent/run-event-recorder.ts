@@ -1,6 +1,6 @@
 import "server-only";
 
-import { emitEvent, type EmitEventExtras } from "@/lib/server/agent/events";
+import { emitEvent, type EmitEventAfterCreate, type EmitEventExtras } from "@/lib/server/agent/events";
 import {
     isRunOwnershipError,
     markRunDurabilityDegraded,
@@ -35,6 +35,7 @@ export interface RecordRunEventParams {
     type: RunEventType;
     payload: unknown;
     extras?: EmitEventExtras;
+    afterCreateInTransaction?: EmitEventAfterCreate;
     durabilityClass?: RunEventDurabilityClass;
     failureMode?: RunEventFailureMode;
     degradationReason?: string;
@@ -59,7 +60,13 @@ export async function recordRunEvent(
         params.failureMode ?? defaultFailureModeForClass(durabilityClass);
 
     try {
-        await emitEvent(params.runId, params.type, params.payload, params.extras);
+        await emitEvent(
+            params.runId,
+            params.type,
+            params.payload,
+            params.extras,
+            params.afterCreateInTransaction,
+        );
         return { persisted: true, degraded: false };
     } catch (error) {
         if (isRunOwnershipError(error)) {

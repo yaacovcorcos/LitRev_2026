@@ -28,17 +28,30 @@ describe("askUserTool", () => {
             status: "waiting_for_user_input",
             callId: result.callId,
         });
-        expect(result.userInputRequest).toEqual({
+        expect(result.userInputRequest).toMatchObject({
             callId: result.callId,
             questionId: `${result.callId}:question-1`,
             question: "Which database to use?",
             questionType: "single_choice",
             options: [
-                { label: "PubMed", description: "National Library of Medicine" },
-                { label: "Semantic Scholar", description: "AI-powered search" },
+                { optionId: "pubmed", label: "PubMed", description: "National Library of Medicine" },
+                { optionId: "semantic-scholar", label: "Semantic Scholar", description: "AI-powered search" },
             ],
             header: "Search",
             context: undefined,
+            decisionRequest: {
+                id: result.callId,
+                callId: result.callId,
+                status: "pending",
+                decisionBoundaryKey: "which-database-to-use",
+                questions: [
+                    expect.objectContaining({
+                        questionId: `${result.callId}:question-1`,
+                        prompt: "Which database to use?",
+                        responseKind: "single_choice",
+                    }),
+                ],
+            },
         });
     });
 
@@ -51,8 +64,8 @@ describe("askUserTool", () => {
         expect(result.requiresUserInput).toBe(true);
         expect(result.userInputRequest?.questionType).toBe("yes_no");
         expect(result.userInputRequest?.options).toEqual([
-            { label: "Yes" },
-            { label: "No" },
+            { optionId: "yes", label: "Yes" },
+            { optionId: "no", label: "No" },
         ]);
     });
 
