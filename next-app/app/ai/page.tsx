@@ -115,6 +115,7 @@ const AI_VISIBLE_TIMELINE_INITIAL_COUNT = 80;
 const AI_VISIBLE_TIMELINE_STEP = 80;
 const AI_EMPTY_CONVERSATION_KEY = "__empty__";
 const GLOBAL_HISTORY_SCOPE_KEY = "__global__";
+const LAST_PROJECT_STORAGE_KEY = "litrev:lastProjectId";
 
 const loadConversationActions = () => import("@/app/actions/conversations");
 const loadAgentActions = () => import("@/app/actions/agent");
@@ -148,6 +149,8 @@ export default function AIView() {
   const router = useRouter();
   const progressiveAnswerStreamingEnabled = isProgressiveAnswerStreamingEnabled();
   const { projects } = useProjects();
+  const isHydrated = useHydrated();
+  const [lastProjectId, setLastProjectId] = useState<string | null>(null);
   const [isHistoryCollapsed, setHistoryCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     const stored = window.localStorage.getItem(AI_HISTORY_COLLAPSED_KEY);
@@ -212,6 +215,12 @@ export default function AIView() {
   timelineByConversationRef.current = timelineByConversation;
   activeConversationIdRef.current = activeConversationId;
   useResetMutableRefWhen(sendLockRef, !isTyping, false);
+
+  useEffect(() => {
+    if (!isHydrated || typeof window === "undefined") return;
+    const storedProjectId = window.localStorage.getItem(LAST_PROJECT_STORAGE_KEY);
+    setLastProjectId(storedProjectId && storedProjectId.trim() ? storedProjectId : null);
+  }, [isHydrated]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -492,6 +501,16 @@ export default function AIView() {
   const selectedScopeLabel = selectedProject
     ? selectedProject.name
     : `Global${projects.length > 0 ? ` (${projects.length} projects)` : ""}`;
+  const returnProject = useMemo(() => {
+    if (!lastProjectId) return null;
+    const project = projects.find((candidate) => candidate.id === lastProjectId);
+    if (!project) return null;
+    return {
+      id: project.id,
+      name: project.name,
+      href: `/project/${project.id}`,
+    };
+  }, [lastProjectId, projects]);
   const historyClass = useMemo(
     () => `${styles.historySidebar} ${isHistoryCollapsed ? styles.collapsed : ""}`,
     [isHistoryCollapsed]
@@ -2489,6 +2508,7 @@ export default function AIView() {
             selectedProjectId={selectedProjectId}
             selectedScopeLabel={selectedScopeLabel}
             projects={projects.map((project) => ({ id: project.id, name: project.name }))}
+            returnProject={returnProject}
             selectedModel={selectedModel}
             showReasoningControls={showReasoningControls}
             reasoningMode={reasoningMode}

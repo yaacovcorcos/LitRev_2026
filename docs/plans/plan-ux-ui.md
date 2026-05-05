@@ -64,6 +64,8 @@ Domain-specific execution plans remain canonical for their domains:
   - `AppShell` now provides a viewport-bounded shell parent, `surface-root[data-surface-height="shell"]` acts as the bounded route root, and `surface-scroll-body` remains the sole inner scroll owner.
   - Homepage workspace and library now use separate route-local layout modules on top of that shared contract, and homepage tall-list wheel scrolling is covered by a dedicated smoke test.
 - Durable refresh/return-to-location behavior is still inconsistent across surfaces:
+  - unaffiliated login and exact unauthenticated root entry now default to `/ai`, while explicit callback URLs and deep links still win
+  - `/ai` exposes a lightweight return affordance for the last opened project from the existing `litrev:lastProjectId` signal, without treating that fallback as URL-owned route identity
   - draft already syncs route-meaningful workspace state through URL search params, but several other surfaces still keep exact location in client-only state or local restore helpers
   - ledger now uses URL-owned criteria filter state plus list-route `study` preview state, and canonical study-detail links preserve that filter context back to the ledger; deeper ledger route/detail execution remains owned by `docs/plans/plan-ledger.md`
   - project root conversation entry still depends on `project-entry` restore heuristics and localStorage-backed conversation fallback instead of a URL-addressable conversation identity

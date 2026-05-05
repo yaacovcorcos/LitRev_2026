@@ -7,6 +7,7 @@ import { authClient } from "@/lib/auth-client";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { AuthShellFrame } from "@/app/auth/AuthShellFrame";
 import { recordFoundationRouteFlowCompleted } from "@/lib/mobile/foundation-reliability";
+import { normalizePostLoginCallbackUrl } from "@/lib/auth-redirects";
 import styles from "@/app/login/login.module.css";
 
 type AuthMode = "signin" | "signup";
@@ -15,17 +16,11 @@ type AuthScreenProps = {
   mode: AuthMode;
 };
 
-function normalizeCallbackUrl(input: string | null): string {
-  if (!input) return "/";
-  if (!input.startsWith("/") || input.startsWith("//")) return "/";
-  return input;
-}
-
 export function AuthScreen({ mode }: AuthScreenProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = useMemo(
-    () => normalizeCallbackUrl(searchParams.get("callbackUrl")),
+    () => normalizePostLoginCallbackUrl(searchParams.get("callbackUrl")),
     [searchParams],
   );
 

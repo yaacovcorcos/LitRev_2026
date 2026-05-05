@@ -53,9 +53,9 @@ describe("normalizeCallbackUrl", () => {
   });
 
   it("rejects external or malformed callback values", () => {
-    expect(normalizeCallbackUrl("https://evil.com")).toBe("/");
-    expect(normalizeCallbackUrl("//evil.com")).toBe("/");
-    expect(normalizeCallbackUrl("project/abc")).toBe("/");
+    expect(normalizeCallbackUrl("https://evil.com")).toBe("/ai");
+    expect(normalizeCallbackUrl("//evil.com")).toBe("/ai");
+    expect(normalizeCallbackUrl("project/abc")).toBe("/ai");
   });
 });
 

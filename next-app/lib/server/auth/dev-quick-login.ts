@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@/lib/server/prisma";
+import { normalizePostLoginCallbackUrl } from "@/lib/auth-redirects";
 
 type EnvLike = {
   NODE_ENV?: string;
@@ -52,9 +53,7 @@ export function hasTrustedDevQuickLoginOrigin(request: RequestOriginLike): boole
 }
 
 export function normalizeCallbackUrl(input: string | null | undefined): string {
-  if (!input) return "/";
-  if (!input.startsWith("/") || input.startsWith("//")) return "/";
-  return input;
+  return normalizePostLoginCallbackUrl(input);
 }
 
 export function normalizeDevQuickLoginSeedKey(input: string | null | undefined): string | null {

@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
 
-test("mobile auth foundation: login supports quick access and redirects to home", async ({ page }) => {
+test("mobile auth foundation: login supports quick access and redirects to AI", async ({ page }) => {
   await page.goto("/login");
   await expect(page.getByLabel("Email address")).toBeVisible();
 
@@ -11,7 +11,7 @@ test("mobile auth foundation: login supports quick access and redirects to home"
   await devMode.click();
 
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/ai$/);
 });
 
 test("mobile auth foundation: signup keeps account creation controls accessible", async ({ page }) => {

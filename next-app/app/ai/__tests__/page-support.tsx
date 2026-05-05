@@ -45,6 +45,7 @@ vi.mock("next/dynamic", () => ({
       onSelectConversation?: (conversationId: string) => void;
       isHistoryLoading?: boolean;
       projects?: Array<{ id: string; name: string }>;
+      returnProject?: { id: string; name: string; href: string } | null;
       onSelectProject?: (projectId: string | null) => void;
       items?: Array<{
         type: string;
@@ -81,6 +82,9 @@ vi.mock("next/dynamic", () => ({
       if (props.projects && props.onSelectProject) {
         return (
           <div>
+            {props.returnProject ? (
+              <a href={props.returnProject.href}>Back to {props.returnProject.name}</a>
+            ) : null}
             <button type="button" onClick={() => props.onSelectProject?.(null)}>
               Global scope
             </button>
