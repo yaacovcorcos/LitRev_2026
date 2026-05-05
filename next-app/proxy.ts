@@ -14,26 +14,69 @@ function hasSessionCookie(request: NextRequest): boolean {
   return SESSION_COOKIES.some((name) => Boolean(request.cookies.get(name)?.value));
 }
 
+function clearSessionCookies(response: NextResponse): void {
+  for (const name of SESSION_COOKIES) {
+    response.cookies.delete(name);
+  }
+}
+
 function getUnauthenticatedCallbackUrl(pathname: string, search: string): string {
   if (pathname === "/" && search === "") return DEFAULT_POST_LOGIN_PATH;
   return `${pathname}${search}`;
 }
 
-export function proxy(request: NextRequest) {
+async function hasValidSession(request: NextRequest): Promise<boolean> {
+  if (!hasSessionCookie(request)) {
+    return false;
+  }
+
+  const cookie = request.headers.get("cookie");
+  if (!cookie) {
+    return false;
+  }
+
+  const sessionUrl = new URL("/api/auth/get-session", request.url);
+  sessionUrl.searchParams.set("disableCookieCache", "true");
+  sessionUrl.searchParams.set("disableRefresh", "true");
+  const response = await fetch(sessionUrl, {
+    method: "GET",
+    headers: { cookie },
+    cache: "no-store",
+  }).catch(() => null);
+
+  if (!response?.ok) {
+    return false;
+  }
+
+  const payload = (await response.json().catch(() => null)) as unknown;
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+
+  const sessionPayload = payload as { session?: unknown; user?: unknown };
+  return Boolean(sessionPayload.session && sessionPayload.user);
+}
+
+export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   if (PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))) {
     return NextResponse.next();
   }
 
-  if (hasSessionCookie(request)) {
+  const hasCookie = hasSessionCookie(request);
+  if (await hasValidSession(request)) {
     return NextResponse.next();
   }
 
   const loginUrl = new URL("/login", request.url);
   const callbackUrl = getUnauthenticatedCallbackUrl(pathname, search);
   loginUrl.searchParams.set("callbackUrl", callbackUrl);
-  return NextResponse.redirect(loginUrl);
+  const response = NextResponse.redirect(loginUrl);
+  if (hasCookie) {
+    clearSessionCookies(response);
+  }
+  return response;
 }
 
 export const config = {
