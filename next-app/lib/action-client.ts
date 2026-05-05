@@ -1,3 +1,5 @@
+import { buildLoginUrl, getCurrentLocationCallbackUrl } from "@/lib/auth-redirects";
+
 /**
  * Client-side utility for handling auth errors from server actions.
  * When a session expires, server actions return errorCode "ACCESS_DENIED".
@@ -9,6 +11,6 @@ export function isAuthError(result: { success: boolean; errorCode?: string }): b
 
 export function redirectToLogin(): void {
   if (typeof window !== "undefined") {
-    window.location.href = "/login";
+    window.location.href = buildLoginUrl(getCurrentLocationCallbackUrl(window.location));
   }
 }

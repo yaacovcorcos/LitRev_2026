@@ -319,7 +319,8 @@
 .mobileIconButton:focus-visible,
 .mobileTitlePill:focus-visible,
 .mobileSheetOption:focus-visible,
-.mobileMoreItem:focus-visible {
+.mobileMoreItem:focus-visible,
+.returnProjectLink:focus-visible {
     outline: none;
     box-shadow: var(--shadow-focus-ring);
 }
@@ -481,6 +482,7 @@
     font-size: 13px;
     font-weight: 600;
     text-align: left;
+    text-decoration: none;
     cursor: pointer;
 }
 
@@ -508,6 +510,56 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
+}
+
+.returnProjectLink {
+    min-width: 0;
+    max-width: min(320px, 32vw);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border: 1px solid rgba(var(--rgb-accent-primary), 0.22);
+    border-radius: 10px;
+    background: rgba(var(--rgb-accent-primary), 0.08);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.returnProjectLink:hover {
+    border-color: rgba(var(--rgb-accent-primary), 0.34);
+    background: rgba(var(--rgb-accent-primary), 0.12);
+    color: var(--text-primary);
+}
+
+.returnProjectLink :global(.material-icons-round) {
+    flex: 0 0 auto;
+    color: var(--accent-primary);
+    font-size: 17px;
+}
+
+.returnProjectText {
+    min-width: 0;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.returnProjectKicker {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.returnProjectName {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .reasoningModeBtn {
@@ -772,6 +824,10 @@
         margin-left: 0;
         width: 100%;
         justify-content: flex-end;
+    }
+
+    .returnProjectLink {
+        display: none;
     }
 
     .projectButton span:nth-child(2) {

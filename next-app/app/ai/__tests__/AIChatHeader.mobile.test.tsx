@@ -3,6 +3,11 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AIChatHeader } from "../AIChatHeader";
 
+vi.mock("next/link", async () => {
+  const { nextLinkPrefetchMock } = await import("@/test-utils/next-link-prefetch-mock");
+  return nextLinkPrefetchMock;
+});
+
 vi.mock("next/dynamic", () => ({
   default: () => () => null,
 }));
@@ -70,5 +75,32 @@ describe("AIChatHeader mobile shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "More chat actions" }));
     fireEvent.click(screen.getByRole("button", { name: "Export Markdown" }));
     expect(onExportMarkdown).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a compact return-to-project action when a previous project is available", () => {
+    render(
+      <AIChatHeader
+        {...defaultProps}
+        returnProject={{ id: "project-1", name: "Project Alpha", href: "/project/project-1" }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "More chat actions" }));
+
+    const returnLink = screen.getByRole("link", { name: "Back to Project Alpha" });
+    expect(returnLink.getAttribute("href")).toBe("/project/project-1");
+  });
+
+  it("keeps the return-to-project action visible in the desktop header", () => {
+    render(
+      <AIChatHeader
+        {...defaultProps}
+        isPhoneViewport={false}
+        returnProject={{ id: "project-1", name: "Project Alpha", href: "/project/project-1" }}
+      />,
+    );
+
+    const returnLink = screen.getByRole("link", { name: "Back to Project Alpha" });
+    expect(returnLink.getAttribute("href")).toBe("/project/project-1");
   });
 });

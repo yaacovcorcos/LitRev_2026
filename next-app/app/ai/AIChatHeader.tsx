@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReasoningMode } from "@/types/ai";
 import {
@@ -19,6 +20,12 @@ type ProjectOption = {
   name: string;
 };
 
+type ReturnProject = {
+  id: string;
+  name: string;
+  href: string;
+};
+
 type AIChatHeaderProps = {
   isPhoneViewport: boolean;
   isHistoryCollapsed: boolean;
@@ -26,6 +33,7 @@ type AIChatHeaderProps = {
   selectedProjectId: string | null;
   selectedScopeLabel: string;
   projects: ProjectOption[];
+  returnProject?: ReturnProject | null;
   selectedModel: SelectableModelId;
   showReasoningControls: boolean;
   reasoningMode: ReasoningMode;
@@ -47,6 +55,7 @@ export function AIChatHeader({
   selectedProjectId,
   selectedScopeLabel,
   projects,
+  returnProject,
   selectedModel,
   showReasoningControls,
   reasoningMode,
@@ -94,7 +103,7 @@ export function AIChatHeader({
   }, [isMobileMoreOpen, isMobileOptionsOpen]);
 
   const activeExportDisabled = activeTimelineLength === 0;
-  const hasMobileMoreActions = !activeExportDisabled;
+  const hasMobileMoreActions = Boolean(returnProject) || !activeExportDisabled;
   const projectIcon = useMemo(() => (selectedProjectId ? "folder" : "public"), [selectedProjectId]);
   const selectedModelInfo = useMemo(
     () => USER_SELECTABLE_MODELS.find((model) => model.id === selectedModel),
@@ -209,6 +218,16 @@ export function AIChatHeader({
 
               {isMobileMoreOpen ? (
                 <div className={styles.mobileMoreMenu}>
+                  {returnProject ? (
+                    <Link
+                      href={returnProject.href}
+                      className={styles.mobileMoreItem}
+                      onClick={() => setMobileMoreOpen(false)}
+                    >
+                      <span className="material-icons-round" aria-hidden="true">folder_open</span>
+                      <span>Back to {returnProject.name}</span>
+                    </Link>
+                  ) : null}
                   <button
                     type="button"
                     className={styles.mobileMoreItem}
@@ -286,6 +305,20 @@ export function AIChatHeader({
       </div>
 
       <div className={styles.headerActions}>
+        {returnProject ? (
+          <Link
+            href={returnProject.href}
+            className={styles.returnProjectLink}
+            aria-label={`Back to ${returnProject.name}`}
+          >
+            <span className="material-icons-round" aria-hidden="true">folder_open</span>
+            <span className={styles.returnProjectText}>
+              <span className={styles.returnProjectKicker}>Back to</span>
+              <span className={styles.returnProjectName}>{returnProject.name}</span>
+            </span>
+          </Link>
+        ) : null}
+
         {showReasoningControls ? (
           <AIChatReasoningModeDropdown
             reasoningMode={reasoningMode}

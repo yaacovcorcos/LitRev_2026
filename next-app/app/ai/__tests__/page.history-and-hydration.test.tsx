@@ -49,6 +49,18 @@ describe("/ai page history and hydration", () => {
     }, { timeout: 1000 });
   });
 
+  it("offers a return link to the last opened project without changing AI scope", async () => {
+    window.localStorage.setItem("litrev:lastProjectId", "proj-2");
+
+    renderAiView();
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Back to Beta" }).getAttribute("href")).toBe("/project/proj-2");
+    });
+
+    expect(screen.getByRole("button", { name: "Global scope" })).toBeTruthy();
+  });
+
   it("ignores stale conversation-list responses after a scope change", async () => {
     vi.useFakeTimers();
 
