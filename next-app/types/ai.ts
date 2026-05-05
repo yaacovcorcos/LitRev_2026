@@ -118,6 +118,8 @@ export type RuntimeSendOverrides = {
     userInputResolution?: UserInputResolution;
 };
 
+export type StreamCancelReason = "user" | "superseded" | "unmount";
+
 export type AIErrorKind =
     | "provider_request"
     | "model_capability"

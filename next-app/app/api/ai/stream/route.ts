@@ -38,6 +38,7 @@ import { buildContextCapturePromptBlock } from "@/lib/server/ai/context-capture"
 import { logServerError } from "@/lib/server/logging";
 import { resolveRequestedContinuation } from "@/lib/server/agent/requested-continuation";
 import { settleClarificationDismissedRun } from "@/lib/server/agent/run";
+import { registerRunCancellationController } from "@/lib/server/agent/run-cancellation";
 import {
     buildClarificationResolutionUserMessage,
     buildUserInputResolutionContinuationContext,
@@ -299,6 +300,13 @@ export async function POST(request: NextRequest) {
                         },
                     });
                     const mergedPlanId = planId ?? options?.planId;
+                    const runtimeAbortController = new AbortController();
+                    let unregisterRunCancellation: (() => void) | null = null;
+                    const unregisterActiveRunCancellation = () => {
+                        const unregister = unregisterRunCancellation;
+                        unregisterRunCancellation = null;
+                        unregister?.();
+                    };
                     let runtimeOptions: StreamRouteOptions = {
                         ...scopedOptions,
                         replaceRunId: scopedOptions.replaceRunId ?? scopedOptions.continueFromRunId,
@@ -375,7 +383,14 @@ export async function POST(request: NextRequest) {
                     };
                     runtimeRouter.use(async ({ event, thread: runtimeThread }, next) => {
                         if (event.conversationId) runtimeThread.bindConversation(event.conversationId);
-                        if (event.type === "run_start" && event.runId) runtimeThread.bindRun(event.runId);
+                        if (event.type === "run_start" && event.runId) {
+                            runtimeThread.bindRun(event.runId);
+                            unregisterActiveRunCancellation();
+                            unregisterRunCancellation = registerRunCancellationController(
+                                event.runId,
+                                runtimeAbortController,
+                            );
+                        }
                         await next();
                         if (event.type === "run_end") runtimeThread.bindRun(undefined);
                     });
@@ -598,7 +613,7 @@ export async function POST(request: NextRequest) {
                         // If using conversation memory — use artifact-aware streaming
                         else if ((effectiveUserMessage || planId || runtimeOptions.userInputResolution) && context) {
                             for await (const chunk of service.streamChatWithArtifacts(
-                                effectiveUserMessage || "", context, { ...runtimeOptions, planId: mergedPlanId, selectedSteps, signal: request.signal }
+                                effectiveUserMessage || "", context, { ...runtimeOptions, planId: mergedPlanId, selectedSteps, signal: runtimeAbortController.signal }
                             )) {
                                 const normalized = normalizeStreamChunk(chunk);
                                 if (!normalized) continue;
@@ -648,7 +663,7 @@ export async function POST(request: NextRequest) {
                                         {
                                             ...runtimeOptions,
                                             tools: popupToolDefinitions,
-                                            signal: request.signal,
+                                            signal: runtimeAbortController.signal,
                                         },
                                     )) {
                                         const normalized = normalizeStreamChunk(chunk);
@@ -662,7 +677,7 @@ export async function POST(request: NextRequest) {
                                         await coalescer.push(normalized);
                                     }
                                 } else {
-                                    for await (const chunk of service.streamChat(popupMessages, { ...runtimeOptions, signal: request.signal })) {
+                                    for await (const chunk of service.streamChat(popupMessages, { ...runtimeOptions, signal: runtimeAbortController.signal })) {
                                         const normalized = normalizeStreamChunk(chunk);
                                         if (!normalized) continue;
                                         if (firstProviderContentMs === null && normalized.type === "content" && normalized.content) {
@@ -675,7 +690,7 @@ export async function POST(request: NextRequest) {
                                     }
                                 }
                             } else {
-                                for await (const chunk of service.streamChat(messages, { ...runtimeOptions, signal: request.signal })) {
+                                for await (const chunk of service.streamChat(messages, { ...runtimeOptions, signal: runtimeAbortController.signal })) {
                                     const normalized = normalizeStreamChunk(chunk);
                                     if (!normalized) continue;
                                     if (firstProviderContentMs === null && normalized.type === "content" && normalized.content) {
@@ -714,6 +729,7 @@ export async function POST(request: NextRequest) {
                         await coalescer.flushAll();
                         await maybeRecordRunEndMetric();
                         await coalescer.stop();
+                        unregisterActiveRunCancellation();
                         if (!streamClosed) {
                             controller.close();
                             streamClosed = true;

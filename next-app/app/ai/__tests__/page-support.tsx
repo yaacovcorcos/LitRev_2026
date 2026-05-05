@@ -14,6 +14,7 @@ const aiViewMocks = vi.hoisted(() => ({
   mockPush: vi.fn(),
   mockProcessAIStream: vi.fn(),
   mockPollRunRecovery: vi.fn(),
+  mockCancelConversationRun: vi.fn(),
   mockFetch: vi.fn(),
   mockIsProgressiveAnswerStreamingEnabled: vi.fn(() => false),
   mockReviewArtifactAction: vi.fn(),
@@ -28,6 +29,7 @@ const {
   mockPush,
   mockProcessAIStream,
   mockPollRunRecovery,
+  mockCancelConversationRun,
   mockFetch,
   mockIsProgressiveAnswerStreamingEnabled,
   mockReviewArtifactAction,
@@ -281,6 +283,7 @@ vi.mock("@/lib/ai/run-recovery-client", async () => {
   const actual = await vi.importActual<typeof import("@/lib/ai/run-recovery-client")>("@/lib/ai/run-recovery-client");
   return {
     ...actual,
+    cancelConversationRun: (...args: unknown[]) => mockCancelConversationRun(...args),
     pollRunRecovery: (...args: unknown[]) => mockPollRunRecovery(...args),
   };
 });

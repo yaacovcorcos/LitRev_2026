@@ -20,6 +20,7 @@ import type {
   CopilotPage,
   ReasoningMode,
   RuntimeSendOverrides,
+  StreamCancelReason,
   UserInputRequest,
   UserInputResolutionKind,
 } from "@/types/ai";
@@ -57,6 +58,7 @@ import {
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import {
+  cancelConversationRun,
   createRecoveryErrorEnvelope,
   getRunRecoveryMessage,
   pollRunRecovery,
@@ -189,6 +191,7 @@ export default function AIView() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamGenRef = useRef(0);
   const currentRunIdRef = useRef<string | null>(null);
+  const userCancelRequestedRef = useRef(false);
   const sendLockRef = useRef(false);
   const activeConversationIdRef = useRef<string | null>(null);
   const routePerfStartRef = useRef<number | null>(
@@ -469,6 +472,7 @@ export default function AIView() {
 
   useEffect(() => {
     return () => {
+      streamGenRef.current++;
       abortControllerRef.current?.abort();
     };
   }, []);
@@ -740,7 +744,14 @@ export default function AIView() {
     upsertConversationTitle,
   ]);
 
-  const cancelStream = useCallback(() => {
+  const cancelStream = useCallback((reason: StreamCancelReason = "user") => {
+    userCancelRequestedRef.current = reason === "user";
+    if (reason === "user") {
+      void cancelConversationRun({
+        conversationId: activeConversationIdRef.current,
+        runId: currentRunIdRef.current,
+      });
+    }
     streamGenRef.current++;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -914,7 +925,7 @@ export default function AIView() {
   const handleBranchConversation = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (branchingConversationId || branchingMessageId) return;
-    if (isTyping) cancelStream();
+    if (isTyping) cancelStream("superseded");
     setBranchingConversationId(id);
     try {
       const { branchConversation, getConversation } = await loadConversationActions();
@@ -950,7 +961,7 @@ export default function AIView() {
   const handleBranchFromMessage = useCallback(async (messageId: string, createdAt: string) => {
     const sourceConversationId = activeConversationId;
     if (!sourceConversationId || branchingConversationId || branchingMessageId) return;
-    if (isTyping) cancelStream();
+    if (isTyping) cancelStream("superseded");
     setBranchingMessageId(messageId);
     try {
       const { branchConversation, getConversation } = await loadConversationActions();
@@ -1123,7 +1134,7 @@ export default function AIView() {
     const sendStartedAtMs = Date.now();
     let sendSucceeded = false;
     emitMobileActionTap("ai_send_message", 44);
-    if (isTyping) cancelStream();
+    if (isTyping) cancelStream("superseded");
     sendLockRef.current = true;
     setPendingChoices([]);
     setPendingUserInput(null);
@@ -1203,6 +1214,7 @@ export default function AIView() {
     }
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    userCancelRequestedRef.current = false;
 
     const aiMessageId = `m-${Date.now() + 1}`;
     const requestKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -1294,7 +1306,9 @@ export default function AIView() {
       onNavigate: handleNavigate,
     });
 
-    const attemptRecoveryFromAbnormalEnd = async (): Promise<boolean> => {
+    const attemptRecoveryFromAbnormalEnd = async (
+      recoverySignal?: AbortSignal,
+    ): Promise<boolean> => {
       if (!terminalReason || !shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
         return false;
       }
@@ -1317,7 +1331,7 @@ export default function AIView() {
       const recoveryResult = await pollRunRecovery({
         conversationId: activeConversationId,
         runId: activeRunId,
-        signal: controller.signal,
+        signal: recoverySignal,
         onReplay: async (chunk) => runtime.handleChunk(chunk),
         onTerminal: async (chunk) => runtime.handleChunk(chunk),
       });
@@ -1413,18 +1427,37 @@ export default function AIView() {
       unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
       currentRunIdRef.current = runtime.getState().localRunId || currentRunIdRef.current;
       convId = runtime.getConversationId();
-      const recovered = await attemptRecoveryFromAbnormalEnd();
+      const recovered = await attemptRecoveryFromAbnormalEnd(controller.signal);
       if (!recovered && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
         return;
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
-        aborted = true;
-        terminalReason = terminalReasonFromThrownError(err, { isUserAbort: true });
-        emitTerminalMetric(terminalReason, runStatus);
+        if (userCancelRequestedRef.current) {
+          aborted = true;
+          terminalReason = terminalReasonFromThrownError(err, { isUserAbort: true });
+          emitTerminalMetric(terminalReason, runStatus);
+        } else {
+          if (streamGenRef.current !== myGen) {
+            aborted = true;
+            terminalReason = "failed_interrupted";
+            emitTerminalMetric(terminalReason, runStatus);
+            return;
+          }
+          terminalReason = "failed_interrupted";
+          if (await attemptRecoveryFromAbnormalEnd(undefined)) {
+            emitTerminalMetric(terminalReason ?? "completed", runStatus);
+            return;
+          }
+          if (emittedTerminalError) {
+            emitTerminalMetric(terminalReason, runStatus);
+            return;
+          }
+          emitTerminalMetric(terminalReason, runStatus);
+        }
       } else {
         terminalReason = terminalReasonFromThrownError(err);
-        if (await attemptRecoveryFromAbnormalEnd()) {
+        if (await attemptRecoveryFromAbnormalEnd(controller.signal)) {
           emitTerminalMetric(terminalReason ?? "completed", runStatus);
           return;
         }
@@ -1833,7 +1866,7 @@ export default function AIView() {
     if (selectedIndexes.length === 0 || isConversationLoading) return;
     let convId = activeConversationId;
     if (!convId) return;
-    if (isTyping) cancelStream();
+    if (isTyping) cancelStream("superseded");
     setPendingChoices([]);
     setPendingUserInput(null);
 
@@ -1876,6 +1909,7 @@ export default function AIView() {
     }
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    userCancelRequestedRef.current = false;
 
     const aiMessageId = `m-${Date.now() + 1}`;
     const streamStartedAtMs = Date.now();
@@ -2021,8 +2055,19 @@ export default function AIView() {
       errorMessage = summary.errorMessage;
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
-        aborted = true;
-        terminalReason = terminalReasonFromThrownError(err, { isUserAbort: true });
+        if (userCancelRequestedRef.current) {
+          aborted = true;
+          terminalReason = terminalReasonFromThrownError(err, { isUserAbort: true });
+        } else {
+          if (streamGenRef.current !== myGen) {
+            aborted = true;
+            terminalReason = "failed_interrupted";
+            emitTerminalMetric(terminalReason, runStatus);
+            return;
+          }
+          terminalReason = "failed_interrupted";
+          errorMessage = "Connection interrupted before plan execution finished.";
+        }
         emitTerminalMetric(terminalReason, runStatus);
       } else {
         terminalReason = terminalReasonFromThrownError(err);

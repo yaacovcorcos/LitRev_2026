@@ -84,7 +84,9 @@ The agent should not merely "feel smart." It should be:
   - retry/replace can now prefer checkpoint-backed or durable continuation over restart-from-zero when the source is proven
 - Interruption truth is now a shared runtime concern rather than provider/UI guesswork:
   - provider stream aborts must propagate as aborts, not provider error chunks
-  - user/browser cancellation must not silently become an interrupted-stream failure on the client
+  - browser stream disconnects do not own server-side run cancellation; the server run uses a run-scoped cancellation signal so recoverable disconnects can continue and replay
+  - explicit user Stop is a first-class cancellation command that marks the owned run cancelled and aborts the in-process run when it is on the same server
+  - user/browser cancellation must not silently become either a fake successful completion or an unrecoverable client-side no-op
   - long-loop budget/repeat stops without a durable final answer are failed honestly instead of being marked completed because some tool work happened
 - Durable-progress timestamps now represent forward progress, not every recovery-authoritative event:
   - passive events such as `tool_call`, `user_input_required`, `checkpoint`, and `error` no longer mask no-forward-progress detection

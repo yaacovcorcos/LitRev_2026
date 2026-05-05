@@ -240,6 +240,8 @@ function ProjectConversationRuntime({
             if (saveTimerRef.current) {
                 clearTimeout(saveTimerRef.current);
             }
+            // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup must invalidate the latest stream generation before aborting.
+            streamGenRef.current++;
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
                 abortControllerRef.current = null;

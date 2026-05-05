@@ -13,6 +13,7 @@ import type { FocusEvent as ReactFocusEvent, MouseEvent as ReactMouseEvent } fro
 import type {
     CopilotPage,
     ChoiceOption,
+    StreamCancelReason,
     UserInputRequest,
     UserInputResolutionKind,
 } from "@/types/ai";
@@ -68,7 +69,7 @@ export type ChatComposerCoreProps = {
         retryModelExpectation?: RetryModelExpectation,
         contextTargets?: ContextCaptureTarget[],
     ) => void | Promise<void>;
-    cancelStream: () => void;
+    cancelStream: (reason?: StreamCancelReason) => void;
     hasQueuedFollowUp?: boolean;
     attachedStack?: "none" | "attached";
     interactionLocked?: boolean;
@@ -451,7 +452,7 @@ export function ChatComposerCore({
         if (voiceState === "recording" || voiceState === "transcribing") {
             stopRecording();
         }
-        cancelStream();
+        cancelStream("user");
     }, [cancelStream, voiceState, stopRecording]);
 
     const handleComposerSurfaceClick = useCallback((event: ReactMouseEvent<HTMLFormElement>) => {

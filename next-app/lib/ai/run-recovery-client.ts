@@ -37,6 +37,22 @@ export async function fetchRunRecovery(params: {
     return response.json() as Promise<RunRecoveryResponse>;
 }
 
+export async function cancelConversationRun(params: {
+    conversationId: string | null | undefined;
+    runId: string | null | undefined;
+}): Promise<void> {
+    if (!params.conversationId || !params.runId) return;
+    await fetch("/api/ai/run/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            conversationId: params.conversationId,
+            runId: params.runId,
+        }),
+        keepalive: true,
+    }).catch(() => undefined);
+}
+
 export function createRecoveryErrorEnvelope(params: {
     code: string;
     message: string;

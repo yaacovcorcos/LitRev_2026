@@ -11,6 +11,7 @@ import type {
     CopilotPage,
     ReasoningMode,
     RuntimeSendOverrides,
+    StreamCancelReason,
     StreamPhase,
     UserInputRequest,
     UserInputResolutionKind,
@@ -102,7 +103,7 @@ export type ProjectConversationContextValue = {
     /** Update global reasoning visibility mode */
     setReasoningMode: (mode: ReasoningMode) => void;
     /** Cancel the current stream */
-    cancelStream: () => void;
+    cancelStream: (reason?: StreamCancelReason) => void;
     /** Clear all messages */
     clearMessages: () => void;
 

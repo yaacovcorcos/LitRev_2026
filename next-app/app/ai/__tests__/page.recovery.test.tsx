@@ -22,6 +22,54 @@ const {
 } = getAiViewMocks();
 
 describe("/ai page recovery truth and continuation", () => {
+  it("treats a non-user stream abort as recoverable instead of a silent cancel", async () => {
+    mockProcessAIStream.mockImplementation(async ({ onChunk }: {
+      onChunk: (chunk: unknown) => void | Promise<void>;
+    }) => {
+      await onChunk({ type: "run_start", runId: "run-abort", conversationId: "conv-new" });
+      throw new DOMException("The stream was interrupted.", "AbortError");
+    });
+    mockPollRunRecovery.mockImplementation(async ({ onTerminal, signal }: {
+      onTerminal: (chunk: unknown) => Promise<void>;
+      signal?: AbortSignal;
+    }) => {
+      expect(signal).toBeUndefined();
+      await onTerminal({ type: "content", content: "Recovered after disconnect." });
+      await onTerminal({ type: "run_end", runStatus: "completed", stopReason: null });
+      return {
+        outcome: "recovered",
+        response: {
+          conversationId: "conv-new",
+          runId: "run-abort",
+          runStatus: "completed",
+          isActive: false,
+          runPhase: "finalize",
+          phaseEnteredAt: "2026-03-11T11:19:00.000Z",
+          lastActivityAt: "2026-03-11T11:20:00.000Z",
+          lastSequence: 2,
+          replayableEvents: [],
+          terminalEvent: {
+            chunk: { type: "run_end", runStatus: "completed", stopReason: null },
+          },
+          recoveryRecommendation: "terminal",
+          abnormalEndClassification: null,
+        },
+        lastAppliedSequence: 2,
+      };
+    });
+
+    renderAiView();
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Recovered after disconnect.")).toBeTruthy();
+    });
+
+    expect(mockPollRunRecovery).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Run interrupted and recovery failed. You can retry safely now.")).toBeNull();
+  });
+
   it("does not append a false terminal failure after a recovered completed run", async () => {
     mockProcessAIStream.mockImplementation(async ({ onChunk }: {
       onChunk: (chunk: unknown) => void | Promise<void>;

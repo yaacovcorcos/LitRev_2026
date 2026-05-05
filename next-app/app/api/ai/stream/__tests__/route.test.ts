@@ -234,6 +234,44 @@ describe("/api/ai/stream route", () => {
     expect(chunks[1]?.error).toBe("simulated disconnect after run start");
   });
 
+  it("uses a run-scoped cancellation signal instead of the request signal", async () => {
+    let observedSignal: AbortSignal | undefined;
+    const requestController = new AbortController();
+    mocks.streamChatWithArtifacts.mockImplementation(async function* (
+      _message: unknown,
+      _context: unknown,
+      options: { signal?: AbortSignal },
+    ) {
+      observedSignal = options.signal;
+      yield { type: "run_start", runId: "run-1", conversationId: "conv-1" };
+      yield { type: "run_end", runId: "run-1", conversationId: "conv-1", runStatus: "completed", stopReason: null };
+    });
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "hello",
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          agentMode: "general",
+          page: "ai",
+        },
+      }),
+      signal: requestController.signal,
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    await response.text();
+
+    expect(observedSignal).toBeDefined();
+    expect(observedSignal).not.toBe(request.signal);
+    requestController.abort();
+    expect(observedSignal?.aborted).toBe(false);
+  });
+
   it("prefers a valid checkpoint continuation source into stream runtime options", async () => {
     mocks.resolveLatestValidRunCheckpoint.mockResolvedValue({
       checkpointId: "checkpoint-1",

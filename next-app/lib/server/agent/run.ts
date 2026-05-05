@@ -507,6 +507,35 @@ export async function cancelRun(runId: string) {
     return endRun(runId, "cancelled");
 }
 
+export async function cancelConversationRun(
+    runId: string,
+    conversationId: string,
+    options?: { at?: Date },
+) {
+    const at = options?.at ?? new Date();
+    const result = await prisma.agentRun.updateMany({
+        where: {
+            id: runId,
+            conversationId,
+            status: { in: ["running", "paused"] },
+        },
+        data: {
+            status: "cancelled",
+            completedAt: at,
+            lastActivityAt: at,
+            lastDurableProgressAt: at,
+            durabilityState: "durable",
+            durabilityDegradedReason: null,
+            finalizationState: "completed",
+            abnormalEndClassification: null,
+        },
+    });
+    if (result.count > 0) {
+        notifyRunActivity(runId, at);
+    }
+    return result.count;
+}
+
 export async function settleClarificationDismissedRun(
     runId: string,
     options?: Date | { at?: Date; requireActive?: boolean },

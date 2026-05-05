@@ -29,6 +29,7 @@ import type {
     RuntimeSendOverrides,
     RunRecoveryResponse,
     RunRecoveryRecommendation,
+    StreamCancelReason,
     StreamPhase,
     UserInputRequest,
 } from "@/types/ai";
@@ -67,6 +68,7 @@ import {
 } from "@/lib/ai/ai-stream-runtime";
 import { isProgressiveAnswerStreamingEnabled } from "@/lib/feature-flags";
 import {
+    cancelConversationRun,
     createRecoveryErrorEnvelope,
     getRunRecoveryMessage,
     pollRunRecovery,
@@ -136,8 +138,14 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         ))
     ), []);
 
-    const cancelStream = useCallback(() => {
-        userCancelRequestedRef.current = true;
+    const cancelStream = useCallback((reason: StreamCancelReason = "user") => {
+        userCancelRequestedRef.current = reason === "user";
+        if (reason === "user") {
+            void cancelConversationRun({
+                conversationId: convo.currentConversationIdRef.current,
+                runId: currentRunId,
+            });
+        }
         streamGenRef.current++;
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -145,7 +153,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         }
         setIsLoading(false);
         setPendingChoices([]);
-    }, [abortControllerRef, setIsLoading, setPendingChoices, streamGenRef]);
+    }, [abortControllerRef, convo, currentRunId, setIsLoading, setPendingChoices, streamGenRef]);
 
     const buildProjectRecoverySeedState = useCallback((params: {
         messages: ProjectConversationMessage[];
@@ -926,27 +934,49 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 conversationId: effectiveConvId,
             };
         } catch (error) {
-            // Silently ignore aborted requests
             if (error instanceof DOMException && error.name === "AbortError") {
-                aborted = true;
-                terminalReason = terminalReasonFromThrownError(error, {
-                    isUserAbort: userCancelRequestedRef.current,
-                });
-                emitTerminalMetric(terminalReason, runStatus);
-                return {
-                    success: false,
-                    aborted: true,
-                    runStatus,
-                    stopReason,
-                    errorMessage: streamErrorMessage,
-                    actualModel,
-                    actualModelSource,
-                    terminalReason,
-                    runId: localRunId || null,
-                    conversationId: effectiveConvId,
-                };
+                if (!userCancelRequestedRef.current) {
+                    if (streamGenRef.current !== myGen) {
+                        terminalReason = "failed_interrupted";
+                        aborted = true;
+                        emitTerminalMetric(terminalReason, runStatus);
+                        return {
+                            success: false,
+                            aborted: true,
+                            runStatus,
+                            stopReason,
+                            errorMessage: streamErrorMessage,
+                            actualModel,
+                            actualModelSource,
+                            terminalReason,
+                            runId: localRunId || null,
+                            conversationId: effectiveConvId,
+                        };
+                    }
+                    terminalReason = "failed_interrupted";
+                } else {
+                    aborted = true;
+                    terminalReason = terminalReasonFromThrownError(error, {
+                        isUserAbort: true,
+                    });
+                    emitTerminalMetric(terminalReason, runStatus);
+                    return {
+                        success: false,
+                        aborted: true,
+                        runStatus,
+                        stopReason,
+                        errorMessage: streamErrorMessage,
+                        actualModel,
+                        actualModelSource,
+                        terminalReason,
+                        runId: localRunId || null,
+                        conversationId: effectiveConvId,
+                    };
+                }
+            } else {
+                terminalReason = terminalReasonFromThrownError(error);
             }
-            terminalReason = terminalReasonFromThrownError(error);
+
             if (
                 terminalReason
                 && shouldFailRunningToolsOnAbnormalEnd(terminalReason)
@@ -967,7 +997,9 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                     runId: localRunId,
                     page,
                     section,
-                    signal: controller.signal,
+                    signal: error instanceof DOMException && error.name === "AbortError"
+                        ? undefined
+                        : controller.signal,
                     onPlanStepUpdate,
                 });
                 if (recoveryResult.outcome === "recovered") {
@@ -1021,6 +1053,23 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                     conversationId: effectiveConvId,
                 };
             }
+
+            if (error instanceof DOMException && error.name === "AbortError") {
+                emitTerminalMetric(terminalReason, runStatus);
+                return {
+                    success: false,
+                    aborted: false,
+                    runStatus,
+                    stopReason,
+                    errorMessage: streamErrorMessage,
+                    actualModel,
+                    actualModelSource,
+                    terminalReason,
+                    runId: localRunId || null,
+                    conversationId: effectiveConvId,
+                };
+            }
+
             emitTerminalMetric(terminalReason, runStatus);
 
             recordChatUnificationMetric({
@@ -1236,7 +1285,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
             const suppressUserMessageAppend = runtimeOverrides?.suppressUserMessageAppend === true;
             const replaceRunId = runtimeOverrides?.replaceRunId
                 ?? (isLoadingRef.current ? currentRunId : null);
-            if (isLoadingRef.current) cancelStream();
+            if (isLoadingRef.current) cancelStream("superseded");
             setPendingChoices([]);
             setPendingUserInput(null);
             const resolutionTimestamp = new Date().toISOString();
@@ -1391,7 +1440,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
 
     const executePlanAction = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
         const replaceRunId = isLoadingRef.current ? currentRunId : null;
-        if (isLoadingRef.current) cancelStream();
+        if (isLoadingRef.current) cancelStream("superseded");
         setPendingChoices([]);
 
         // Optimistic UI: set plan artifact status to "running"
