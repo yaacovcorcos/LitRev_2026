@@ -13,6 +13,7 @@ import { HARD_CAPS } from "@/types/agent";
 import { DELEGATION_TOOL_NAMES, getContextualAllowedTools } from "@/lib/agent/router";
 import { isDelegationEnabled } from "@/lib/agent/feature-flags";
 import { logServerWarn } from "@/lib/server/logging";
+import { isAbortLikeError } from "@/lib/abort";
 import { pubmedSearchTool } from "./pubmed-search";
 import { addToLedgerTool } from "./add-to-ledger";
 import { excludeStudyTool } from "./exclude-study";
@@ -318,6 +319,9 @@ export async function executeTool(
 
         return { ...result, callId };
     } catch (error) {
+        if (context?.signal?.aborted || isAbortLikeError(error)) {
+            throw error;
+        }
         return {
             callId,
             result: null,

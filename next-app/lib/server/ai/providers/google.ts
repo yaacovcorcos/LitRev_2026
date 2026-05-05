@@ -14,6 +14,7 @@ import { normalizeProviderMessages } from "./message-normalization";
 import { toAIErrorEnvelope } from "../error-classification";
 import { normalizeChatOptionsForModel } from "../request-policy";
 import { getToolCallDeltas } from "./tool-call-delta";
+import { isAbortLikeError } from "@/lib/abort";
 
 export class GoogleProvider extends BaseAIProvider {
     readonly id = "google";
@@ -165,6 +166,9 @@ export class GoogleProvider extends BaseAIProvider {
                 actualModelSource: observedModel ? "provider" : undefined,
             };
         } catch (error) {
+            if (normalizedOptions.signal?.aborted || isAbortLikeError(error)) {
+                throw error;
+            }
             const metadata = extractProviderErrorMetadata(error);
             const errorMeta = toAIErrorEnvelope(error, {
                 kind: "provider_request",

@@ -35,7 +35,7 @@ import {
 } from "@/lib/server/ai/chat-unification-runtime-metrics";
 import type { ContextCaptureTarget } from "@/types/context-capture";
 import { buildContextCapturePromptBlock } from "@/lib/server/ai/context-capture";
-import { logServerError } from "@/lib/server/logging";
+import { logServerError, logServerWarn } from "@/lib/server/logging";
 import { resolveRequestedContinuation } from "@/lib/server/agent/requested-continuation";
 import { settleClarificationDismissedRun } from "@/lib/server/agent/run";
 import {
@@ -261,6 +261,21 @@ export async function POST(request: NextRequest) {
 
         // Create a readable stream
         const encoder = new TextEncoder();
+        let streamClosed = false;
+        let coalescer: StreamCoalescer | null = null;
+        const writeRuntimeEvent = (controller: ReadableStreamDefaultController<Uint8Array>, event: RuntimeStreamEvent) => {
+            if (streamClosed) return;
+            const data = JSON.stringify(toWireChunk(event)) + "\n";
+            try {
+                controller.enqueue(encoder.encode(data));
+            } catch (error) {
+                streamClosed = true;
+                logServerWarn("ai-stream-route", "client stream closed before runtime emission", {
+                    eventType: event.type,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+        };
         const stream = new ReadableStream({
             async start(controller) {
                 await runWithActorContext(authResult.context, async () => {
@@ -268,10 +283,9 @@ export async function POST(request: NextRequest) {
                     const popupContext = body.popupContext as PopupChatContext | undefined;
                     const runtimeRouter = new ChatRuntime();
                     const thread = new RuntimeThreadContext((event) => {
-                        const data = JSON.stringify(toWireChunk(event)) + "\n";
-                        controller.enqueue(encoder.encode(data));
+                        writeRuntimeEvent(controller, event);
                     });
-                    const coalescer = new StreamCoalescer({
+                    coalescer = new StreamCoalescer({
                         contentCadence: progressiveStreaming.enabled
                             ? {
                                 firstFlushMinChars: progressiveStreaming.contentFirstFlushMinChars,
@@ -592,7 +606,7 @@ export async function POST(request: NextRequest) {
                         // If using conversation memory — use artifact-aware streaming
                         else if ((effectiveUserMessage || planId || runtimeOptions.userInputResolution) && context) {
                             for await (const chunk of service.streamChatWithArtifacts(
-                                effectiveUserMessage || "", context, { ...runtimeOptions, planId: mergedPlanId, selectedSteps, signal: request.signal }
+                                effectiveUserMessage || "", context, { ...runtimeOptions, planId: mergedPlanId, selectedSteps }
                             )) {
                                 const normalized = normalizeStreamChunk(chunk);
                                 if (!normalized) continue;
@@ -705,12 +719,22 @@ export async function POST(request: NextRequest) {
                             await coalescer.push({ type: "error", error: errorMessage });
                         }
                     } finally {
-                        await coalescer.flushAll();
+                        await coalescer?.flushAll();
                         await maybeRecordRunEndMetric();
-                        await coalescer.stop();
-                        controller.close();
+                        await coalescer?.stop();
+                        if (!streamClosed) {
+                            try {
+                                controller.close();
+                            } catch {
+                                streamClosed = true;
+                            }
+                        }
                     }
                 });
+            },
+            cancel() {
+                streamClosed = true;
+                void coalescer?.stop();
             },
         });
 

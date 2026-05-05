@@ -60,6 +60,7 @@ import {
     type StreamTerminalReason,
 } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
+import { requestAgentRunCancellation } from "@/lib/ai/run-cancel-client";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import {
     ABNORMAL_END_TOOL_FAILURE_SUMMARY,
@@ -138,6 +139,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
 
     const cancelStream = useCallback(() => {
         userCancelRequestedRef.current = true;
+        requestAgentRunCancellation(currentRunId);
         streamGenRef.current++;
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -145,7 +147,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         }
         setIsLoading(false);
         setPendingChoices([]);
-    }, [abortControllerRef, setIsLoading, setPendingChoices, streamGenRef]);
+    }, [abortControllerRef, currentRunId, setIsLoading, setPendingChoices, streamGenRef]);
 
     const buildProjectRecoverySeedState = useCallback((params: {
         messages: ProjectConversationMessage[];

@@ -3,6 +3,7 @@ import "server-only";
 import type { SearchResult, SearchResponse } from "@/types/search";
 import { fetchCrossrefMetadata, normalizeDoi } from "@/lib/server/citation-metadata";
 import { parsePublicationYearPrefix } from "@/lib/server/search/publication-year";
+import { sleep } from "@/lib/server/utils/retry";
 
 const OPENALEX_BASE = "https://api.openalex.org/works";
 const MAX_RESULTS = 100;
@@ -58,15 +59,16 @@ function getThrottleInterval(): number {
   return 120;
 }
 
-async function throttledFetch(url: string): Promise<Response> {
+async function throttledFetch(url: string, signal?: AbortSignal): Promise<Response> {
   const interval = getThrottleInterval();
   const now = Date.now();
   const elapsed = now - lastRequestTime;
   if (elapsed < interval) {
-    await new Promise((resolve) => setTimeout(resolve, interval - elapsed));
+    await sleep(interval - elapsed, signal);
   }
   lastRequestTime = Date.now();
   return fetch(url, {
+    signal,
     headers: {
       Accept: "application/json",
     },
@@ -251,7 +253,7 @@ async function enrichFromCrossref(results: SearchResult[]): Promise<void> {
  */
 export async function searchOpenAlex(
   query: string,
-  options?: { maxResults?: number; yearRange?: string; cursor?: string }
+  options?: { maxResults?: number; yearRange?: string; cursor?: string; signal?: AbortSignal }
 ): Promise<SearchResponse> {
   const perPage = Math.min(Math.max(options?.maxResults ?? 10, 1), MAX_RESULTS);
   const cursor = options?.cursor ?? "*";
@@ -267,7 +269,7 @@ export async function searchOpenAlex(
   }
 
   const url = `${OPENALEX_BASE}?${params.toString()}`;
-  const res = await throttledFetch(url);
+  const res = await throttledFetch(url, options?.signal);
   if (!res.ok) {
     throw new Error(`OpenAlex search failed: ${res.status}`);
   }

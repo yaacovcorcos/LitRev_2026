@@ -33,6 +33,7 @@ import {
     markProjectConversationActive,
     useProjectConversationBootstrap,
 } from "@/hooks/useProjectConversationBootstrap";
+import { requestAgentRunCancellation } from "@/lib/ai/run-cancel-client";
 
 function isContextAttachment(
     attachment: ConversationMessageAttachment,
@@ -53,6 +54,7 @@ export type ProjectConversationManagerDeps = {
     abortControllerRef: React.MutableRefObject<AbortController | null>;
     setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
     setCurrentRunId: React.Dispatch<React.SetStateAction<string | null>>;
+    currentRunId: string | null;
     setPendingChoices: React.Dispatch<React.SetStateAction<ChoiceOption[]>>;
     setPendingUserInput: React.Dispatch<React.SetStateAction<UserInputRequest | null>>;
 };
@@ -79,6 +81,7 @@ export function useProjectConversationManager(deps: ProjectConversationManagerDe
         abortControllerRef,
         setIsLoading,
         setCurrentRunId,
+        currentRunId,
         setPendingChoices,
         setPendingUserInput,
     } = deps;
@@ -151,6 +154,7 @@ export function useProjectConversationManager(deps: ProjectConversationManagerDe
         if (studyFilterRef.current === id) return;
 
         // Scope switch must invalidate any in-flight stream to prevent cross-scope ghost updates.
+        requestAgentRunCancellation(currentRunId);
         streamGenRef.current++;
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -214,6 +218,7 @@ export function useProjectConversationManager(deps: ProjectConversationManagerDe
         })();
     }, [
         abortControllerRef,
+        currentRunId,
         fetchConversations,
         projectId,
         setCurrentConversationId,
@@ -248,6 +253,7 @@ export function useProjectConversationManager(deps: ProjectConversationManagerDe
         const gen = ++selectGenRef.current;
         try {
             // Switching conversations must invalidate any in-flight stream to prevent ghost updates.
+            requestAgentRunCancellation(currentRunId);
             streamGenRef.current++;
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
@@ -363,6 +369,7 @@ export function useProjectConversationManager(deps: ProjectConversationManagerDe
         }
     }, [
         abortControllerRef,
+        currentRunId,
         projectEntryRestoreEnabled,
         projectId,
         setArtifacts,
@@ -469,6 +476,7 @@ export function useProjectConversationManager(deps: ProjectConversationManagerDe
             return null;
         }
         // Starting a new conversation must stop any active stream first.
+        requestAgentRunCancellation(currentRunId);
         streamGenRef.current++;
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
@@ -509,6 +517,7 @@ export function useProjectConversationManager(deps: ProjectConversationManagerDe
         }
     }, [
         abortControllerRef,
+        currentRunId,
         projectEntryRestoreEnabled,
         projectId,
         loadConversations,
@@ -568,6 +577,7 @@ export function useProjectConversationManager(deps: ProjectConversationManagerDe
         if (!projectId) return null;
         try {
             // Branching is a context switch; stop active stream before switching.
+            requestAgentRunCancellation(currentRunId);
             streamGenRef.current++;
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
@@ -592,6 +602,7 @@ export function useProjectConversationManager(deps: ProjectConversationManagerDe
         }
     }, [
         abortControllerRef,
+        currentRunId,
         projectId,
         loadConversations,
         selectConversation,

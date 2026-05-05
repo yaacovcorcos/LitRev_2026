@@ -14,12 +14,14 @@ const {
     mockDispatchProjectDataChanged,
     mockCreateConversation,
     mockProcessAIStream,
+    mockRequestAgentRunCancellation,
 } = vi.hoisted(() => ({
     mockReviewArtifactAction: vi.fn(),
     mockUndoArtifactAction: vi.fn(),
     mockDispatchProjectDataChanged: vi.fn(),
     mockCreateConversation: vi.fn(),
     mockProcessAIStream: vi.fn(),
+    mockRequestAgentRunCancellation: vi.fn(),
 }));
 
 vi.mock("@/app/actions/agent", () => ({
@@ -33,6 +35,10 @@ vi.mock("@/app/actions/conversations", () => ({
 
 vi.mock("@/lib/ai/stream-processor", () => ({
     processAIStream: (...args: unknown[]) => mockProcessAIStream(...args),
+}));
+
+vi.mock("@/lib/ai/run-cancel-client", () => ({
+    requestAgentRunCancellation: (...args: unknown[]) => mockRequestAgentRunCancellation(...args),
 }));
 
 vi.mock("@/lib/project-data-events", () => ({
@@ -156,6 +162,7 @@ function useHarness() {
         streamPhase,
         pendingAttachment,
         setPendingAttachment,
+        setCurrentRunId,
     };
 }
 
@@ -294,6 +301,20 @@ describe("useProjectConversationStreamActions artifact review path", () => {
             "Blocking send because the attached PDF could not be read for chat.",
         );
         expect(result.current.state.messages).toHaveLength(1);
+    });
+
+    it("requests semantic cancellation for the active run when the stream is stopped", () => {
+        const { result } = renderHook(() => useHarness());
+
+        act(() => {
+            result.current.setCurrentRunId("run-active-1");
+        });
+
+        act(() => {
+            result.current.cancelStream();
+        });
+
+        expect(mockRequestAgentRunCancellation).toHaveBeenCalledWith("run-active-1");
     });
 
     it("sends a readable PDF attachment through the truthful shared chat payload and clears local attachment state", async () => {

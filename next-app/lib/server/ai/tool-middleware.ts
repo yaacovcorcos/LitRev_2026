@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { ToolResult } from "@/types/ai";
 import type { ToolExecutionContext } from "@/lib/server/ai/tools/base";
 import { logServerError } from "@/lib/server/logging";
+import { isAbortLikeError } from "@/lib/abort";
 
 export type ToolExecutionRequest = {
   name: string;
@@ -177,6 +178,9 @@ export async function executeWithToolMiddleware(
         }
       }
     } catch (error) {
+      if (resolvedRequest.context?.signal?.aborted || isAbortLikeError(error)) {
+        throw error;
+      }
       return {
         callId: resolvedRequest.callId,
         result: null,
@@ -191,6 +195,9 @@ export async function executeWithToolMiddleware(
   try {
     result = await executor(resolvedRequest);
   } catch (error) {
+    if (resolvedRequest.context?.signal?.aborted || isAbortLikeError(error)) {
+      throw error;
+    }
     return {
       callId: resolvedRequest.callId,
       result: null,

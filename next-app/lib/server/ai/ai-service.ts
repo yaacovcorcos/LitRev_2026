@@ -135,6 +135,8 @@ import {
     resolveDecisionBoundaryKey,
     type ClarificationControllerState,
 } from "./clarification-controller";
+import { createLinkedAbortController, isAbortLikeError, type LinkedAbortController } from "@/lib/abort";
+import { registerActiveRunExecutionCancellation } from "@/lib/server/agent/run-cancellation";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
@@ -932,6 +934,9 @@ class AIService {
         let runFinalized = false;
         let traceEnded = false;
         let finalizedRunStatus: "completed" | "failed" | "cancelled" | "paused" | null = null;
+        let runExecutionCancellation: { signal: AbortSignal; dispose: () => void } | null = null;
+        let linkedExecutionCancellation: LinkedAbortController | null = null;
+        let executionSignal: AbortSignal | undefined = options?.signal;
         const identity = resolveAuthenticatedIdentity({
             userId: options?.userId,
             workspaceId: options?.workspaceId,
@@ -1168,6 +1173,12 @@ class AIService {
                 initialPhase: options?.continuationContext ? "verify" : "plan",
             });
             const activeRun = run;
+            runExecutionCancellation = registerActiveRunExecutionCancellation(activeRun.id);
+            linkedExecutionCancellation = createLinkedAbortController([
+                options?.signal,
+                runExecutionCancellation.signal,
+            ]);
+            executionSignal = linkedExecutionCancellation.signal;
             runHeartbeat = startRunHeartbeat(activeRun.id, {
                 onError: (error) => {
                     logServerWarn("ai/run-heartbeat", "failed", {
@@ -1702,7 +1713,7 @@ class AIService {
             const scopingWorkflowMessageId = "scoping-workflow";
 
             while (true) {
-                const check = loop.shouldContinue(options?.signal);
+                const check = loop.shouldContinue(executionSignal);
                 if (!check.continue) break;
 
                 const repaired = repairConversationHistory(currentMessages, { stopReason: "completed" });
@@ -1744,6 +1755,7 @@ class AIService {
                     );
                 const iterationChatOptions: ChatOptions = {
                     ...baseChatOptions,
+                    signal: executionSignal,
                     ...(iterationToolDefs.length > 0 ? { tools: iterationToolDefs } : {}),
                 };
 
@@ -1863,8 +1875,8 @@ class AIService {
                     if (shouldRetry) {
                         retryCount += 1;
                         const delayMs = computeRetryDelayMs(retryCount, retryAfterMs);
-                        await sleep(delayMs, options?.signal).catch(() => {});
-                        if (options?.signal?.aborted) {
+                        await sleep(delayMs, executionSignal).catch(() => {});
+                        if (executionSignal?.aborted) {
                             loop.markStopped("cancelled");
                             break;
                         }
@@ -2015,7 +2027,7 @@ class AIService {
                         studyId,
                         autonomyConfig,
                         {
-                            signal: options?.signal,
+                            signal: executionSignal,
                             protocolData: (protocolRow?.data as ProtocolData | null) ?? null,
                             systemContexts: {
                                 projectContext,
@@ -2411,9 +2423,8 @@ class AIService {
             };
         } catch (error) {
             const isAbortError =
-                options?.signal?.aborted ||
-                (error instanceof Error && error.name === "AbortError") ||
-                (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError");
+                executionSignal?.aborted ||
+                isAbortLikeError(error);
 
             if (isRunOwnershipError(error)) {
                 logServerWarn("ai-service", "run ownership lost during stream; suppressing stale writer", {
@@ -2432,6 +2443,9 @@ class AIService {
 
             if (isAbortError) {
                 runFacts.cancelledByUser = true;
+                const isSemanticRunCancel =
+                    Boolean(runExecutionCancellation?.signal.aborted)
+                    && !options?.signal?.aborted;
                 const activeRunId = run?.id;
                 if (fullContent) {
                     if (activeRunId) {
@@ -2443,8 +2457,8 @@ class AIService {
                     }
                 }
 
-                await closeTraceOnce({ aborted: true });
-                if (activeRunId) {
+                await closeTraceOnce({ aborted: true, semanticRunCancel: isSemanticRunCancel });
+                if (activeRunId && !isSemanticRunCancel) {
                     await markRunAbnormalEndClassification(activeRunId, "client_abort", {
                         requireActive: true,
                     }).catch((markError) => {
@@ -2552,9 +2566,13 @@ class AIService {
                 };
             }
         } finally {
+            linkedExecutionCancellation?.dispose();
+            linkedExecutionCancellation = null;
+            runExecutionCancellation?.dispose();
+            runExecutionCancellation = null;
             runHeartbeat?.stop();
             runHeartbeat = null;
-            const fallbackStatus = runFacts.cancelledByUser || options?.signal?.aborted
+            const fallbackStatus = runFacts.cancelledByUser || executionSignal?.aborted
                 ? "cancelled"
                 : runFacts.pausedForUserInput
                     ? "paused"

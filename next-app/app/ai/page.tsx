@@ -55,6 +55,7 @@ import {
   type StreamTerminalReason,
 } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
+import { requestAgentRunCancellation } from "@/lib/ai/run-cancel-client";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import {
   createRecoveryErrorEnvelope,
@@ -741,6 +742,7 @@ export default function AIView() {
   ]);
 
   const cancelStream = useCallback(() => {
+    requestAgentRunCancellation(currentRunIdRef.current);
     streamGenRef.current++;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();

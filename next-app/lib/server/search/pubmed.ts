@@ -3,6 +3,7 @@ import "server-only";
 import { XMLParser } from "fast-xml-parser";
 import type { SearchResult, SearchResponse } from "@/types/search";
 import { parseOpaqueOffsetCursor } from "@/lib/search-contract";
+import { sleep } from "@/lib/server/utils/retry";
 
 const EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 const PMID_BATCH_SIZE = 200;
@@ -14,15 +15,15 @@ function getThrottleInterval(): number {
   return process.env.NCBI_API_KEY ? 100 : 340;
 }
 
-async function throttledFetch(url: string): Promise<Response> {
+async function throttledFetch(url: string, signal?: AbortSignal): Promise<Response> {
   const interval = getThrottleInterval();
   const now = Date.now();
   const elapsed = now - lastRequestTime;
   if (elapsed < interval) {
-    await new Promise((resolve) => setTimeout(resolve, interval - elapsed));
+    await sleep(interval - elapsed, signal);
   }
   lastRequestTime = Date.now();
-  return fetch(url);
+  return fetch(url, { signal });
 }
 
 function buildBaseParams(): URLSearchParams {
@@ -55,7 +56,7 @@ function asRecord(value: unknown): XmlRecord | undefined {
  */
 export async function searchPubMed(
   query: string,
-  options?: { maxResults?: number; cursor?: string; retstart?: number }
+  options?: { maxResults?: number; cursor?: string; retstart?: number; signal?: AbortSignal }
 ): Promise<SearchResponse> {
   const maxResults = Math.min(options?.maxResults ?? 10, 50);
   const retstart = options?.cursor !== undefined
@@ -71,7 +72,7 @@ export async function searchPubMed(
   searchParams.set("retmode", "json");
 
   const searchUrl = `${EUTILS_BASE}/esearch.fcgi?${searchParams}`;
-  const searchRes = await throttledFetch(searchUrl);
+  const searchRes = await throttledFetch(searchUrl, options?.signal);
   if (!searchRes.ok) {
     throw new Error(`PubMed ESearch failed: ${searchRes.status}`);
   }
@@ -92,7 +93,7 @@ export async function searchPubMed(
   }
 
   // Step 2: EFetch to get article details
-  const results = await fetchPubMedArticles(pmids);
+  const results = await fetchPubMedArticles(pmids, { signal: options?.signal });
 
   const nextRetstart = retstart + maxResults;
   return {
@@ -110,7 +111,8 @@ export async function searchPubMed(
  * Chunks into batches of 200 to avoid URL length limits.
  */
 export async function fetchPubMedArticles(
-  pmids: string[]
+  pmids: string[],
+  options?: { signal?: AbortSignal }
 ): Promise<SearchResult[]> {
   const results: SearchResult[] = [];
 
@@ -123,7 +125,7 @@ export async function fetchPubMedArticles(
     fetchParams.set("retmode", "xml");
 
     const fetchUrl = `${EUTILS_BASE}/efetch.fcgi?${fetchParams}`;
-    const fetchRes = await throttledFetch(fetchUrl);
+    const fetchRes = await throttledFetch(fetchUrl, options?.signal);
     if (!fetchRes.ok) {
       throw new Error(`PubMed EFetch failed: ${fetchRes.status}`);
     }

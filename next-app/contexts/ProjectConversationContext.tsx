@@ -287,6 +287,7 @@ function ProjectConversationRuntime({
         abortControllerRef,
         setIsLoading,
         setCurrentRunId,
+        currentRunId,
         setPendingChoices,
         setPendingUserInput,
     });
