@@ -46,7 +46,9 @@ vi.mock("@/contexts/CommandPaletteContext", () => ({
 }));
 
 vi.mock("../SlimHeader", () => ({
-  SlimHeader: () => null,
+  SlimHeader: ({ className }: { className?: string }) => (
+    <div data-testid="slim-header" className={className} />
+  ),
 }));
 
 vi.mock("../MobileNav", () => ({
@@ -254,6 +256,19 @@ describe("AppShell default sidebar collapse", () => {
     await waitFor(() => {
       expect(container.querySelector('[data-shell-tier="phone"]')).not.toBeNull();
     });
+  });
+
+  it("marks mobile full-bleed route shells so phone routes can own the top chrome", () => {
+    mockUsePathname.mockReturnValue("/ai");
+
+    const { container } = render(
+      <AppShell activeNav="ai" mobileFullBleed>
+        <div>content</div>
+      </AppShell>,
+    );
+
+    expect(container.querySelector('[data-mobile-full-bleed="true"]')).not.toBeNull();
+    expect(screen.queryByTestId("slim-header")).toBeNull();
   });
 
   it("handles mobile sign out and redirects to login", async () => {

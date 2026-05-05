@@ -77,4 +77,14 @@
     .shellV2 .mainContentNoPad {
         padding: 56px 0 var(--mobile-nav-offset);
     }
+
+    .appContainer:not(.shellV2).mobileFullBleed .mainContent,
+    .shellV2.mobileFullBleed .mainContent {
+        padding-top: 0;
+    }
+
+    .appContainer:not(.shellV2).mobileFullBleed .mainContentNoPad,
+    .shellV2.mobileFullBleed .mainContentNoPad {
+        padding-top: 0;
+    }
 }

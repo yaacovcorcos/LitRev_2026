@@ -290,6 +290,215 @@
     line-height: 1;
 }
 
+.mobileChatHeader {
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.mobileIconButton {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.1);
+    border-radius: 999px;
+    background: rgba(var(--rgb-ui-surface), 0.76);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.mobileIconButton:hover {
+    background: rgba(var(--rgb-ui-surface), 0.94);
+    border-color: rgba(var(--rgb-ui-contrast), 0.16);
+}
+
+.mobileIconButton:focus-visible,
+.mobileTitlePill:focus-visible,
+.mobileSheetOption:focus-visible,
+.mobileMoreItem:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-ring);
+}
+
+.mobileIconButton :global(.material-icons-round) {
+    font-size: 22px;
+}
+
+.mobileOptionsAnchor {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+    flex: 1;
+}
+
+.mobileTitlePill {
+    min-width: 0;
+    max-width: 190px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 18px;
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.1);
+    border-radius: 999px;
+    background: rgba(var(--rgb-ui-surface), 0.82);
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 650;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.mobileTitlePill :global(.material-icons-round) {
+    font-size: 18px;
+    color: var(--text-muted);
+}
+
+.mobileHeaderActions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.mobileMoreAnchor {
+    position: relative;
+}
+
+.mobileOptionsSheet,
+.mobileMoreMenu {
+    position: absolute;
+    z-index: var(--z-overlay);
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.1);
+    background: rgba(var(--rgb-ui-surface), 0.98);
+    backdrop-filter: blur(18px);
+    box-shadow: var(--shadow-xl);
+}
+
+.mobileOptionsSheet {
+    top: calc(100% + 10px);
+    left: 50%;
+    width: min(360px, calc(100vw - 32px));
+    max-height: min(560px, calc(100vh - 190px));
+    overflow-y: auto;
+    transform: translateX(-50%);
+    padding: 10px;
+    border-radius: 18px;
+}
+
+.mobileSheetGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.mobileSheetGroup + .mobileSheetGroup {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(var(--rgb-ui-contrast), 0.07);
+}
+
+.mobileSheetLabel {
+    padding: 2px 8px 6px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0;
+}
+
+.mobileSheetOption {
+    width: 100%;
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+
+.mobileSheetOption :global(.material-icons-round) {
+    flex: 0 0 auto;
+    font-size: 19px;
+    color: var(--text-muted);
+}
+
+.mobileSheetOption span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mobileSheetOption:hover {
+    background: rgba(var(--rgb-ui-contrast), 0.045);
+    color: var(--text-primary);
+}
+
+.mobileSheetOptionActive {
+    background: rgba(var(--rgb-accent-primary), 0.08);
+    color: var(--text-primary);
+}
+
+.mobileSheetOptionActive :global(.material-icons-round) {
+    color: var(--accent-primary);
+}
+
+.mobileMoreMenu {
+    top: calc(100% + 8px);
+    right: 0;
+    width: 210px;
+    padding: 6px;
+    border-radius: 14px;
+}
+
+.mobileMoreItem {
+    width: 100%;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+
+.mobileMoreItem:hover:not(:disabled) {
+    background: rgba(var(--rgb-ui-contrast), 0.045);
+    color: var(--text-primary);
+}
+
+.mobileMoreItem:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.46;
+}
+
+.mobileMoreItem :global(.material-icons-round) {
+    font-size: 18px;
+}
+
 .mobileHistoryOverlay {
     display: none;
 }
@@ -482,6 +691,8 @@
         padding-left: 0;
         flex-direction: column;
         gap: 0;
+        height: calc(var(--app-height, 100vh) - var(--mobile-nav-offset, 0px));
+        background: var(--bg-app);
     }
 
     .historySidebar {
@@ -498,15 +709,17 @@
 
     .chatInterface {
         margin-left: 0;
+        background: transparent;
     }
 
     .chatInputContainer {
-        padding: 0 16px 16px;
+        padding: 0 16px calc(10px + env(safe-area-inset-bottom, 0px));
+        gap: 4px;
     }
 
     .chatHeader {
-        padding: 12px 16px;
-        flex-wrap: wrap;
+        padding: 12px 16px 8px;
+        flex-wrap: nowrap;
     }
 
     .mobileHistoryToggle {
@@ -519,10 +732,10 @@
 
     .layout[data-mobile-ai-v2="true"] .historySidebar {
         position: fixed;
-        top: var(--header-height, 44px);
+        top: 0;
         left: 0;
         width: min(86vw, 320px);
-        height: calc(var(--app-height, 100vh) - var(--header-height, 44px) - var(--mobile-nav-offset, 0px));
+        height: calc(var(--app-height, 100vh) - var(--mobile-nav-offset, 0px));
         border-right: 1px solid var(--glass-border);
         border-bottom: none;
         padding: 20px 12px 16px;
@@ -543,7 +756,7 @@
     .layout[data-mobile-ai-v2="true"] .mobileHistoryOverlay {
         display: block;
         position: fixed;
-        top: var(--header-height, 44px);
+        top: 0;
         left: 0;
         right: 0;
         bottom: var(--mobile-nav-offset, 0px);
@@ -562,6 +775,15 @@
 
     .projectButton span:nth-child(2) {
         max-width: 48vw;
+    }
+
+    .disclaimer {
+        width: 100%;
+        margin: 0;
+        padding: 0 8px;
+        text-align: center;
+        font-size: 10px;
+        line-height: 1.3;
     }
 }
 

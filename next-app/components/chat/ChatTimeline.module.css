@@ -39,6 +39,21 @@
     line-height: 1.5;
 }
 
+.emptyPanelMinimal {
+    margin: auto 0;
+    padding: 0 24px 10vh;
+    gap: 0;
+}
+
+.emptyPanelMinimal h3 {
+    max-width: 360px;
+    font-size: 28px;
+    line-height: 1.16;
+    font-weight: 650;
+    letter-spacing: 0;
+    color: var(--text-primary);
+}
+
 .emptyIcon {
     width: 48px;
     height: 48px;

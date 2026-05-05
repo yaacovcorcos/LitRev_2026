@@ -28,6 +28,7 @@ type AppShellProps = {
   mainClassName?: string;
   initiallyCollapsed?: boolean;
   forceAdminNav?: boolean;
+  mobileFullBleed?: boolean;
 };
 
 function resolveDefaultCollapse(
@@ -51,6 +52,7 @@ export function AppShell({
   mainClassName = "",
   initiallyCollapsed,
   forceAdminNav = false,
+  mobileFullBleed = false,
 }: AppShellProps) {
   const pathname = usePathname();
   const shellV2Enabled = isMobileShellV2Enabled();
@@ -223,6 +225,7 @@ export function AppShell({
   const containerClassName = [
     styles.appContainer,
     shellV2Enabled ? `surface-root ${styles.shellV2}` : "",
+    mobileFullBleed ? styles.mobileFullBleed : "",
   ].filter(Boolean).join(" ");
 
   const mainClassNames = [
@@ -233,12 +236,13 @@ export function AppShell({
 
   return (
     <>
-      <SlimHeader ariaHidden />
+      {mobileFullBleed ? null : <SlimHeader ariaHidden />}
       <div
         className={containerClassName}
         data-sidebar-collapsed={collapsed}
         data-shell-tier={shellV2Enabled ? viewportClass : "legacy"}
         data-shell-v2={shellV2Enabled ? "true" : "false"}
+        data-mobile-full-bleed={mobileFullBleed ? "true" : undefined}
         data-surface-height={shellV2Enabled ? "shell" : undefined}
         style={cssVars}
       >

@@ -14,9 +14,7 @@
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
     border-radius: 24px;
-    box-shadow:
-        0 10px 28px rgba(var(--rgb-ui-scrim), 0.16),
-        0 2px 8px rgba(var(--rgb-ui-scrim), 0.08);
+    box-shadow: var(--shadow-xl);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
     position: relative;
     flex-shrink: 0;
@@ -27,6 +25,14 @@
 
 .inputBox[data-attached-stack="attached"] {
     border-radius: 8px 8px 24px 24px;
+}
+
+.inputBox[data-mobile-chrome="minimal"] {
+    margin-bottom: 8px;
+    background: rgba(var(--rgb-ui-surface), 0.92);
+    border-color: rgba(var(--rgb-ui-contrast), 0.1);
+    border-radius: 22px;
+    box-shadow: var(--shadow-xl);
 }
 
 .inputBox::before {
@@ -42,6 +48,11 @@
 }
 
 .inputBox[data-attached-stack="attached"]::before {
+    display: none;
+}
+
+.inputBox[data-mobile-chrome="minimal"]::before,
+.inputBox[data-mobile-chrome="minimal"]::after {
     display: none;
 }
 
@@ -183,6 +194,13 @@
     color: var(--text-muted);
 }
 
+.inputBox[data-mobile-chrome="minimal"] .inputTextarea {
+    min-height: 34px;
+    padding: 14px 18px 6px;
+    font-size: 16px;
+    line-height: 1.35;
+}
+
 /* ---- Action Bar ---- */
 
 .inputBar {
@@ -211,6 +229,19 @@
     margin-left: 12px;
 }
 
+.inputBox[data-mobile-chrome="minimal"] .inputBar {
+    padding: 0 10px 10px 12px;
+}
+
+.inputBox[data-mobile-chrome="minimal"] .inputBarLeft {
+    min-height: 34px;
+}
+
+.inputBox[data-mobile-chrome="minimal"] .inputBarRight {
+    gap: 6px;
+    margin-left: 8px;
+}
+
 .recordingControlHint {
     position: absolute;
     bottom: 50px;
@@ -221,9 +252,7 @@
     border-radius: 18px;
     border: 1px solid rgba(var(--rgb-ui-contrast), 0.08);
     background: rgba(var(--rgb-ui-surface), 0.96);
-    box-shadow:
-        0 8px 24px rgba(var(--rgb-ui-scrim), 0.12),
-        0 2px 8px rgba(var(--rgb-ui-scrim), 0.08);
+    box-shadow: var(--shadow-lg);
     color: var(--text-primary);
     font-size: 12px;
     font-weight: 500;
@@ -465,9 +494,7 @@
 .compressBtn:focus-visible,
 .sendBtn:focus-visible {
     outline: none;
-    box-shadow:
-        0 0 0 1px rgba(var(--rgb-ui-contrast), 0.14),
-        0 2px 8px rgba(var(--rgb-ui-contrast), 0.08);
+    box-shadow: var(--shadow-focus-ring);
 }
 
 /* ---- Action Buttons ---- */
@@ -634,6 +661,35 @@
 
 .sendBtnStop:hover {
     background: var(--color-danger-hover);
+}
+
+.inputBox[data-mobile-chrome="minimal"] .voiceActionBtn,
+.inputBox[data-mobile-chrome="minimal"] .sendBtn {
+    width: 34px;
+    height: 34px;
+}
+
+.inputBox[data-mobile-chrome="minimal"] .voiceActionBtn {
+    color: var(--text-secondary);
+}
+
+.inputBox[data-mobile-chrome="minimal"] .sendBtn {
+    background: rgba(var(--rgb-ui-contrast), 0.055);
+    color: var(--text-muted);
+}
+
+.inputBox[data-mobile-chrome="minimal"] .sendBtnActive {
+    background: var(--text-primary);
+    color: var(--color-white);
+}
+
+.inputBox[data-mobile-chrome="minimal"] .sendBtnStop {
+    background: var(--color-danger);
+    color: var(--color-white);
+}
+
+.inputBox[data-mobile-chrome="minimal"] .sendBtn .material-icons-round {
+    font-size: 18px;
 }
 
 /* ---- Pending Attachment ---- */

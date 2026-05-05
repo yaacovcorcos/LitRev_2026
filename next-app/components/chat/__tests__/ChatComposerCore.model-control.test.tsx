@@ -159,4 +159,24 @@ describe("ChatComposerCore model control", () => {
 
         expect(screen.queryByText("Do you want to continue?")).toBeNull();
     });
+
+    it("can delegate mobile model selection to an external header", () => {
+        const { container } = render(
+            <ChatComposerCore
+                page="ai"
+                inputPlaceholder="Ask"
+                isLoading={false}
+                sendMessage={vi.fn()}
+                cancelStream={vi.fn()}
+                selectedModel="gpt-5.2"
+                onModelChange={vi.fn()}
+                showVoice={false}
+                hideModelControl
+                compactMobileChrome
+            />,
+        );
+
+        expect(screen.queryByRole("button", { name: /gpt/i })).toBeNull();
+        expect(container.querySelector('form[data-mobile-chrome="minimal"]')).toBeTruthy();
+    });
 });

@@ -3,7 +3,11 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReasoningMode } from "@/types/ai";
-import type { ReasoningSupportTier } from "@/lib/ai/config";
+import {
+  USER_SELECTABLE_MODELS,
+  type ReasoningSupportTier,
+  type SelectableModelId,
+} from "@/lib/ai/config";
 import styles from "./ai-view.module.css";
 
 const AIChatReasoningModeDropdown = dynamic(() =>
@@ -16,44 +20,52 @@ type ProjectOption = {
 };
 
 type AIChatHeaderProps = {
-  mobileAiV2Enabled: boolean;
   isPhoneViewport: boolean;
   isHistoryCollapsed: boolean;
   historyContentId: string;
   selectedProjectId: string | null;
   selectedScopeLabel: string;
   projects: ProjectOption[];
+  selectedModel: SelectableModelId;
   showReasoningControls: boolean;
   reasoningMode: ReasoningMode;
   reasoningSupport: ReasoningSupportTier;
   activeTimelineLength: number;
   onHistoryToggle: () => void;
+  onNewChat: () => void;
   onSelectProject: (projectId: string | null) => void;
+  onModelChange: (modelId: SelectableModelId) => void;
   onReasoningModeChange: (mode: ReasoningMode) => void;
   onExportMarkdown: () => void;
   onExportPdf: () => void;
 };
 
 export function AIChatHeader({
-  mobileAiV2Enabled,
   isPhoneViewport,
   isHistoryCollapsed,
   historyContentId,
   selectedProjectId,
   selectedScopeLabel,
   projects,
+  selectedModel,
   showReasoningControls,
   reasoningMode,
   reasoningSupport,
   activeTimelineLength,
   onHistoryToggle,
+  onNewChat,
   onSelectProject,
+  onModelChange,
   onReasoningModeChange,
   onExportMarkdown,
   onExportPdf,
 }: AIChatHeaderProps) {
   const [isProjectDropdownOpen, setProjectDropdownOpen] = useState(false);
+  const [isMobileOptionsOpen, setMobileOptionsOpen] = useState(false);
+  const [isMobileMoreOpen, setMobileMoreOpen] = useState(false);
   const projectDropdownRef = useRef<HTMLDivElement | null>(null);
+  const mobileOptionsRef = useRef<HTMLDivElement | null>(null);
+  const mobileMoreRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!isProjectDropdownOpen) return;
@@ -66,25 +78,174 @@ export function AIChatHeader({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [isProjectDropdownOpen]);
 
-  const activeExportDisabled = activeTimelineLength === 0;
-  const projectIcon = useMemo(() => (selectedProjectId ? "folder" : "public"), [selectedProjectId]);
+  useEffect(() => {
+    if (!isMobileOptionsOpen && !isMobileMoreOpen) return;
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (mobileOptionsRef.current && !mobileOptionsRef.current.contains(target)) {
+        setMobileOptionsOpen(false);
+      }
+      if (mobileMoreRef.current && !mobileMoreRef.current.contains(target)) {
+        setMobileMoreOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [isMobileMoreOpen, isMobileOptionsOpen]);
 
-  return (
-    <div className={styles.chatHeader}>
-      {mobileAiV2Enabled && isPhoneViewport ? (
+  const activeExportDisabled = activeTimelineLength === 0;
+  const hasMobileMoreActions = !activeExportDisabled;
+  const projectIcon = useMemo(() => (selectedProjectId ? "folder" : "public"), [selectedProjectId]);
+  const selectedModelInfo = useMemo(
+    () => USER_SELECTABLE_MODELS.find((model) => model.id === selectedModel),
+    [selectedModel]
+  );
+
+  if (isPhoneViewport) {
+    return (
+      <div className={`${styles.chatHeader} ${styles.mobileChatHeader}`}>
         <button
           type="button"
-          className={styles.mobileHistoryToggle}
+          className={styles.mobileIconButton}
           aria-label={isHistoryCollapsed ? "Open chat history" : "Close chat history"}
           aria-expanded={!isHistoryCollapsed}
           aria-controls={historyContentId}
           onClick={onHistoryToggle}
         >
           <span className="material-icons-round">menu</span>
-          <span className={styles.mobileHistoryLabel}>Chats</span>
         </button>
-      ) : null}
 
+        <div className={styles.mobileOptionsAnchor} ref={mobileOptionsRef}>
+          <button
+            type="button"
+            className={styles.mobileTitlePill}
+            aria-label="Open AI options"
+            aria-expanded={isMobileOptionsOpen}
+            onClick={() => {
+              setMobileOptionsOpen((prev) => !prev);
+              setMobileMoreOpen(false);
+            }}
+          >
+            <span>LitRev AI</span>
+            <span className="material-icons-round" aria-hidden="true">expand_more</span>
+          </button>
+
+          {isMobileOptionsOpen ? (
+            <div className={styles.mobileOptionsSheet}>
+              <div className={styles.mobileSheetGroup}>
+                <span className={styles.mobileSheetLabel}>Scope</span>
+                <button
+                  type="button"
+                  className={`${styles.mobileSheetOption} ${!selectedProjectId ? styles.mobileSheetOptionActive : ""}`}
+                  onClick={() => {
+                    onSelectProject(null);
+                    setMobileOptionsOpen(false);
+                  }}
+                >
+                  <span className="material-icons-round" aria-hidden="true">public</span>
+                  <span>Global</span>
+                </button>
+                {projects.map((project) => (
+                  <button
+                    key={project.id}
+                    type="button"
+                    className={`${styles.mobileSheetOption} ${selectedProjectId === project.id ? styles.mobileSheetOptionActive : ""}`}
+                    onClick={() => {
+                      onSelectProject(project.id);
+                      setMobileOptionsOpen(false);
+                    }}
+                  >
+                    <span className="material-icons-round" aria-hidden="true">folder</span>
+                    <span>{project.name}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className={styles.mobileSheetGroup}>
+                <span className={styles.mobileSheetLabel}>Model</span>
+                {USER_SELECTABLE_MODELS.map((model) => (
+                  <button
+                    key={model.id}
+                    type="button"
+                    className={`${styles.mobileSheetOption} ${selectedModel === model.id ? styles.mobileSheetOptionActive : ""}`}
+                    onClick={() => {
+                      onModelChange(model.id);
+                      setMobileOptionsOpen(false);
+                    }}
+                  >
+                    <span className="material-icons-round" aria-hidden="true">{model.icon}</span>
+                    <span>{model.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className={styles.mobileHeaderActions}>
+          <button
+            type="button"
+            className={styles.mobileIconButton}
+            aria-label="New chat"
+            onClick={onNewChat}
+          >
+            <span className="material-icons-round">edit</span>
+          </button>
+
+          {hasMobileMoreActions ? (
+            <div className={styles.mobileMoreAnchor} ref={mobileMoreRef}>
+              <button
+                type="button"
+                className={styles.mobileIconButton}
+                aria-label="More chat actions"
+                aria-expanded={isMobileMoreOpen}
+                onClick={() => {
+                  setMobileMoreOpen((prev) => !prev);
+                  setMobileOptionsOpen(false);
+                }}
+              >
+                <span className="material-icons-round">more_horiz</span>
+              </button>
+
+              {isMobileMoreOpen ? (
+                <div className={styles.mobileMoreMenu}>
+                  <button
+                    type="button"
+                    className={styles.mobileMoreItem}
+                    onClick={() => {
+                      onExportMarkdown();
+                      setMobileMoreOpen(false);
+                    }}
+                  >
+                    <span className="material-icons-round" aria-hidden="true">download</span>
+                    Export Markdown
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.mobileMoreItem}
+                    onClick={() => {
+                      onExportPdf();
+                      setMobileMoreOpen(false);
+                    }}
+                  >
+                    <span className="material-icons-round" aria-hidden="true">picture_as_pdf</span>
+                    Export PDF
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <span className="sr-only">
+          Current scope: {selectedScopeLabel}. Current model: {selectedModelInfo?.name ?? selectedModel}.
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.chatHeader}>
       <div className={styles.projectSelector} ref={projectDropdownRef}>
         <button
           type="button"
