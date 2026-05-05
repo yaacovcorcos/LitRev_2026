@@ -6,6 +6,10 @@ Define the target architecture for the next-generation `ask_user` feature before
 
 This is a design-direction document, not an active implementation tracker. Canonical status still belongs in [plan-agentic.md](../plan-agentic.md). Use this file when the team is ready to write the implementation plan for the clarification/decision-system redesign.
 
+Status note:
+- The first-class `DecisionRequest` / `DecisionResolution` runtime and persistence foundation described here is now shipped on `main`.
+- The remaining design work is the product-quality layer: richer `ask_user` tool schema, decision-focused UI, partial/superseded/interrupted lifecycle UX, quality-aware clarification policy, and decision-memory reuse.
+
 The goal is not to make the current card slightly nicer. The goal is to redesign `ask_user` into the best possible user-decision system for LitRev:
 
 - clearer
@@ -46,14 +50,15 @@ Preserve these invariants:
 
 The current feature is runtime-safe but still too small for the real product problem.
 
-Today `ask_user` is basically:
+Original baseline before the first `DecisionRequest` foundation was:
 
 - one blocking question
 - one pending request
 - one answer/default/cancel resolution
 - one continuation seed
 
-That is a good primitive, but it is not yet a real decision system.
+That was a good primitive, and the persistence foundation is now stronger.
+The remaining work is to make the model-facing schema, controller policy, UI, and memory reuse behave like a real decision system rather than a dressed-up question card.
 
 Current limitations:
 
@@ -61,7 +66,7 @@ Current limitations:
 2. The payload is too thin for ambiguity, caveats, or partial agreement.
 3. The controller is budget-smart but not quality-smart.
 4. The UI is still a form card instead of a high-trust decision interface.
-5. Resolved clarification is not yet a first-class reusable decision object.
+5. Resolved clarification is now first-class in runtime persistence, but not yet a reusable decision-memory object.
 6. The system is still too question-centric and not decision-centric.
 
 ## External Reference: What Codex Built

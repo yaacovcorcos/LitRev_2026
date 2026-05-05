@@ -10,6 +10,16 @@ This is the supporting implementation plan for `FIX-011b` closeout under `A-001`
 
 Use this file for decision-complete execution design, not for canonical status tracking.
 
+## Status
+
+As of `2026-05-06`, the known `A-001` / `FIX-011b` code delta described by this plan is shipped on `main`.
+Keep this file as the implementation rationale and audit map; do not use it to reopen already-closed code slices unless a fresh live or test failure identifies a specific regression.
+
+Current authority:
+- active runtime status lives in [`plan-agentic.md`](../plan-agentic.md)
+- live burn-in and sign-off remain owned by [`plan-agent-quality.md`](../plan-agent-quality.md) and [`chat-runtime-burn-in.md`](../../runbooks/chat-runtime-burn-in.md)
+- the next runtime step is a fresh `U1.6` evidence window, not another broad runtime rewrite
+
 ## Overall Goal
 `A-001` is the last narrow runtime-closeout task before the shared chat runtime can move back into sign-off mode instead of bug-discovery mode.
 
@@ -24,14 +34,14 @@ When this work is complete, the runtime should be boring in the best way: explic
 ## Goal and Scope
 
 ### Problem Statement
-Current `main` already has the shared runtime, recovery, checkpoint-backed continuation, coarse run phases, and materially stronger ownership/finalization handling. The remaining problems are smaller but more dangerous because they undermine trust:
-- cancelled truth can still drift across route projection, persisted run state, recovery, and UI lifecycle
-- blocked-card dismissal is not yet durably equivalent to cancelled terminal truth
-- clarification hydration still risks reconstructing policy from the wrong part of long lineage history
-- post-answer auxiliary failures can still threaten a run that already produced useful durable output
+Current `main` has the shared runtime, recovery, checkpoint-backed continuation, coarse run phases, and materially stronger ownership/finalization handling. The known `A-001` code defects that previously undermined trust have now been closed:
+- cancelled truth is durably represented across route projection, persisted run state, recovery, and UI lifecycle
+- blocked-card dismissal durably resolves to cancelled terminal truth
+- clarification hydration reconstructs policy from the newest relevant lineage window
+- post-answer auxiliary failures cannot retro-fail a run that already produced useful durable output
 
 ### Intended Outcome
-`A-001` is complete when:
+`A-001` code closeout is complete when:
 - ownership loss is fail-closed on the shared write path
 - cancelled terminal truth is identical across stream, persistence, replay, recovery, and UI
 - clarification suppression and retry policy reconstruct from the newest relevant lineage window
@@ -104,10 +114,16 @@ The execution design in this plan is grounded in the current runtime and test su
 - `CAG-003` is now shipped on top of that foundation: the stream entrypoint resolves strict `continueFromRunId` and best-effort retry continuation through one server-owned `checkpoint -> durable -> fresh retry` selector, explicit `Continue` stays strict, and run-targeted retry/replace actions on the main surfaces can now reuse audited durable work without degrading clean fallback when no safe source remains.
 - The sixth `FIX-011b` / `CAG-001` slice now persists coarse `runPhase` and `phaseEnteredAt` on `AgentRun`, writes phase transitions only at authoritative runtime boundaries, uses ask-phase truth to recover/readmit paused runs without surfacing them as active conflicts, and uses stale finalize-phase truth to bound reconnect behavior instead of treating it as healthy running work.
 - The first `A-001` closeout slice is now shipped on `main`: shared write helpers fail closed on ownership loss, stale workers stop instead of degrading winning-run truth, and stale assistant/finalization writes are covered by regression tests.
-- A repo audit against `run-convergence.ts`, `run-recovery.ts`, the current recovery/surface tests, and the canonical runtime plans was later deepened on `2026-04-16`; that deeper pass did identify a narrow new shared-runtime delta beyond the shipped convergence path.
-- The remaining delta is targeted, not greenfield: cancelled terminal truth still drifts across live stream vs replay/client lifecycle, blocked-card cancel is not durably replayed as cancelled, clarification hydration reads the oldest lineage window instead of the newest one, and post-answer auxiliary work can still retro-fail a useful run.
+- A repo audit against `run-convergence.ts`, `run-recovery.ts`, the current recovery/surface tests, and the canonical runtime plans was later deepened on `2026-04-16`; that deeper pass identified the narrow shared-runtime delta this file tracks.
+- The May 2026 runtime closeout later shipped the remaining known code delta:
+  - transport abort is no longer semantic agent-run cancellation
+  - explicit run cancellation owns durable cancellation
+  - blocked-card cancellation, replay, and recovery preserve cancelled terminal truth
+  - clarification hydration uses the newest relevant lineage window
+  - optional post-answer failures are degrade-only after a useful answer
+  - loop budget/repeat/no-answer exits fail truthfully and durable progress advances only at replayable forward-progress boundaries
 - The live `U1.6` report was also found to be operationally stale rather than code-blocked: the previously recorded scoped cohort now yields zero `metricVersion=3` rows while sparse unscoped v3 telemetry still exists, so the next valid burn-in window must refresh cohort scope instead of treating an empty scoped probe as proof of a new runtime defect.
-- `U1.6` therefore remains paused on targeted remediation first: burn-in is still required for sign-off, but it should not be resumed as if the current runtime delta were already closed.
+- `U1.6` therefore remains required as sign-off evidence: burn-in should now resume from a fresh deployment/cohort window, not from the stale historical report.
 - Popup still remains a truthful reduced subset only; it should not claim full recovery/continuation parity until shared-engine convergence is explicitly finished.
 
 ## Locked Design Principles
@@ -120,7 +136,7 @@ The execution design in this plan is grounded in the current runtime and test su
 
 ## Closeout Posture
 - Treat `FIX-011b` as a targeted shared-runtime remediation program, not as burn-in paperwork and not as a greenfield runtime rewrite.
-- If `FIX-012` is still open because ordinary manual agent use is visibly broken, treat this file as blocked by that broader baseline rescue work instead of treating burn-in as the current rescue task.
+- If ordinary manual agent use becomes visibly broken again, treat that as a fresh baseline rescue/remediation task instead of treating burn-in as the rescue mechanism.
 - Prefer hard execution-boundary fixes over prompt or surface patches. Reopen persistence when that is the simplest honest way to enforce authority or durable truth.
 - Use this file for supporting detail only. [plan-agentic.md](../plan-agentic.md) remains the canonical fix-status owner, [plan-agent-quality.md](../plan-agent-quality.md) owns burn-in and runtime sign-off posture, and [chat-runtime-burn-in.md](../../runbooks/chat-runtime-burn-in.md) remains the only operational canary/sign-off source.
 - If a real runtime drift is found, patch only the shared ownership/convergence/recovery path and add focused tests for that uncovered case.
@@ -156,16 +172,14 @@ Any broader abstraction should be rejected unless a concrete duplication or corr
 
 ## Active Delta Checklist
 - **Execution ownership / stale-writer exclusion**
-  - shipped as the first `A-001` slice
+  - shipped and covered by ownership-loss regression tests
   - remains part of the acceptance matrix and burn-in evidence set
 - **Cancelled terminal truth convergence**
-  - `runStatus="cancelled"` must mean cancelled everywhere, even when `stopReason` is missing.
-  - Blocked-card dismissal must durably settle the source run as cancelled instead of emitting a live-only cancelled projection while persisted recovery still says paused.
+  - shipped: `runStatus="cancelled"` means cancelled across durable cancellation, blocked-card dismissal, replay, and recovery.
 - **Lineage-safe clarification state**
-  - Clarification suppression/repeat policy must reconstruct from the newest relevant lineage window, not the oldest scanned events.
-  - The current scan-based controller should remain correct on long lineages until a future first-class persisted controller snapshot exists.
+  - shipped: clarification suppression/repeat policy reconstructs from the newest relevant lineage window, not the oldest scanned events.
 - **Post-answer success boundary**
-  - Once a useful final assistant answer is durably stored, auxiliary follow-on work such as summarization, tracing flush, and conversation-title polish must be degrade-only and must not flip the run to failed.
+  - shipped: once a useful final assistant answer is durably stored, auxiliary follow-on work such as summarization, tracing flush, and conversation-title polish is degrade-only and must not flip the run to failed.
 
 ## Decision-Complete Implementation Design
 
@@ -264,12 +278,12 @@ Resume `U1.6` only after the runtime delta is code-closed and backed by determin
 - `docs/runbooks/chat-runtime-burn-in.md`
 
 #### Contract
-- `A-001` is not “done” on merged code alone.
+- `A-001` code closeout is shipped, but runtime release confidence is not complete on merged code alone.
 - `U1.6` resumes only when deterministic regressions exist for every known delta class and the stale operational cohort is refreshed.
 
 ## Validation and Burn-In
 - Burn-in must cover forced disconnect after tool result, disconnect before paused question delivery, recovery-required persistence failure behavior, no-forward-progress detection, degraded continuation correctness, elimination of contradictory same-run recovery/error states, cancelled terminal parity, and stale-writer exclusion after replace/cancel.
-- Stabilization is not done when unit tests pass; it is done when the runtime converges truthfully under those harnessed failure classes and the existing `U1.6` burn-in thresholds are met.
+- Stabilization is not signed off when unit tests pass; it is signed off when the runtime converges truthfully under those harnessed failure classes and the existing `U1.6` burn-in thresholds are met.
 - `chat-runtime-burn-in.md` remains the only operational canary/sign-off source. This file should not restate or replace that contract.
 
 ## Long-Term Quality, Scalability, and Security
@@ -306,6 +320,9 @@ Relevant patterns to adapt locally:
 Do not copy external code. Rewrite only the needed contracts into LitRev-local behavior and tests.
 
 ## Execution Slices
+
+The slices below are the retained implementation design for the original `A-001` closeout.
+They are no longer open work items; use them as an audit map for the regression families that the May 2026 runtime closeout must continue to protect.
 
 ### PR 1: Cancelled truth convergence
 - scope:
@@ -352,10 +369,10 @@ Do not copy external code. Rewrite only the needed contracts into LitRev-local b
 ## Risk and Rollback
 
 ### Primary Failure Modes
-- a cancelled run still renders as paused or reconnectable on one surface
-- blocked-card dismissal produces a cancelled chunk but leaves persisted status paused
-- clarification scans regress and suppress the wrong question
-- degrade-only handling hides real pre-answer failures
+- a future change makes a cancelled run render as paused or reconnectable on one surface
+- a future change makes blocked-card dismissal emit live cancellation while leaving persisted status paused
+- a future change makes clarification scans suppress the wrong question
+- a future change lets degrade-only handling hide real pre-answer failures
 
 ### Detection Signals
 - route tests or recovery tests disagree on terminal projection
@@ -391,6 +408,7 @@ Do not copy external code. Rewrite only the needed contracts into LitRev-local b
 - deterministic tests cover all known `A-001` delta classes
 - no known surface shows conflicting terminal truth for the same persisted run
 - `U1.6` resumes with refreshed cohort evidence instead of stale telemetry assumptions
+- protected `check` continues to run `npm run check:agent-quality` so deterministic runtime-signal and burn-in-contract regressions fail before merge
 
 ## Validation Mapping
 
@@ -489,9 +507,9 @@ From the task worktree:
 - default: keep persisted run status as the primary terminal authority and treat `stopReason` as a refinement, not a competing source of truth
 - default: no new persistence model is added for clarification hydration in `A-001`
 - default: the popup remains a reduced subset and does not get special-case truth rules
-- default: `U1.6` stays paused until all three remaining runtime slices are merged and tested
+- default: `U1.6` is the next runtime sign-off step now that the known code slices are merged and tested
 - unresolved ambiguity:
-  - if a later code audit finds a deeper shared abstraction gap, that should be spun into a new task rather than silently expanding `A-001`
+  - if a later live burn-in or code audit finds a deeper shared abstraction gap, spin that into a new targeted task rather than silently expanding `A-001`
 
 ## Optional Reference Patterns
 The systems below are optional architectural references only.

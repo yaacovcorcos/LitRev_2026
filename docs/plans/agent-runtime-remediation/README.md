@@ -9,12 +9,12 @@ Use [plan-agentic.md](../plan-agentic.md) for:
 - active fix ownership
 - completion rules
 
-Use the files in this folder only as supporting implementation detail for the active fixes referenced from `plan-agentic.md`.
+Use the files in this folder only as supporting implementation detail, retained rationale, or design direction for fixes referenced from `plan-agentic.md`.
 
-Current active supporting detail:
+Current retained closeout detail:
 
-- [Baseline Stability and Transparency Reset](./plan-fix-012-baseline-stability.md) for `FIX-012`
-- [Runtime Stabilization and Continuation](./plan-runtime-stabilization-and-continuation.md) for the remaining `FIX-011b` closeout path
+- [Baseline Stability and Transparency Reset](./plan-fix-012-baseline-stability.md) for the retired `FIX-012` baseline rescue.
+- [Runtime Stabilization and Continuation](./plan-runtime-stabilization-and-continuation.md) for the shipped `A-001` / `FIX-011b` code closeout and the burn-in handoff rationale.
 
 Historical/supporting remediation memory:
 
@@ -22,4 +22,4 @@ Historical/supporting remediation memory:
 
 Reference design direction:
 
-- [Ask User V2 Design Direction](./ask-user-v2-design-direction.md) for the planned clarification/decision-system redesign. This file is design guidance only; canonical status and execution order still belong in [plan-agentic.md](../plan-agentic.md).
+- [Ask User V2 Design Direction](./ask-user-v2-design-direction.md) for the clarification/decision-system direction beyond the now-shipped first-class `DecisionRequest` persistence foundation. This file is design guidance only; canonical status and execution order still belong in [plan-agentic.md](../plan-agentic.md).
