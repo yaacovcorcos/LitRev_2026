@@ -16,12 +16,35 @@ type AuthScreenProps = {
   mode: AuthMode;
 };
 
+function formatMagicLinkCallbackError(errorCode: string | null): string | null {
+  switch (errorCode) {
+    case "EXPIRED_TOKEN":
+      return "That sign-in link expired. Send yourself a new magic link.";
+    case "INVALID_TOKEN":
+      return "That sign-in link is no longer valid. Send yourself a new magic link.";
+    case "failed_to_create_session":
+      return "We could not start your session. Please send a new magic link.";
+    case "failed_to_create_user":
+      return "We could not create your account. Please try again.";
+    default:
+      return null;
+  }
+}
+
 export function AuthScreen({ mode }: AuthScreenProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = useMemo(
     () => normalizePostLoginCallbackUrl(searchParams.get("callbackUrl")),
     [searchParams],
+  );
+  const callbackError = useMemo(
+    () => formatMagicLinkCallbackError(searchParams.get("error")),
+    [searchParams],
+  );
+  const magicLinkErrorCallbackUrl = useMemo(
+    () => `/login?callbackUrl=${encodeURIComponent(callbackUrl)}`,
+    [callbackUrl],
   );
 
   const { data: session, isPending } = authClient.useSession();
@@ -61,6 +84,8 @@ export function AuthScreen({ mode }: AuthScreenProps) {
       const result = await authClient.signIn.magicLink({
         email,
         callbackURL: callbackUrl,
+        errorCallbackURL: magicLinkErrorCallbackUrl,
+        newUserCallbackURL: callbackUrl,
       });
       if (result.error) {
         throw new Error(result.error.message || "Unable to send magic link.");
@@ -115,7 +140,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
     quickAccessAction.status === "loading";
 
   const error =
-    googleAction.error || magicLinkAction.error || quickAccessAction.error;
+    googleAction.error || magicLinkAction.error || quickAccessAction.error || callbackError;
   const emailFieldError = magicLinkAction.error;
   const emailHelpId = "magic-link-email-help";
   const emailErrorId = "magic-link-email-error";
@@ -211,7 +236,10 @@ export function AuthScreen({ mode }: AuthScreenProps) {
             <span />
           </div>
 
-          <div className={styles.socialRow}>
+          <div
+            className={styles.socialRow}
+            data-single-provider={devQuickLoginEnabled ? undefined : "true"}
+          >
             <button
               type="button"
               className={styles.socialGoogle}
@@ -243,34 +271,35 @@ export function AuthScreen({ mode }: AuthScreenProps) {
               </span>
             </button>
 
-            <button
-              type="button"
-              className={styles.socialDev}
-              onClick={devQuickLoginEnabled ? () => { void quickAccessAction.execute(); } : undefined}
-              disabled={!devQuickLoginEnabled || anyBusy}
-              data-tooltip={devQuickLoginEnabled ? undefined : "Don\u2019t even think about it"}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={styles.socialIcon}
-                aria-hidden="true"
+            {devQuickLoginEnabled ? (
+              <button
+                type="button"
+                className={styles.socialDev}
+                onClick={() => { void quickAccessAction.execute(); }}
+                disabled={anyBusy}
               >
-                <polyline points="16 18 22 12 16 6" />
-                <polyline points="8 6 2 12 8 18" />
-              </svg>
-              <span className={styles.socialLabelWrap}>
-                <span>
-                  {quickAccessAction.status === "loading"
-                    ? "Signing in..."
-                    : "Dev mode"}
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={styles.socialIcon}
+                  aria-hidden="true"
+                >
+                  <polyline points="16 18 22 12 16 6" />
+                  <polyline points="8 6 2 12 8 18" />
+                </svg>
+                <span className={styles.socialLabelWrap}>
+                  <span>
+                    {quickAccessAction.status === "loading"
+                      ? "Signing in..."
+                      : "Dev mode"}
+                  </span>
                 </span>
-              </span>
-            </button>
+              </button>
+            ) : null}
           </div>
 
           {error ? (

@@ -52,7 +52,9 @@ function createAuth() {
     plugins: [
       nextCookies(),
       magicLink({
+        disableSignUp: false,
         expiresIn: 60 * 15,
+        storeToken: "hashed",
         async sendMagicLink({ email, url }) {
           if (!resend) {
             throw new Error(
@@ -66,6 +68,7 @@ function createAuth() {
             to: email,
             subject: "Your LitRev sign-in link",
             html: `<p>Click to sign in:</p><p><a href="${url}">Sign in to LitRev</a></p><p>This link expires in 15 minutes.</p>`,
+            text: `Sign in to LitRev: ${url}\n\nThis link expires in 15 minutes.`,
           });
         },
       }),
