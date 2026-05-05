@@ -63,7 +63,7 @@ import {
   RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY,
   RUN_RECOVERY_RECONNECT_SUMMARY,
 } from "@/lib/ai/run-recovery-client";
-import { PHONE_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
+import { MOBILE_VIEWPORT_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileTelemetryContext, recordMobileMetric } from "@/lib/mobile/telemetry";
 import {
   getReasoningModePreference,
@@ -199,7 +199,7 @@ export default function AIView() {
   const historyLoadPromiseRef = useRef<Promise<void> | null>(null);
   const workspaceContextPromiseRef = useRef<Promise<string> | null>(null);
   const aiEntryRestoreAttemptedScopeRef = useRef<string | null>(null);
-  const matchesPhoneViewport = useMediaQuery(PHONE_MEDIA_QUERY);
+  const matchesPhoneViewport = useMediaQuery(MOBILE_VIEWPORT_MEDIA_QUERY);
   const hasHydrated = useHydrated();
   const isPhoneViewport = hasHydrated && matchesPhoneViewport;
 

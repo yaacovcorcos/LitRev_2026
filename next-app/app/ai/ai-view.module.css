@@ -686,7 +686,7 @@
     color: var(--text-muted);
 }
 
-@media (max-width: 767px) {
+@media (max-width: 900px) {
     .layout {
         --ai-visible-nav-offset: max(0px, calc(var(--mobile-nav-offset, 0px) - var(--keyboard-inset, 0px)));
         padding-left: 0;
