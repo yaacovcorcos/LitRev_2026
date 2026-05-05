@@ -4,6 +4,7 @@
  */
 
 import type { AIStreamChunk } from "@/types/ai";
+import { throwIfAborted } from "@/lib/abort";
 
 export type StreamEvent = AIStreamChunk;
 
@@ -19,8 +20,9 @@ export async function* parseNDJSONStream(
     let carry = "";
 
     while (true) {
-        if (signal?.aborted) break;
+        throwIfAborted(signal);
         const { done, value } = await reader.read();
+        throwIfAborted(signal);
         if (done) break;
 
         carry += decoder.decode(value, { stream: true });

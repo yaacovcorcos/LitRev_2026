@@ -21,6 +21,7 @@ import { extractProviderErrorMetadata } from "./error-metadata";
 import { normalizeProviderMessages } from "./message-normalization";
 import { toAIErrorEnvelope } from "../error-classification";
 import { normalizeChatOptionsForModel } from "../request-policy";
+import { isAbortLikeError } from "@/lib/abort";
 const MAX_REASONING_BUDGET_TOKENS = 32768;
 
 export function computeAnthropicThinkingBudget(
@@ -247,6 +248,9 @@ export class AnthropicProvider extends BaseAIProvider {
                 actualModelSource: observedModel ? "provider" : undefined,
             };
         } catch (error) {
+            if (normalizedOptions.signal?.aborted || isAbortLikeError(error)) {
+                throw error;
+            }
             const metadata = extractProviderErrorMetadata(error);
             const errorMeta = toAIErrorEnvelope(error, {
                 kind: "provider_request",

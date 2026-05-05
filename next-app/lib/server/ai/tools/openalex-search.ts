@@ -1,6 +1,7 @@
 import { z } from "zod";
-import type { AITool } from "./base";
+import type { AITool, ToolExecutionContext } from "./base";
 import { searchOpenAlex } from "@/lib/server/search/openalex";
+import { isAbortLikeError } from "@/lib/abort";
 
 const inputSchema = z.object({
     query: z.string().min(1, "Query is required"),
@@ -63,7 +64,7 @@ export const openAlexSearchTool: AITool = {
         allowedRange: [1, 4],
     },
 
-    async execute(args: Record<string, unknown>) {
+    async execute(args: Record<string, unknown>, context?: ToolExecutionContext) {
         const query = args.query as string;
         if (!query) {
             return { callId: "", result: null, error: "Query is required" };
@@ -77,9 +78,12 @@ export const openAlexSearchTool: AITool = {
         const cursor = typeof args.cursor === "string" ? args.cursor : undefined;
 
         try {
-            const response = await searchOpenAlex(query, { maxResults, yearRange, cursor });
+            const response = await searchOpenAlex(query, { maxResults, yearRange, cursor, signal: context?.signal });
             return { callId: "", result: response };
         } catch (error) {
+            if (context?.signal?.aborted || isAbortLikeError(error)) {
+                throw error;
+            }
             return {
                 callId: "",
                 result: null,

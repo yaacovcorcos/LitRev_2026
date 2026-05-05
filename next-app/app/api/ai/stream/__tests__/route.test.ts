@@ -199,6 +199,37 @@ describe("/api/ai/stream route", () => {
       "user_input_required",
       "run_end",
     ]);
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]?.signal).toBeUndefined();
+  });
+
+  it("does not wire the HTTP request abort signal into durable agent execution", async () => {
+    const controller = new AbortController();
+    mocks.streamChatWithArtifacts.mockImplementation(async function* () {
+      yield { type: "run_start", runId: "run-1", conversationId: "conv-1" };
+      yield { type: "run_end", runId: "run-1", conversationId: "conv-1", runStatus: "completed", stopReason: null };
+    });
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "Keep going even if the stream disconnects",
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          agentMode: "general",
+          page: "ai",
+        },
+      }),
+      signal: controller.signal,
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    await response.text();
+
+    expect(mocks.streamChatWithArtifacts).toHaveBeenCalledTimes(1);
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]?.signal).toBeUndefined();
   });
 
   it("emits an error chunk when the stream fails after run_start", async () => {

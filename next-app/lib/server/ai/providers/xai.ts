@@ -15,6 +15,7 @@ import { extractReasoningTextsFromDelta } from "./reasoning-delta";
 import { normalizeChatOptionsForModel } from "../request-policy";
 import { toAIErrorEnvelope } from "../error-classification";
 import { getToolCallDeltas } from "./tool-call-delta";
+import { isAbortLikeError } from "@/lib/abort";
 
 export class XAIProvider extends BaseAIProvider {
     readonly id = "xai";
@@ -203,6 +204,9 @@ export class XAIProvider extends BaseAIProvider {
                 actualModelSource: observedModel ? "provider" : undefined,
             };
         } catch (error) {
+            if (normalizedOptions.signal?.aborted || isAbortLikeError(error)) {
+                throw error;
+            }
             const metadata = extractProviderErrorMetadata(error);
             const errorMeta = toAIErrorEnvelope(error, {
                 kind: "provider_request",

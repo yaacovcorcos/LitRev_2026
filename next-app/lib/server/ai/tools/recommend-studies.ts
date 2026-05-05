@@ -3,6 +3,7 @@ import type { AITool, ToolExecutionContext } from "./base";
 import type { Study } from "@/types/ledger";
 import { getRecommendations, buildS2PaperIds } from "@/lib/server/search/semantic-scholar";
 import { listStudies } from "@/lib/server/ledger";
+import { isAbortLikeError } from "@/lib/abort";
 
 const inputSchema = z.object({
     studyIds: z.array(z.string()).optional(),
@@ -98,7 +99,7 @@ export const recommendStudiesTool: AITool = {
             const results = await getRecommendations(
                 positiveIds,
                 negativeIds.length > 0 ? negativeIds : undefined,
-                { limit },
+                { limit, signal: context?.signal },
             );
 
             return {
@@ -112,6 +113,9 @@ export const recommendStudiesTool: AITool = {
                 },
             };
         } catch (error) {
+            if (context?.signal?.aborted || isAbortLikeError(error)) {
+                throw error;
+            }
             return {
                 callId: "",
                 result: null,
