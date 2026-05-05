@@ -4,10 +4,11 @@ import {
   type ChatSurface,
   type ChatUnificationMetricVersion,
 } from "@/types/chat-unification";
+import { CHAT_UNIFICATION_BURN_IN_SURFACES } from "@/lib/ai/chat-unification-burn-in-contract";
 
 const MIN_BURN_IN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_SAMPLE_ROWS_PER_SURFACE = 5;
-const SURFACES: ChatSurface[] = ["ai", "project"];
+const SURFACES: ChatSurface[] = [...CHAT_UNIFICATION_BURN_IN_SURFACES];
 
 export function parseIsoDateArg(
   name: string,

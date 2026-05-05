@@ -91,7 +91,8 @@ LitRev should learn aggressively from the best external systems without drifting
   - security baseline in [`docs/runbooks/security-baseline.md`](../runbooks/security-baseline.md)
   - performance certification in [`plan-speed-performance.md`](./plan-speed-performance.md)
   - burn-in runbook for shared chat/runtime canaries
-- What is still missing is a first-class agent-quality spine that ties those surfaces together into one explicit operating program.
+- The protected `check` CI gate now includes `npm run check:agent-quality`, a deterministic agent-quality gate that validates the core eval scenario catalog, runtime-signal fixture coverage, and strict U1.6 burn-in metric/threshold contract.
+- The remaining agent-quality debt is to broaden this spine into adversarial security packs, richer live eval artifacts, SLO dashboards, incident playbooks, and explicit efficiency budgets.
 
 ## Open-Source Position
 
@@ -115,13 +116,13 @@ The lesson to keep:
 
 ### Workstream Q1 — Eval Spine and Regression Harness
 
-- [ ] `Q1-001` Ship `CAG-021` executable scenario eval harness.
-  - target:
-    - deterministic scenario packs
-    - replayable artifacts
-    - clear pass/fail criteria for runtime, research, and decisioning flows
+- [x] `Q1-001` Ship the first `CAG-021` executable scenario eval harness.
+  - current contract:
+    - deterministic scenario catalog validation
+    - runtime-observable signal coverage from replayable stream fixtures
+    - clear pass/fail criteria through `npm run check:agent-quality`
 
-- [ ] `Q1-002` Add deterministic fixture libraries for:
+- [ ] `Q1-002` Broaden deterministic fixture libraries for:
   - stream lifecycle
   - tool success/failure
   - blocked clarification
@@ -146,6 +147,8 @@ The lesson to keep:
 - [ ] `Q2-002` Finish `U1.6` burn-in as the runtime sign-off gate on current production truth.
   - outcome:
     - `FIX-011b` closes with evidence, not optimism
+  - current support:
+    - `npm run check:agent-quality` prevents accidental weakening of the burn-in metric set, surface set, and strict threshold floor before runtime changes merge
 
 - [ ] `Q2-003` Ship `CAG-023` run SLO dashboards and alert thresholds.
   - minimum targets:

@@ -32,6 +32,7 @@ This plan does not own:
   - `test:e2e:foundation`, `test:e2e:local`
   - `test:smoke:mobile`, `test:smoke:citation`
   - `check:chat-stream-architecture`
+  - `check:agent-quality`
   - `check:pr`
 - Historical script names remain in place as compatibility aliases, but the canonical shared vocabulary is now lane-shaped rather than tool-history-shaped.
 - The repo-root wrapper layer remains intentionally deferred; the package-level canonical aliases plus the strategy runbook are sufficient for current ergonomics without adding a second command front door.
@@ -45,6 +46,7 @@ This plan does not own:
   - `npm run test:governance` (still backed by `governance:ci-required`, including raw `npm run lint`)
   - `npm run test:governance:informational` as non-blocking reporting
   - `npm run check:chat-stream-architecture`
+  - `npm run check:agent-quality`
   - `npm run test:vitest`
   - production build
 - Heavier or orthogonal lanes already exist outside the required `check` path:
@@ -102,6 +104,7 @@ Shipped:
   - `test:e2e:foundation`, `test:e2e:local`
   - `test:smoke:mobile`, `test:smoke:citation`
   - `check:chat-stream-architecture`
+  - `check:agent-quality`
   - `check:pr`
 - The wrapper decision is now explicit: do not add a repo-root wrapper layer unless future evidence shows the canonical package aliases and runbook are still insufficient.
 
@@ -169,6 +172,7 @@ Missing:
 - [ ] Introduce `test:unit` and `test:integration` only after the repo has a truthful, maintainable boundary for that split rather than a cosmetic label.
 
 ## Recently Completed
+- [x] Promoted `check:agent-quality` into the protected `check` lane as the deterministic agent eval, runtime-signal fixture, and U1.6 burn-in contract gate, with local reproduction documented in the shared testing and GitHub flow runbooks.
 - [x] Normalized the draft route's local test layout by moving the remaining sibling `.test.*` files into `app/project/[id]/draft/__tests__/`, establishing the preferred "finish the nearby `__tests__` pattern before inventing a second local style" rule for future cleanup.
 - [x] Introduced canonical shared lane aliases in `next-app/package.json` for typecheck, Vitest, governance, E2E foundation/local, smoke, chat-stream architecture, and PR-ready validation while keeping the historical command names backward compatible.
 - [x] Closed the repo-root wrapper decision for now: keep the package-level aliases and shared testing runbook as the single ergonomic front door until evidence shows they are not enough.

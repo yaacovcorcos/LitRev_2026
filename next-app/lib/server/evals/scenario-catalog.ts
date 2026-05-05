@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const EvalSuiteSchema = z.enum(["ask_user", "delegation", "search", "screening"]);
+export const EvalSuiteSchema = z.enum(["ask_user", "delegation", "runtime", "search", "screening"]);
 export type EvalSuite = z.infer<typeof EvalSuiteSchema>;
 
 export const EvalScenarioSchema = z.object({
@@ -53,6 +53,27 @@ export const CORE_EVAL_SCENARIOS: EvalScenario[] = [
         title: "Direct OpenAlex search emits the shared receipt path",
         prompt: "Search OpenAlex for cross-disciplinary AI triage studies.",
         expectedSignals: ["tool_activity:search_openalex"],
+    },
+    {
+        id: "runtime-cancelled-terminal-truth",
+        suite: "runtime",
+        title: "Cancelled run reports cancellation as semantic terminal truth",
+        prompt: "Start a long search, then stop the active run before it completes.",
+        expectedSignals: ["run_end:cancelled", "stop_reason:cancelled"],
+    },
+    {
+        id: "runtime-no-answer-failure-truth",
+        suite: "runtime",
+        title: "No-answer loop budget exits fail truthfully",
+        prompt: "Run a loop that reaches its safe budget without producing an answer.",
+        expectedSignals: ["run_end:failed", "stop_reason:max_iterations"],
+    },
+    {
+        id: "runtime-decision-request-durable-pause",
+        suite: "runtime",
+        title: "Blocked clarification emits a durable decision request",
+        prompt: "Pause and ask the user for one bounded decision before continuing.",
+        expectedSignals: ["user_input_required", "decision_request:pending", "run_end:paused"],
     },
     {
         id: "screening-decision-audit",
