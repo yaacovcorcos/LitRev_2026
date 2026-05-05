@@ -52,32 +52,37 @@ This map is grounded in:
 6. Performance and cost are first-class release criteria, not cleanup work.
 7. Research quality must stay staged: retrieve -> gather evidence -> rank/filter -> answer.
 
-## Current A-001 Coverage Snapshot
+## Current Runtime Coverage Snapshot
 
-The current `FIX-011b` delta already has partial regression proof in repo:
+The known `FIX-011b` code delta is now closed on `main`; `U1.6` remains the live sign-off gate.
 
 | Delta area | Current proof | Status |
 |---|---|---|
-| Cancelled terminal truth parity, including blocked-card dismissal | [`next-app/app/ai/__tests__/page.clarification.test.tsx`](../../next-app/app/ai/__tests__/page.clarification.test.tsx), [`next-app/lib/server/__tests__/run-recovery.test.ts`](../../next-app/lib/server/__tests__/run-recovery.test.ts) | materially covered |
+| Transport abort vs semantic run cancellation | [`next-app/app/api/ai/stream/__tests__/route.test.ts`](../../next-app/app/api/ai/stream/__tests__/route.test.ts), [`next-app/app/api/ai/runs/[runId]/cancel/__tests__/route.test.ts`](../../next-app/app/api/ai/runs/%5BrunId%5D/cancel/__tests__/route.test.ts), [`next-app/lib/server/agent/__tests__/run-cancellation.test.ts`](../../next-app/lib/server/agent/__tests__/run-cancellation.test.ts) | covered |
+| Cancelled terminal truth parity, including blocked-card dismissal | [`next-app/app/ai/__tests__/page.clarification.test.tsx`](../../next-app/app/ai/__tests__/page.clarification.test.tsx), [`next-app/app/api/ai/stream/__tests__/route.test.ts`](../../next-app/app/api/ai/stream/__tests__/route.test.ts), [`next-app/lib/server/__tests__/run-recovery.test.ts`](../../next-app/lib/server/__tests__/run-recovery.test.ts) | covered |
 | Long-lineage clarification hydration must use the newest relevant window | [`next-app/lib/server/__tests__/clarification-controller-hydration.test.ts`](../../next-app/lib/server/__tests__/clarification-controller-hydration.test.ts) | covered |
 | Post-answer auxiliary work must stay degrade-only | [`next-app/lib/server/__tests__/ai-service-run-finalization.test.ts`](../../next-app/lib/server/__tests__/ai-service-run-finalization.test.ts) | covered |
-| Stale-writer exclusion after replace/cancel and ownership loss | shared write-helper coverage is still weaker than needed | active gap |
+| Stale-writer exclusion after replace/cancel and ownership loss | [`next-app/lib/server/__tests__/run-event-recorder.test.ts`](../../next-app/lib/server/__tests__/run-event-recorder.test.ts), [`next-app/lib/server/__tests__/ai-service-run-finalization.test.ts`](../../next-app/lib/server/__tests__/ai-service-run-finalization.test.ts) | covered |
+| Loop budget/repeat/no-answer truth and durable progress semantics | [`next-app/lib/ai/__tests__/run-outcome.test.ts`](../../next-app/lib/ai/__tests__/run-outcome.test.ts), [`next-app/lib/server/__tests__/run-event-authority.test.ts`](../../next-app/lib/server/__tests__/run-event-authority.test.ts), [`next-app/lib/server/__tests__/sub-agent.test.ts`](../../next-app/lib/server/__tests__/sub-agent.test.ts) | covered |
+| Mutating-tool idempotency across retry/continuation lineage | [`next-app/lib/server/__tests__/tool-idempotency-store.test.ts`](../../next-app/lib/server/__tests__/tool-idempotency-store.test.ts), [`next-app/lib/server/__tests__/tool-middleware.test.ts`](../../next-app/lib/server/__tests__/tool-middleware.test.ts), [`next-app/lib/server/__tests__/tool-autonomy.test.ts`](../../next-app/lib/server/__tests__/tool-autonomy.test.ts) | covered |
+| First-class decision requests and resolutions | [`next-app/lib/ai/__tests__/decision-requests.test.ts`](../../next-app/lib/ai/__tests__/decision-requests.test.ts), [`next-app/lib/server/__tests__/clarification-decision-requests.test.ts`](../../next-app/lib/server/__tests__/clarification-decision-requests.test.ts), [`next-app/app/api/ai/stream/__tests__/route.test.ts`](../../next-app/app/api/ai/stream/__tests__/route.test.ts) | foundation covered |
+| Deterministic runtime eval and burn-in contract gate | [`next-app/lib/server/__tests__/agent-quality-gate.test.ts`](../../next-app/lib/server/__tests__/agent-quality-gate.test.ts), [`next-app/lib/server/__tests__/runtime-signal-collector.test.ts`](../../next-app/lib/server/__tests__/runtime-signal-collector.test.ts), [`next-app/scripts/check-agent-quality-gate.ts`](../../next-app/scripts/check-agent-quality-gate.ts) | covered |
 
-That means the first runtime slice should not be a broad rewrite.
-It should lock the stale-writer/ownership boundary first, then rerun the existing delta pack.
+That means the next runtime step should not be another speculative rewrite.
+It should open a fresh `U1.6` burn-in window, preserve the deterministic gate, and treat any live failure as targeted remediation with a named metric or scenario.
 
 ## Dependency Rules
 
 ### Rule 1: Runtime truth before sign-off
 
-`A-001` -> `Q2-002` (`U1.6`) -> `A-002`
+`A-001` code closeout -> `Q2-002` (`U1.6`) -> `A-002`
 
 Do not reopen legacy cleanup before the shared runtime is proven under current truth.
 
 ### Rule 2: Eval spine starts early, but sign-off uses real runtime proof
 
-`Q1-002` should begin alongside `A-001` because deterministic fixtures improve fix velocity.
-`Q1-001` becomes authoritative only after the runtime delta is represented in executable scenario packs.
+`Q1-001` is now active as a protected deterministic gate over scenario catalog, runtime-signal fixtures, and burn-in contract shape.
+`Q1-002` remains the next expansion: broaden fixture libraries for malformed payloads, retry/recover variants, and adversarial trust-boundary cases.
 
 ### Rule 3: Tool safety before autonomy widening
 
@@ -116,8 +121,8 @@ Goal:
 
 | Item | Owner | Depends on | Must prove | Primary evidence |
 |---|---|---|---|---|
-| `A-001` close `FIX-011b` | `plan-agentic.md` | none | stale writers cannot persist truth after ownership loss; cancelled truth converges; clarification hydration stays newest-window correct; auxiliary work is degrade-only | targeted Vitest regression pack plus updated runtime contract docs |
-| `Q1-002` deterministic fixture libraries | `plan-agent-quality.md` | none | stream lifecycle, tool success/failure, blocked clarification, retry/recover, malformed payloads can be replayed deterministically | fixture library and scenario helpers in runtime tests |
+| `A-001` close `FIX-011b` | `plan-agentic.md` | none | stale writers cannot persist truth after ownership loss; cancelled truth converges; clarification hydration stays newest-window correct; auxiliary work is degrade-only | shipped on `main`; see current runtime coverage snapshot above |
+| `Q1-002` deterministic fixture libraries | `plan-agent-quality.md` | none | stream lifecycle, tool success/failure, blocked clarification, retry/recover, malformed payloads can be replayed deterministically | next expansion beyond the current protected `check:agent-quality` spine |
 | testing taxonomy task 1 | `plan-testing-execution.md` | none | shared test lanes become easier to run without adding a second truth source | explicit script or wrapper decision |
 | testing taxonomy task 2 | `plan-testing-execution.md` | none | stable shared naming for unit/integration/e2e/governance surfaces | `next-app/package.json` taxonomy update |
 
@@ -134,7 +139,7 @@ Goal:
 
 | Item | Owner | Depends on | Must prove | Primary evidence |
 |---|---|---|---|---|
-| `Q1-001` executable scenario eval harness | `plan-agent-quality.md` | `Q1-002`, enough of `A-001` to encode real scenarios | deterministic scenario packs with replayable artifacts and pass/fail rules | executable eval runner plus retained artifacts |
+| `Q1-001` executable scenario eval harness | `plan-agent-quality.md` | enough of `A-001` to encode real scenarios | deterministic scenario packs with replayable artifacts and pass/fail rules | shipped as `npm run check:agent-quality`; broaden under `Q1-002` |
 | `Q2-002` finish `U1.6` burn-in | `plan-agent-quality.md` | `A-001` | runtime sign-off is based on evidence, not optimism | [`chat-runtime-burn-in.md`](../runbooks/chat-runtime-burn-in.md) evidence window |
 | `A-002` complete `U4` cleanup | `plan-agentic.md` | `Q2-002` | no duplicate runtime paths or legacy drift branches remain | code deletion plus parity tests |
 
@@ -151,7 +156,7 @@ Goal:
 | Item | Owner | Depends on | Must prove | Primary evidence |
 |---|---|---|---|---|
 | `A-003` crash-safe long-loop continuation | `plan-agentic.md` | `A-001` | long work can pause, recover, or stop honestly without fake progress | continuation and no-forward-progress tests |
-| `B-001` idempotency envelopes | `plan-agentic.md` | `A-001` | mutating retries are safe and duplicate side effects are bounded | tool boundary tests |
+| `B-001` idempotency envelopes | `plan-agentic.md` | `A-001` | mutating retries are safe and duplicate side effects are bounded | shipped on `main`; follow-up work starts with `B-002`, `B-003`, and agent-specific security packs |
 | `B-002` narrow `general` mode | `plan-agentic.md` | `B-001` recommended | `general` coordinates rather than acting as a superuser | routing/tool-access tests |
 | `B-003` delegation policy matrix | `plan-agentic.md` | `B-001`, `B-002` | ask/suggest/auto-apply/delegate rules are explicit by mode and risk | policy tests + docs |
 | `B-004` tool telemetry and pruning | `plan-agentic.md` | `B-001`, `B-003` | unused/confusing tools can be retired with evidence | telemetry review and pruning rules |
@@ -176,7 +181,7 @@ Goal:
 
 | Item | Owner | Depends on | Must prove | Primary evidence |
 |---|---|---|---|---|
-| `C-001` `ask_user` decision system | `plan-agentic.md` | `A-001` | blocking decisions become structured, bounded, and reusable | contract tests + UI parity |
+| `C-001` `ask_user` decision system | `plan-agentic.md` | `A-001` | blocking decisions become structured, bounded, and reusable | persisted `DecisionRequest` foundation shipped; remaining work is UX, lifecycle, policy, and memory follow-through |
 | `C-002` run board | `plan-agentic.md` | `A-001`, `Q2-003` recommended | users can see tasks, blockers, and clarifications honestly | UI/runtime parity tests |
 | `C-003` structured message parts | `plan-agentic.md` | `A-001` | visible text and structured payloads replace hidden markup contracts | renderer/runtime tests |
 | `C-004` optional reasoning transparency | `plan-agentic.md` | `C-003` recommended | `off` / `summary` / `full` stay honest across providers | provider/surface contract tests |
@@ -265,7 +270,7 @@ It is only done when:
 
 Start here:
 
-1. add the missing stale-writer exclusion regression coverage for `A-001`
-2. tighten the shared write helpers so ownership loss fails closed
-3. rerun the existing `A-001` delta tests
-4. only then reopen `U1.6` as a sign-off question
+1. open a fresh `U1.6` deployment-level burn-in window from current `main`
+2. run Phase 0 from `docs/runbooks/chat-runtime-burn-in.md`, including `npm run check:agent-quality`
+3. collect the Day-0 manual baseline scenario pack for `/ai`, project main conversation, side-panel copilot, retry, ask-user, and abnormal disconnect/recovery
+4. only after `U1.6` sign-off, open `A-002` / `U4` legacy-runtime cleanup

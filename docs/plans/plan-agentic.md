@@ -73,12 +73,12 @@ The agent should not merely "feel smart." It should be:
 ## Current Architecture
 
 - The main chat surfaces already share one runtime/reducer foundation for normalized stream events, tool lifecycle, checkpoints, structured terminal errors, and blocked clarification.
-- Runtime ownership and terminal truth are materially stronger on current `main`, but `FIX-011b` remains open as a narrow shared-runtime delta rather than a new architecture program.
-- A runtime audit on `2026-04-16` and follow-up hardening on current `main` narrowed the active `FIX-011b` delta to:
-  - cancelled terminal truth still needs parity across live stream, replay, recovery, and blocked-card dismissal
-  - clarification hydration on long lineages still needs the newest relevant window
-  - post-answer auxiliary work still needs a degrade-only success boundary
-- Shared write helpers now fail closed on ownership loss, so stale replaced/cancelled workers stop instead of continuing to mutate winning-run truth.
+- The known `FIX-011b` shared-runtime code delta is now closed on `main`:
+  - stale replaced/cancelled workers fail closed on ownership loss
+  - cancelled terminal truth converges across live stream, durable cancellation, recovery, and blocked-card dismissal
+  - clarification hydration uses the newest relevant lineage window
+  - useful completed runs are not retro-failed by optional post-answer work
+- `U1.6` is now the runtime sign-off gate, not a bug-discovery substitute: it still needs a fresh deployment-level burn-in window, scoped cohort evidence, and the manual abnormal-end spot checks from `docs/runbooks/chat-runtime-burn-in.md`.
 - Durable continuation is materially stronger than before:
   - strict continue remains strict
   - retry/replace can now prefer checkpoint-backed or durable continuation over restart-from-zero when the source is proven
@@ -102,7 +102,7 @@ The agent should not merely "feel smart." It should be:
 - The remaining major platform debt is no longer "invent the architecture." It is:
   - finish convergence
   - remove duplication
-  - formalize decisioning
+  - finish the decision-quality UX and policy follow-through on top of the new persisted decision foundation
   - tighten autonomy/tool boundaries
   - make research workflows deeper and more reliable
 
@@ -136,16 +136,6 @@ Goal:
 - one production-grade runtime that remains truthful under disconnects, retries, paused input, and long-running multi-step work
 
 Active work:
-- [ ] `A-001` Retire `FIX-011b` by closing the currently known shared-runtime delta on current production truth.
-  - outcome:
-    - replaced/cancelled runs cannot persist stale writes or finalization after ownership loss
-    - cancelled terminal truth converges across live stream, replay, recovery, and client lifecycle, including blocked-card dismissal
-    - clarification hydration stays correct on long lineages instead of depending on the oldest scanned history
-    - useful completed runs cannot be retro-failed by post-answer auxiliary work
-    - `U1.6` can resume as sign-off instead of runtime bug discovery
-    - sign-off then depends on quality evidence from [`plan-agent-quality.md`](./plan-agent-quality.md)
-  - supporting detail:
-    - [`agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md`](./agent-runtime-remediation/plan-runtime-stabilization-and-continuation.md)
 
 - [ ] `A-002` Complete `U4` legacy/runtime cleanup after sign-off.
   - outcome:
@@ -155,8 +145,8 @@ Active work:
 - [ ] `A-003` Ship `CAG-020` crash-safe long-loop continuation and no-forward-progress detection.
   - outcome:
     - long-running work can pause, recover, or stop honestly without losing the next valid safe step
-    - durable-progress timestamps are advanced only by replayable forward-progress boundaries, not by attempted tool calls, checkpoints, or persisted errors
-    - loop budget, repeat-guard, and no-answer exits fail truthfully unless a real answer or durable output exists
+    - the current foundation already advances durable-progress timestamps only at replayable forward-progress boundaries, and budget/repeat/no-answer exits already fail truthfully unless a real answer or durable output exists
+    - remaining work should focus on broader crash-safe pause/recover behavior for long research loops, not re-solving the shipped outcome semantics
 
 ### Track B — Tool System and Autonomy Boundaries
 
@@ -164,15 +154,6 @@ Goal:
 - a smaller, safer, more legible action surface with explicit rules for what the agent may do and when
 
 Active work:
-- [ ] `B-001` Ship `CAG-004` idempotency envelopes for all mutating tools.
-  - outcome:
-    - retries are safe
-    - duplicate side effects are bounded
-    - tool results become easier to reason about and recover from
-    - mutating tools reserve a durable `ToolIdempotencyRecord` before execution, complete it with the successful tool result, and replay completed results across retry/continuation runs in the same root lineage
-    - unresolved in-flight receipts block duplicate execution rather than guessing whether a side effect already happened
-    - idempotency replays are internal semantic replays and must not create a second artifact or apply a second downstream side effect
-
 - [ ] `B-002` Ship `CAG-013` and finish narrowing `general` mode into a coordination surface rather than a superuser mode.
 
 - [ ] `B-003` Ship `CAG-014` delegation policy matrix by mode, autonomy, and risk.
@@ -190,14 +171,15 @@ Goal:
 - make user interruptions rare, crisp, trustworthy, and reusable
 
 Active work:
-- [ ] `C-001` Redesign `ask_user` into a first-class decision system.
+- [ ] `C-001` Complete `ask_user` decision-quality follow-through on top of the first-class `DecisionRequest` foundation.
   - direction owner:
     - [`agent-runtime-remediation/ask-user-v2-design-direction.md`](./agent-runtime-remediation/ask-user-v2-design-direction.md)
   - target outcome:
-    - one to three tightly coupled questions
-    - structured option + nuance support
-    - durable decision objects instead of thin answer strings
-    - current runtime foundation persists canonical decision requests/resolutions while preserving legacy stream-event compatibility
+    - high-trust decision UI and resolved-history rendering
+    - partial, superseded, interrupted, stale, and expired lifecycle handling where product flows need it
+    - decision-quality policy layered on top of the existing clarification budget guardrails
+    - decision-memory reuse where appropriate
+    - the current runtime foundation already persists canonical decision requests/resolutions while preserving legacy stream-event compatibility
 
 - [ ] `C-002` Ship `CAG-019` user-visible run board for tasks, blockers, and clarifications.
   - outcome:
@@ -265,10 +247,13 @@ It is done when:
 
 ## Recently Completed
 
+- [x] The known `FIX-011b` runtime code delta is closed on `main`: ownership loss fails closed, cancelled terminal truth is durable, clarification hydration uses the newest relevant lineage window, and optional post-answer work is degrade-only after a useful answer.
+- [x] Loop outcome semantics are truthful for budget, repeat-guard, no-answer, and durable-progress exits: retry/recovery progress now advances only at replayable forward boundaries.
+- [x] Mutating tools now use durable `ToolIdempotencyRecord` receipts across retry/continuation lineage, replay completed results internally, and block duplicate unresolved in-flight mutations.
+- [x] `ask_user` now has first-class persisted `DecisionRequestRecord` and `DecisionResolutionRecord` rows while preserving legacy `user_input_required` / `user_input_resolved` stream compatibility.
 - [x] Shared write helpers now fail closed on ownership loss, so stale replaced/cancelled workers stop instead of persisting stale writes or stale finalization.
 - [x] Stream-entry owned-scope canonicalization for study-scoped runs is now documented as part of current runtime truth; `studyId`-only requests carry the resolved owning `projectId` into runtime options instead of degrading tool scope to global.
 - [x] Checkpoint-backed retry/replace continuation is now shipped for the main surfaces.
 - [x] Shared blocked clarification identity and resolution are now materially runtime-owned.
 - [x] Popup now runs on the shared runtime as a truthful reduced subset.
 - [x] Search receipts and shared search-count semantics are materially stronger on the main surfaces.
-- [x] Typed tool-boundary failures now survive provider -> runtime -> UI as structured errors.

@@ -4,7 +4,7 @@ This runbook operationalizes `U1.6` from `docs/plans/plan-agent-quality.md`, seq
 It is the only active U1.6 burn-in operational source.
 Use it before opening post-sign-off runtime cleanup such as `A-002` / `U4`.
 
-Do not use this runbook as a substitute for baseline product rescue. If ordinary manual agent use is still exposing visible prompt/runtime leakage, obviously broken reconnect/recovery behavior, or generally unusable long-running runs, return to `FIX-012` in `docs/plans/plan-agentic.md` before opening or continuing a burn-in window.
+Do not use this runbook as a substitute for baseline product rescue. If ordinary manual agent use exposes visible prompt/runtime leakage, obviously broken reconnect/recovery behavior, or generally unusable long-running runs, stop the burn-in attempt and open a targeted remediation from the current owner plans before continuing the evidence window.
 
 ## Purpose
 
@@ -30,7 +30,8 @@ Current repo/runtime note:
 - `workspaceIds` / `userIds` remain the evidence scope filters for validation and sign-off, not a live rollout gate.
 - The protected CI `check` gate now runs `npm run check:agent-quality`, which guards the deterministic eval catalog, runtime-signal fixture coverage, and strict burn-in metric/threshold contract before a runtime PR can merge.
 - Abrupt stream endings without concrete transport evidence now classify as `failed_interrupted` rather than `failed_network`; burn-in spot checks should preserve that distinction and only treat `failed_network` as a true transport failure.
-- As of the `FIX-011b` closeout delta audit on `2026-03-20`, no additional shared-runtime gap was identified beyond the shipped `run-convergence` / `run-recovery` path and current recovery/surface tests. `U1.6` remains the operational blocker for retiring `FIX-011b` only after baseline agent stability/trust is restored under `FIX-012`; until then, burn-in should not be mistaken for the primary rescue task.
+- As of the May 2026 runtime closeout, the known `A-001` / `FIX-011b` code delta is covered by deterministic tests for semantic cancellation, cancelled terminal truth, newest-window clarification hydration, post-answer degrade-only success, truthful loop outcomes, durable mutating-tool receipts, persisted decision requests/resolutions, and the protected `check:agent-quality` gate.
+- `U1.6` is now the live sign-off gate for that code truth. It must use a fresh deployment/cohort window; do not reuse the stale historical scoped report as pass/fail evidence.
 
 ## Required Inputs
 

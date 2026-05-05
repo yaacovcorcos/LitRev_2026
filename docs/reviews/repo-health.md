@@ -1,27 +1,30 @@
 # Repo Health
 
-Last reviewed: 2026-04-03
+Last reviewed: 2026-05-06
 
 This file is the living summary of current repo health. Keep it concise and factual. Replace stale statements instead of appending history.
 
 ## Current Critical Findings
 
-- Architecture intent is still somewhat stronger in docs than in executable enforcement outside the already-shipped governance slices and focused backend/runtime hardening surfaces.
+- Agent-runtime reliability is materially stronger after the May 2026 closeout, but live confidence still depends on a fresh `U1.6` burn-in window, broader adversarial eval packs, and production SLO dashboards.
 
 ## Regressions Since Last Review
 
 - No repo-contract regression is confirmed from the 2026-03-21 baseline; the raw lint baseline is now clean and promoted into the required CI `check` contract, so the remaining improvement work is about deeper architectural enforcement rather than default-lint debt.
+- No agent-runtime regression is confirmed from the May 2026 reliability closeout. The current residual risk is evidence depth: deterministic gates are green, while live burn-in and operational dashboards remain open work.
 
 ## Repeated Mistakes
 
 - Repo-root `main` keeps drifting into active-task state unless work is quickly rehomed into `YY/**` task worktrees.
 - Effect-driven orchestration keeps appearing in client runtime code despite the repo's explicit effect-discipline policy.
 - Repeated review or advisory findings still risk staying in prose too long instead of being promoted into a rule, test, runbook, or owner-plan update.
+- Agent-quality improvements still need promotion from deterministic seed coverage into broader fixture packs, adversarial trust-boundary scenarios, and SLO/incident playbooks.
 
 ## Open Risks
 
 - Enabling stricter lint rules without a staged cleanup plan will create noise rather than leverage.
 - Advisory findings can still linger in prose unless the new internal review loops are used to promote repeated issues into owner docs, tests, evals, or repo-local rules.
+- `U1.6` is not yet signed off under a fresh deployment/cohort window, so runtime cleanup work such as `A-002` should remain blocked until burn-in evidence is captured.
 
 ## What Improved
 
@@ -32,6 +35,9 @@ This file is the living summary of current repo health. Keep it concise and fact
 - Restored mobile foundation confidence by aligning Playwright auth bootstrapping with the e2e origin and stabilizing the zero-state to workspace transition helper.
 - Targeted lint cleanup slices reduced the default baseline from `126` errors / `112` warnings to `0` errors / `0` warnings on `main`, and raw `npm run lint` is now part of the required CI `check` workflow rather than a side-track cleanup item.
 - Added direct regression coverage for `useTimelineWindowing`, provider streamed tool-call delta assembly, conversation attachment/tool-call JSON serialization, and `CommandPalette` hydration/body-scroll behavior so the cleanup wave stays evidence-backed instead of relying on lint-only confidence.
+- Closed the known `FIX-011b` agent-runtime code delta: semantic run cancellation is explicit, cancelled terminal truth is durable, long-lineage clarification hydration uses the newest relevant window, optional post-answer failures are degrade-only, and loop budget/repeat/no-answer exits are truthful.
+- Added durable `ToolIdempotencyRecord` receipts for mutating tool replay across retry/continuation lineage and first-class `DecisionRequestRecord` / `DecisionResolutionRecord` persistence for `ask_user`.
+- Promoted a deterministic agent-quality gate into protected CI through `npm run check:agent-quality`, covering scenario catalog validity, runtime-signal fixture coverage, and the strict U1.6 burn-in contract shape.
 
 ## Next Review Inputs
 

@@ -463,7 +463,7 @@ Must cover:
 3. default transparency is process-trace-first and stable in ordinary use without requiring provider-native reasoning
 4. abnormal-end recovery converges to one bounded truthful next action on the main surfaces
 5. popup reduced-parity gaps are documented as non-blocking and do not prevent main-surface closeout
-6. the remaining `FIX-011b` path is now narrow enough that `U1.6` burn-in can resume as validation rather than baseline triage
+6. at `FIX-012` retirement time, the then-remaining `FIX-011b` path was narrow enough that `U1.6` burn-in could resume as validation rather than baseline triage
 
 ## Acceptance Standard
 
