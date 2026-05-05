@@ -37,6 +37,23 @@ describe("classifyAIError", () => {
         expect(classified.retryable).toBe(true);
     });
 
+    it("keeps AbortError non-retryable and typed so runtime cancellation is not retried as provider failure", () => {
+        const error = new DOMException("Aborted", "AbortError");
+        const classified = classifyAIError(error);
+        const envelope = toAIErrorEnvelope(error);
+
+        expect(classified).toMatchObject({
+            code: "ABORTED",
+            kind: "runtime_abort",
+            retryable: false,
+        });
+        expect(envelope).toMatchObject({
+            code: "ABORTED",
+            kind: "runtime_abort",
+            retryable: false,
+        });
+    });
+
     it("classifies prisma connection timeouts as database failures", () => {
         const classified = classifyAIError({ message: "Connection terminated due to connection timeout" });
         expect(classified.reason).toBe("timeout");

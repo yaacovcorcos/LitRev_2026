@@ -1,4 +1,5 @@
 import type { AIErrorEnvelope, AIErrorKind, AIErrorSource } from "@/types/ai";
+import { isAbortLikeError } from "@/lib/ai/abort";
 import { extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
 import { parseRetryAfterHeaderMs } from "@/lib/server/utils/retry";
 import { normalizeHeaderRecord } from "@/lib/server/utils/header-record";
@@ -234,6 +235,17 @@ export function classifyAIError(error: unknown): ClassifiedAIError {
             source: dbClassification?.source ?? envelope.source,
             retryAfterMs: parseRetryAfterHeaderMs(headers),
             retryable: dbClassification?.retryable ?? envelope.retryable,
+        };
+    }
+
+    if (isAbortLikeError(error)) {
+        return {
+            reason: "unknown",
+            message: "Aborted",
+            code: "ABORTED",
+            kind: "runtime_abort",
+            source: "runtime",
+            retryable: false,
         };
     }
 

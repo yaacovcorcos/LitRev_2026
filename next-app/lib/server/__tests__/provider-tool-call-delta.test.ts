@@ -23,6 +23,14 @@ function makeStream(chunks: unknown[]): AsyncIterable<unknown> {
   };
 }
 
+function makeThrowingStream(error: unknown): AsyncIterable<unknown> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      throw error;
+    },
+  };
+}
+
 async function collectChunks(stream: AsyncIterable<AIStreamChunk>): Promise<AIStreamChunk[]> {
   const chunks: AIStreamChunk[] = [];
   for await (const chunk of stream) {
@@ -110,5 +118,16 @@ describe("provider stream tool-call delta assembly", () => {
       actualModel: "provider-model",
       actualModelSource: "provider",
     });
+  });
+
+  it.each(providerCases)("$label rethrows stream aborts instead of converting them to provider error chunks", async ({ createProvider }) => {
+    const abortError = new DOMException("Aborted", "AbortError");
+    const create = vi.fn().mockResolvedValue(makeThrowingStream(abortError));
+
+    const provider = createProvider();
+    ((provider as unknown) as { client: unknown }).client = { chat: { completions: { create } } };
+
+    await expect(collectChunks(provider.streamChat([userMessage("Find studies")], { model: "gpt-5.2" })))
+      .rejects.toMatchObject({ name: "AbortError" });
   });
 });

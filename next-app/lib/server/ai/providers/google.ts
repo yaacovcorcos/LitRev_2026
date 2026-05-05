@@ -9,6 +9,7 @@ import { BaseAIProvider } from "./base";
 import { AVAILABLE_MODELS } from "@/lib/ai/config";
 import { parseToolArgs } from "../json-repair";
 import { AIErrorWithEnvelope, buildStreamErrorChunk } from "@/lib/ai/error-envelope";
+import { isAbortLikeError } from "@/lib/ai/abort";
 import { extractProviderErrorMetadata } from "./error-metadata";
 import { normalizeProviderMessages } from "./message-normalization";
 import { toAIErrorEnvelope } from "../error-classification";
@@ -165,6 +166,9 @@ export class GoogleProvider extends BaseAIProvider {
                 actualModelSource: observedModel ? "provider" : undefined,
             };
         } catch (error) {
+            if (isAbortLikeError(error)) {
+                throw error;
+            }
             const metadata = extractProviderErrorMetadata(error);
             const errorMeta = toAIErrorEnvelope(error, {
                 kind: "provider_request",

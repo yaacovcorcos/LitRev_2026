@@ -305,4 +305,43 @@ describe("tool middleware pipeline", () => {
 
     expect(executor).toHaveBeenCalledTimes(2);
   });
+
+  it("replays protected mutation calls across retry runs in the same conversation", async () => {
+    const executor = vi.fn(async (request: ToolExecutionRequest) => ({
+      callId: request.callId,
+      result: { updated: request.args.field },
+    }));
+    const middleware = createIdempotencyMiddleware({
+      ttlMs: 60_000,
+      toolNames: ["update_protocol"],
+    });
+
+    const first = await executeWithToolMiddleware(
+      {
+        name: "update_protocol",
+        args: { field: "researchQuestion", value: "Question A", rationale: "requested" },
+        callId: "c1",
+        context: { projectId: "p1", userId: "u1", runId: "r1", conversationId: "conv-1" },
+      },
+      [middleware],
+      executor
+    );
+    const second = await executeWithToolMiddleware(
+      {
+        name: "update_protocol",
+        args: { field: "researchQuestion", value: "Question A", rationale: "requested" },
+        callId: "c2",
+        context: { projectId: "p1", userId: "u1", runId: "r2", conversationId: "conv-1" },
+      },
+      [middleware],
+      executor
+    );
+
+    expect(executor).toHaveBeenCalledTimes(1);
+    expect(first.error).toBeUndefined();
+    expect(second).toEqual({
+      callId: "c2",
+      result: first.result,
+    });
+  });
 });

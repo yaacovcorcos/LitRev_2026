@@ -4,6 +4,7 @@
  */
 
 import type { AIStreamChunk } from "@/types/ai";
+import { createAbortError } from "@/lib/ai/abort";
 
 export type StreamEvent = AIStreamChunk;
 
@@ -19,7 +20,7 @@ export async function* parseNDJSONStream(
     let carry = "";
 
     while (true) {
-        if (signal?.aborted) break;
+        if (signal?.aborted) throw createAbortError();
         const { done, value } = await reader.read();
         if (done) break;
 

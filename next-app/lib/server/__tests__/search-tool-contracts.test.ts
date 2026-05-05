@@ -92,6 +92,24 @@ describe("search tool output contracts", () => {
         });
     });
 
+    it("passes cancellation signals to search tools and rethrows aborts instead of returning tool errors", async () => {
+        const controller = new AbortController();
+        const abortError = new DOMException("Aborted", "AbortError");
+        vi.mocked(searchPubMed).mockRejectedValueOnce(abortError);
+
+        await expect(executeTool(
+            "search_pubmed",
+            { query: "cancel me" },
+            "call-abort",
+            { signal: controller.signal },
+        )).rejects.toMatchObject({ name: "AbortError" });
+        expect(searchPubMed).toHaveBeenCalledWith("cancel me", {
+            maxResults: 10,
+            cursor: undefined,
+            signal: controller.signal,
+        });
+    });
+
     it("accepts a yearless OpenAlex result at the tool boundary", async () => {
         vi.mocked(searchOpenAlex).mockResolvedValueOnce({
             query: "yearless openalex",

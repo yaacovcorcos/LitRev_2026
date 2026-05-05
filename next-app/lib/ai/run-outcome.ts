@@ -28,6 +28,18 @@ export function deriveRunOutcome(params: {
     }
 
     if (
+        !facts.hadFinalAssistantAnswer
+        && (
+            stopReason === "max_iterations"
+            || stopReason === "max_tool_calls"
+            || stopReason === "wall_time"
+            || stopReason === "repeat_detected"
+        )
+    ) {
+        return { runStatus: "failed", stopReason };
+    }
+
+    if (
         facts.hadDeterministicNonRetryableFailure
         && !facts.hadFinalAssistantAnswer
         && !facts.hadSuccessfulToolOrArtifact

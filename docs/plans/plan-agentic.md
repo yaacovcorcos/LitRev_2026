@@ -82,6 +82,12 @@ The agent should not merely "feel smart." It should be:
 - Durable continuation is materially stronger than before:
   - strict continue remains strict
   - retry/replace can now prefer checkpoint-backed or durable continuation over restart-from-zero when the source is proven
+- Interruption truth is now a shared runtime concern rather than provider/UI guesswork:
+  - provider stream aborts must propagate as aborts, not provider error chunks
+  - user/browser cancellation must not silently become an interrupted-stream failure on the client
+  - long-loop budget/repeat stops without a durable final answer are failed honestly instead of being marked completed because some tool work happened
+- Durable-progress timestamps now represent forward progress, not every recovery-authoritative event:
+  - passive events such as `tool_call`, `user_input_required`, `checkpoint`, and `error` no longer mask no-forward-progress detection
 - `ask_user` is already runtime-safe and request-bound:
   - canonical identity is `sourceRunId + callId`
   - `questionId` support already exists as additive question-level structure
@@ -90,6 +96,8 @@ The agent should not merely "feel smart." It should be:
   - typed tool payload parsing
   - structured tool-boundary failures
   - no fake `{}` coercion for invalid payloads
+  - abort-aware search/recommendation tools propagate cancellation as runtime interruption, not ordinary tool failure
+  - short-window idempotency covers the primary mutating tools across retry runs in the same conversation
 - Search transparency is materially better:
   - semantic receipts for the main search tools
   - shared query/count/source semantics

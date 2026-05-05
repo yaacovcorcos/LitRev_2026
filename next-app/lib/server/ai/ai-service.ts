@@ -24,6 +24,7 @@ import {
     createPlanExecutionErrorEnvelope,
     envelopeFromStreamChunk,
 } from "@/lib/ai/error-envelope";
+import { isAbortLikeError, throwIfAborted } from "@/lib/ai/abort";
 import { buildFailureFallbackMessage, deriveRunOutcome, type RunFacts } from "@/lib/ai/run-outcome";
 import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider, getGoogleProvider } from "./providers";
 import {
@@ -755,6 +756,10 @@ class AIService {
                             }
                         } else if (chunk.type === "error") {
                             const errorMeta = envelopeFromStreamChunk(chunk);
+                            if (options?.signal?.aborted || errorMeta.code === "ABORTED") {
+                                loop.markStopped("cancelled");
+                                break;
+                            }
                             const classified = classifyAIError(errorMeta);
                             const message = classified.message || errorMeta.message || chunk.error || "Unknown streaming error";
                             if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
@@ -771,6 +776,10 @@ class AIService {
                         }
                     }
                 } catch (error) {
+                    if (isAbortLikeError(error) || options?.signal?.aborted) {
+                        loop.markStopped("cancelled");
+                        break;
+                    }
                     const classified = classifyAIError(error);
                     if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
                         shouldRecoverOverflow = true;
@@ -817,6 +826,15 @@ class AIService {
                 }
 
                 break;
+            }
+
+            if (loop.stopReason === "cancelled") {
+                yield {
+                    type: "done",
+                    content: stopReasonMessage("cancelled"),
+                    stopReason: "cancelled",
+                };
+                return;
             }
 
             if (collectedToolCalls.length === 0) {
@@ -868,6 +886,7 @@ class AIService {
             currentMessages.push(assistantMsg);
 
             for (const tc of collectedToolCalls) {
+                throwIfAborted(options?.signal);
                 const result = await this.executeToolWithMiddleware({
                     name: tc.name,
                     args: tc.arguments,
@@ -876,6 +895,8 @@ class AIService {
                         projectId: options?.projectId,
                         studyId: options?.studyId,
                         userId: identity.userId,
+                        conversationId: options?.conversationId,
+                        signal: options?.signal,
                     },
                 });
                 yield { type: "tool_result", toolName: tc.name, toolResult: result };
@@ -1804,6 +1825,10 @@ class AIService {
                                 }
                             } else if (chunk.type === "error") {
                                 const errorMeta = envelopeFromStreamChunk(chunk);
+                                if (options?.signal?.aborted || errorMeta.code === "ABORTED") {
+                                    loop.markStopped("cancelled");
+                                    break;
+                                }
                                 const classified = classifyAIError(errorMeta);
                                 if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
                                     shouldRecoverOverflow = true;
@@ -1826,6 +1851,10 @@ class AIService {
                             }
                         }
                     } catch (error) {
+                        if (isAbortLikeError(error) || options?.signal?.aborted) {
+                            loop.markStopped("cancelled");
+                            break;
+                        }
                         const classified = classifyAIError(error);
                         if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
                             shouldRecoverOverflow = true;
@@ -1951,7 +1980,10 @@ class AIService {
 
                 // Check for repeated tool calls
                 if (loop.recordToolCalls(repeatKeyedToolCalls)) {
-                    break; // repeat_detected — shouldContinue will catch it next iteration
+                    const repeated = loop.shouldContinue(options?.signal);
+                    if (!repeated.continue) {
+                        break;
+                    }
                 }
 
                 const assistantMsg: AIMessage = {
@@ -1965,6 +1997,7 @@ class AIService {
 
                 // Execute all tool calls with autonomy
                 for (const tc of collectedToolCalls) {
+                    throwIfAborted(options?.signal);
                     if (agentMode === "scoping" && scopingWorkflow) {
                         const searchDecision = evaluateScopingSearchExecution(scopingWorkflow, tc.name);
                         if (!searchDecision.allow) {
@@ -2412,8 +2445,7 @@ class AIService {
         } catch (error) {
             const isAbortError =
                 options?.signal?.aborted ||
-                (error instanceof Error && error.name === "AbortError") ||
-                (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError");
+                isAbortLikeError(error);
 
             if (isRunOwnershipError(error)) {
                 logServerWarn("ai-service", "run ownership lost during stream; suppressing stale writer", {

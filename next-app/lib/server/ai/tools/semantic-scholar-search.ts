@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AITool } from "./base";
+import { isAbortLikeError } from "@/lib/ai/abort";
 import { searchSemanticScholar } from "@/lib/server/search/semantic-scholar";
 
 const inputSchema = z.object({
@@ -59,7 +60,7 @@ export const semanticScholarSearchTool: AITool = {
         allowedRange: [1, 4],
     },
 
-    async execute(args: Record<string, unknown>) {
+    async execute(args: Record<string, unknown>, context) {
         const query = args.query as string;
         if (!query) {
             return { callId: "", result: null, error: "Query is required" };
@@ -72,9 +73,15 @@ export const semanticScholarSearchTool: AITool = {
         const cursor = typeof args.cursor === "string" ? args.cursor : undefined;
 
         try {
-            const response = await searchSemanticScholar(query, { maxResults, yearRange, cursor });
+            const response = await searchSemanticScholar(query, {
+                maxResults,
+                yearRange,
+                cursor,
+                ...(context?.signal ? { signal: context.signal } : {}),
+            });
             return { callId: "", result: response };
         } catch (error) {
+            if (isAbortLikeError(error)) throw error;
             return {
                 callId: "",
                 result: null,

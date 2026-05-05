@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
+import { isAbortLikeError } from "@/lib/ai/abort";
 import type { Study } from "@/types/ledger";
 import { getRecommendations, buildS2PaperIds } from "@/lib/server/search/semantic-scholar";
 import { listStudies } from "@/lib/server/ledger";
@@ -98,7 +99,10 @@ export const recommendStudiesTool: AITool = {
             const results = await getRecommendations(
                 positiveIds,
                 negativeIds.length > 0 ? negativeIds : undefined,
-                { limit },
+                {
+                    limit,
+                    ...(context?.signal ? { signal: context.signal } : {}),
+                },
             );
 
             return {
@@ -112,6 +116,7 @@ export const recommendStudiesTool: AITool = {
                 },
             };
         } catch (error) {
+            if (isAbortLikeError(error)) throw error;
             return {
                 callId: "",
                 result: null,

@@ -4,6 +4,8 @@ import type { SearchResult, SearchResponse } from "@/types/search";
 import type { Study } from "@/types/ledger";
 import { parsePublicationYearPrefix } from "@/lib/server/search/publication-year";
 import { parseOpaqueOffsetCursor } from "@/lib/search-contract";
+import { throwIfAborted } from "@/lib/ai/abort";
+import { sleep } from "@/lib/server/utils/retry";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -45,12 +47,14 @@ function getThrottleInterval(): number {
 }
 
 async function throttledFetch(url: string, init?: RequestInit): Promise<Response> {
+    throwIfAborted(init?.signal ?? undefined);
     const interval = getThrottleInterval();
     const now = Date.now();
     const elapsed = now - lastRequestTime;
     if (elapsed < interval) {
-        await new Promise((resolve) => setTimeout(resolve, interval - elapsed));
+        await sleep(interval - elapsed, init?.signal ?? undefined);
     }
+    throwIfAborted(init?.signal ?? undefined);
     lastRequestTime = Date.now();
 
     const headers: Record<string, string> = {
@@ -72,6 +76,7 @@ async function fetchWithRetry(url: string, init?: RequestInit): Promise<Response
     let lastResponse: Response | null = null;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        throwIfAborted(init?.signal ?? undefined);
         const res = await throttledFetch(url, init);
 
         if (res.status !== 429 || attempt === MAX_RETRIES) {
@@ -86,7 +91,7 @@ async function fetchWithRetry(url: string, init?: RequestInit): Promise<Response
             ? parseInt(retryAfter, 10) * 1000
             : INITIAL_BACKOFF_MS * Math.pow(2, attempt);
 
-        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        await sleep(waitMs, init?.signal ?? undefined);
     }
 
     return lastResponse!;
@@ -121,8 +126,9 @@ function matchesYearRange(year: number | undefined, yearRange: YearRange): boole
  */
 export async function searchSemanticScholar(
     query: string,
-    options?: { maxResults?: number; yearRange?: string; cursor?: string; offset?: number }
+    options?: { maxResults?: number; yearRange?: string; cursor?: string; offset?: number; signal?: AbortSignal }
 ): Promise<SearchResponse> {
+    throwIfAborted(options?.signal);
     const limit = Math.min(options?.maxResults ?? 10, 100);
     const offset = options?.cursor !== undefined
         ? parseOpaqueOffsetCursor(options.cursor, "Semantic Scholar") ?? 0
@@ -139,7 +145,7 @@ export async function searchSemanticScholar(
     }
 
     const url = `${S2_BASE}/paper/search?${params}`;
-    const res = await fetchWithRetry(url);
+    const res = await fetchWithRetry(url, { signal: options?.signal });
 
     if (res.status === 429) {
         throw new Error("Semantic Scholar rate limit exceeded after retries. Try again shortly.");
@@ -175,8 +181,9 @@ export async function searchSemanticScholar(
 export async function getRecommendations(
     positivePaperIds: string[],
     negativePaperIds?: string[],
-    options?: { limit?: number }
+    options?: { limit?: number; signal?: AbortSignal }
 ): Promise<SearchResult[]> {
+    throwIfAborted(options?.signal);
     const limit = Math.min(options?.limit ?? 10, 100);
 
     const body: Record<string, unknown> = { positivePaperIds };
@@ -194,6 +201,7 @@ export async function getRecommendations(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: options?.signal,
     });
 
     if (res.status === 429) {

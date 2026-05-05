@@ -92,7 +92,8 @@ vi.mock("@/lib/ai/config", () => ({
 
 vi.mock("@/lib/agent/compaction", () => ({
   buildModelVisibleToolResult: vi.fn(),
-  compactToolResult: vi.fn(),
+  buildModelVisibleToolResultForTool: vi.fn((_toolName: string, result: unknown) => result),
+  compactToolResult: vi.fn((_toolName: string, result: unknown) => JSON.stringify(result)),
   compactLoopMessages: vi.fn((messages) => ({ messages, removed: 0 })),
   buildCompactedHistory: vi.fn((messages) => messages),
   estimateMessagesTokensWithSafetyMargin: vi.fn(() => 0),
@@ -319,9 +320,11 @@ vi.mock("@/lib/server/ai/tool-autonomy", () => ({
 const { AIService } = await import("@/lib/server/ai/ai-service");
 const { retrieveMemories } = await import("@/lib/server/memory");
 const { getAutonomyConfig } = await import("@/lib/server/agent/autonomy");
+const { evaluateToolPrerequisites } = await import("@/lib/server/ai/tool-prerequisites");
 const { prisma } = await import("@/lib/server/prisma");
 const mockRetrieveMemories = vi.mocked(retrieveMemories);
 const mockGetAutonomyConfig = vi.mocked(getAutonomyConfig);
+const mockEvaluateToolPrerequisites = vi.mocked(evaluateToolPrerequisites);
 const mockProtocolFindFirst = vi.mocked(prisma.protocol.findFirst);
 
 describe("AIService run finalization", () => {
@@ -366,6 +369,7 @@ describe("AIService run finalization", () => {
     mocks.markRunFinalizationState.mockResolvedValue(1);
     mocks.markRunFinalizationFailed.mockResolvedValue(1);
     mocks.markRunAbnormalEndClassification.mockResolvedValue(1);
+    mockEvaluateToolPrerequisites.mockResolvedValue({ allowed: true });
     mockRetrieveMemories.mockResolvedValue([]);
     mockGetAutonomyConfig.mockResolvedValue({ preset: "assisted", toolOverrides: {} } as never);
     mockProtocolFindFirst.mockResolvedValue(null);

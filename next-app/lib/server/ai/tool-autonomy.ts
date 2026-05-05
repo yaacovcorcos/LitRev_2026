@@ -22,6 +22,7 @@ import { startToolSpan, NOOP_SPAN } from "./tracing";
 import type { TracingSpan } from "./tracing";
 import { mapToolToArtifactType, mapToolToArtifactTitle } from "./tool-helpers";
 import { createAutonomyBlockedErrorEnvelope } from "@/lib/ai/error-envelope";
+import { throwIfAborted } from "@/lib/ai/abort";
 import type { AIService, ToolRuntimeContext } from "./ai-service";
 import { logServerError } from "@/lib/server/logging";
 
@@ -204,6 +205,7 @@ export async function executeToolWithAutonomyCore(
     } = params;
 
     const scope = projectId && projectId !== null ? "project" as const : "global" as const;
+    throwIfAborted(runtimeContext?.signal);
     if (!isToolAllowedInScope(toolCall.name, scope)) {
         const result = createScopeOrModeBlockedResult(
             toolCall.id,
@@ -266,6 +268,7 @@ export async function executeToolWithAutonomyCore(
         failureMode: "strict",
         logContext: `tool_call:${toolCall.name}`,
     });
+    throwIfAborted(runtimeContext?.signal);
 
     if (level === 0) {
         const result = createAutonomyBlockedResult(toolCall.id, toolCall.name, "disabled_by_autonomy");

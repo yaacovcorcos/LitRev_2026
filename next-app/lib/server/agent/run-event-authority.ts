@@ -28,7 +28,13 @@ export function isRecoveryAuthoritativeRunEventType(
 }
 
 export const DURABLE_PROGRESS_RUN_EVENT_TYPES =
-    RECOVERY_AUTHORITATIVE_RUN_EVENT_TYPES;
+    [
+        "message",
+        "tool_result",
+        "user_input_resolved",
+        "artifact_proposed",
+        "artifact_reviewed",
+    ] as const satisfies readonly RunEventType[];
 
 export type DurableProgressRunEventType =
     (typeof DURABLE_PROGRESS_RUN_EVENT_TYPES)[number];

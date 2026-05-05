@@ -180,7 +180,6 @@ describe("run events", () => {
       },
       data: {
         lastActivityAt: createdAt,
-        lastDurableProgressAt: createdAt,
       },
     });
   });

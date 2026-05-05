@@ -261,6 +261,7 @@ export async function POST(request: NextRequest) {
 
         // Create a readable stream
         const encoder = new TextEncoder();
+        let streamClosed = false;
         const stream = new ReadableStream({
             async start(controller) {
                 await runWithActorContext(authResult.context, async () => {
@@ -268,8 +269,13 @@ export async function POST(request: NextRequest) {
                     const popupContext = body.popupContext as PopupChatContext | undefined;
                     const runtimeRouter = new ChatRuntime();
                     const thread = new RuntimeThreadContext((event) => {
+                        if (streamClosed) return;
                         const data = JSON.stringify(toWireChunk(event)) + "\n";
-                        controller.enqueue(encoder.encode(data));
+                        try {
+                            controller.enqueue(encoder.encode(data));
+                        } catch {
+                            streamClosed = true;
+                        }
                     });
                     const coalescer = new StreamCoalescer({
                         contentCadence: progressiveStreaming.enabled
@@ -708,9 +714,15 @@ export async function POST(request: NextRequest) {
                         await coalescer.flushAll();
                         await maybeRecordRunEndMetric();
                         await coalescer.stop();
-                        controller.close();
+                        if (!streamClosed) {
+                            controller.close();
+                            streamClosed = true;
+                        }
                     }
                 });
+            },
+            cancel() {
+                streamClosed = true;
             },
         });
 

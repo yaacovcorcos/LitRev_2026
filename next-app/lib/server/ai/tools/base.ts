@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import type { ToolDefinition, ToolResult } from "@/types/ai";
+import { isAbortLikeError, throwIfAborted } from "@/lib/ai/abort";
 import { createToolSchemaValidationErrorEnvelope } from "@/lib/ai/error-envelope";
 import type { ToolAutonomyMeta, AutonomyLevel, AgentMode } from "@/types/agent";
 import type { ProtocolData } from "@/types/protocol";
@@ -282,6 +283,8 @@ export async function executeTool(
     callId: string,
     context?: ToolExecutionContext
 ): Promise<ToolResult> {
+    throwIfAborted(context?.signal);
+
     const tool = getTool(name);
     if (!tool) {
         return {
@@ -303,6 +306,7 @@ export async function executeTool(
     }
 
     try {
+        throwIfAborted(context?.signal);
         // 2. Execute tool
         const result = await tool.execute(args, context);
 
@@ -318,6 +322,9 @@ export async function executeTool(
 
         return { ...result, callId };
     } catch (error) {
+        if (isAbortLikeError(error)) {
+            throw error;
+        }
         return {
             callId,
             result: null,

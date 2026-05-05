@@ -31,6 +31,7 @@ import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import { dropShadowedInvalidToolCalls, getToolCallRepeatKey } from "./tool-helpers";
 import { evaluateToolPrerequisites } from "./tool-prerequisites";
 import { executeToolWithAutonomyCore } from "./tool-autonomy";
+import { isAbortLikeError } from "@/lib/ai/abort";
 import { logServerError, logServerWarn } from "@/lib/server/logging";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -468,6 +469,18 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             artifacts: delegatedArtifacts,
         };
     } catch (error) {
+        if (isAbortLikeError(error) || signal?.aborted) {
+            childRunStatus = "cancelled";
+            loop.markStopped("cancelled");
+            return {
+                summary: "Sub-agent was cancelled.",
+                stopReason: "cancelled",
+                iterations: loop.iterations,
+                totalToolCalls: loop.totalToolCalls,
+                toolLog,
+                artifacts: delegatedArtifacts,
+            };
+        }
         childRunStatus = "failed";
         return {
             summary: "Sub-agent failed unexpectedly.",

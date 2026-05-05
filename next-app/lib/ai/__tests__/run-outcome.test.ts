@@ -41,6 +41,37 @@ describe("deriveRunOutcome", () => {
         });
     });
 
+    it("does not mark budget-stopped tool work completed when no final answer exists", () => {
+        const outcome = deriveRunOutcome({
+            facts: {
+                ...baseFacts,
+                hadSuccessfulToolOrArtifact: true,
+            },
+            stopReason: "max_tool_calls",
+        });
+
+        expect(outcome).toEqual({
+            runStatus: "failed",
+            stopReason: "max_tool_calls",
+        });
+    });
+
+    it("keeps budget-stopped runs completed when a final answer was already durable", () => {
+        const outcome = deriveRunOutcome({
+            facts: {
+                ...baseFacts,
+                hadFinalAssistantAnswer: true,
+                hadSuccessfulToolOrArtifact: true,
+            },
+            stopReason: "repeat_detected",
+        });
+
+        expect(outcome).toEqual({
+            runStatus: "completed",
+            stopReason: "repeat_detected",
+        });
+    });
+
     it("maps paused_for_input to paused run status", () => {
         const outcome = deriveRunOutcome({
             facts: {

@@ -43,7 +43,17 @@ function blockedResult(request: ToolExecutionRequest, middlewareName?: string): 
 
 const DEFAULT_IDEMPOTENT_MUTATION_TOOLS = new Set([
   "add_to_ledger",
+  "bulk_screening",
+  "create_project",
+  "delete_study",
+  "exclude_study",
+  "extract_pdf",
+  "forget_memory",
   "update_study",
+  "update_study_direct",
+  "update_protocol",
+  "update_criteria",
+  "update_note",
   "store_memory",
 ]);
 
@@ -78,9 +88,11 @@ function requestFingerprint(request: ToolExecutionRequest): string {
     userId: request.context?.userId ?? null,
     projectId: request.context?.projectId ?? null,
     studyId: request.context?.studyId ?? null,
-    // Scope deduplication to the current run to prevent masking
-    // intentional repeated actions across separate user turns.
-    runId: request.context?.runId ?? null,
+    // Retries and continuation create new run ids. Scope mutation replay to the
+    // conversation when available so repeated side effects are bounded across a
+    // short retry window without masking unrelated work in other conversations.
+    conversationId: request.context?.conversationId ?? null,
+    lineageRunId: request.context?.parentRunId ?? (request.context?.conversationId ? null : request.context?.runId ?? null),
   };
   return createHash("sha256").update(stableSerialize(payload)).digest("hex");
 }
