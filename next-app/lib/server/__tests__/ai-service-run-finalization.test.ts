@@ -626,6 +626,39 @@ describe("AIService run finalization", () => {
     expect(mocks.markRunFinalizationFailed).not.toHaveBeenCalled();
   });
 
+  it("fails a natural no-answer run instead of completing an empty assistant turn", async () => {
+    mocks.provider.streamChat.mockImplementationOnce(async function* () {
+      yield {
+        type: "done",
+        usage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 },
+        actualModel: "gpt-5.2",
+      };
+    });
+
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    });
+
+    const chunks: Array<{ type?: string; content?: string; runStatus?: string; stopReason?: string }> = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(chunks.find((chunk) => chunk.type === "content")).toMatchObject({
+      content: "I couldn't complete that request: An error occurred during processing.",
+    });
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      runStatus: "failed",
+      stopReason: "error",
+    });
+    expect(mocks.endRun).toHaveBeenCalledWith("run-1", "failed", expect.any(Number), expect.any(Number));
+  });
+
   it("does not retro-fail a completed run when conversation title generation throws", async () => {
     const titleSpy = vi.spyOn(
       AIService.prototype as unknown as {

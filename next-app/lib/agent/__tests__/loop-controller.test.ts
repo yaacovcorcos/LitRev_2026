@@ -112,7 +112,7 @@ describe("LoopState", () => {
             }
         }
 
-        // Next shouldContinue should stop with repeat_detected
+        expect(state.stopReason).toBe("repeat_detected");
         expect(state.shouldContinue()).toEqual({ continue: false, stopReason: "repeat_detected" });
     });
 
@@ -135,6 +135,7 @@ describe("LoopState", () => {
             }
         }
 
+        expect(state.stopReason).toBe("repeat_detected");
         expect(state.shouldContinue()).toEqual({ continue: false, stopReason: "repeat_detected" });
     });
 

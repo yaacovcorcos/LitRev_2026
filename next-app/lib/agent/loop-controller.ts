@@ -97,6 +97,9 @@ export class LoopState {
             }
             if (this._consecutiveSameToolCallCount >= DOOM_LOOP_THRESHOLD) {
                 this._repeatDetected = true;
+                if (!this._stopReason) {
+                    this._stopReason = "repeat_detected";
+                }
                 return true;
             }
         }

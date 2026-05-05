@@ -178,6 +178,39 @@ describe("run events", () => {
         status: { in: ["running"] },
         completedAt: null,
       },
+      data: { lastActivityAt: createdAt },
+    });
+  });
+
+  it("advances durable progress for completed tool-result boundaries", async () => {
+    const createdAt = new Date("2026-03-11T11:35:10.000Z");
+    mocks.runEventFindFirst.mockResolvedValue({ sequence: 0 });
+    mocks.runEventCreate.mockResolvedValue({
+      id: "evt-1",
+      sequence: 1,
+      createdAt,
+    });
+    mocks.agentRunFindUnique.mockResolvedValue({
+      id: "run-1",
+      status: "running",
+      runPhase: "act",
+      phaseEnteredAt: new Date("2026-03-11T11:34:00.000Z"),
+    });
+
+    await emitEventWithinTransaction(
+      txMock as never,
+      "run-1",
+      "tool_result",
+      { callId: "call-1", result: { ok: true } },
+      { toolName: "search_pubmed" },
+    );
+
+    expect(mocks.agentRunUpdateMany).toHaveBeenLastCalledWith({
+      where: {
+        id: "run-1",
+        status: { in: ["running"] },
+        completedAt: null,
+      },
       data: {
         lastActivityAt: createdAt,
         lastDurableProgressAt: createdAt,
