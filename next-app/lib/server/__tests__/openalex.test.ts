@@ -247,4 +247,79 @@ describe("searchOpenAlex", () => {
     expect(response.results[0]?.year).toBe(2021);
     expect(response.results[0]?.metadata?.crossrefEnriched).toBe(true);
   });
+
+  it("returns base OpenAlex results when optional Crossref enrichment times out", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          meta: { count: 1, next_cursor: null },
+          results: [
+            {
+              id: "https://openalex.org/W40",
+              display_name: "Sparse But Usable Paper",
+              publication_year: 2023,
+              ids: { doi: "https://doi.org/10.4444/slow" },
+              authorships: [],
+            },
+          ],
+        })
+      )
+      .mockImplementationOnce((_input, init) => new Promise<Response>((_resolve, reject) => {
+        const signal = (init as RequestInit | undefined)?.signal;
+        signal?.addEventListener("abort", () => {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        }, { once: true });
+      }));
+
+    const response = await searchOpenAlex("slow crossref", { yearRange: "2020-2024" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.returnedCount).toBe(1);
+    expect(response.results[0]?.title).toBe("Sparse But Usable Paper");
+    expect(response.results[0]?.authors).toBe("Unknown");
+    expect(response.results[0]?.metadata?.crossrefEnriched).toBeUndefined();
+  }, 5_000);
+
+  it("aborts Crossref enrichment promptly when the caller cancels OpenAlex search", async () => {
+    const controller = new AbortController();
+    let startCrossref!: () => void;
+    const crossrefStarted = new Promise<void>((resolve) => {
+      startCrossref = resolve;
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        mockJsonResponse({
+          meta: { count: 1, next_cursor: null },
+          results: [
+            {
+              id: "https://openalex.org/W50",
+              display_name: "Sparse Abort Paper",
+              publication_year: 2023,
+              ids: { doi: "https://doi.org/10.5555/abort" },
+              authorships: [],
+            },
+          ],
+        })
+      )
+      .mockImplementationOnce((_input, init) => new Promise<Response>((_resolve, reject) => {
+        startCrossref();
+        const signal = (init as RequestInit | undefined)?.signal;
+        signal?.addEventListener("abort", () => {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        }, { once: true });
+      }));
+
+    const searchPromise = searchOpenAlex("abort crossref", {
+      yearRange: "2020-2024",
+      signal: controller.signal,
+    });
+
+    await crossrefStarted;
+    controller.abort();
+
+    await expect(searchPromise).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

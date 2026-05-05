@@ -82,6 +82,7 @@ The agent should not merely "feel smart." It should be:
 - Durable continuation is materially stronger than before:
   - strict continue remains strict
   - retry/replace can now prefer checkpoint-backed or durable continuation over restart-from-zero when the source is proven
+  - interrupted latest tool calls now use a runtime-owned restart policy: read-only calls and idempotent mutations can seed a bounded continuation, while unsafe or decision-sensitive calls still stop truthfully
 - `ask_user` is already runtime-safe and request-bound:
   - canonical identity is `sourceRunId + callId`
   - `questionId` support already exists as additive question-level structure
@@ -93,10 +94,12 @@ The agent should not merely "feel smart." It should be:
   - typed tool payload parsing
   - structured tool-boundary failures
   - no fake `{}` coercion for invalid payloads
+  - mutating-tool idempotency receipts now settle on returned executor failures and use stale running leases instead of permanent in-flight locks after abort/crash
 - Search transparency is materially better:
   - semantic receipts for the main search tools
   - shared query/count/source semantics
   - continuation tokens hidden behind server-owned contracts
+  - OpenAlex Crossref enrichment is bounded, abort-aware, and non-critical-path, so optional metadata lookup cannot hold the base search result hostage
 - Popup is now a truthful reduced subset of the shared runtime rather than a separate runtime model.
 - Study-scoped stream entry now canonicalizes owned `projectId` before runtime start, popup/context validation, and tool-scope selection, so `studyId`-only requests no longer degrade into accidental global-scope runs.
 - The remaining major platform debt is no longer "invent the architecture." It is:

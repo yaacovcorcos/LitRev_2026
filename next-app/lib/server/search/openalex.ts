@@ -1,13 +1,17 @@
 import "server-only";
 
 import type { SearchResult, SearchResponse } from "@/types/search";
+import { isAbortLikeError, throwIfAborted } from "@/lib/abort";
 import { fetchCrossrefMetadata, normalizeDoi } from "@/lib/server/citation-metadata";
+import { logServerError } from "@/lib/server/logging";
 import { parsePublicationYearPrefix } from "@/lib/server/search/publication-year";
 import { sleep } from "@/lib/server/utils/retry";
 
 const OPENALEX_BASE = "https://api.openalex.org/works";
 const MAX_RESULTS = 100;
 const CROSSREF_ENRICH_LIMIT = 10;
+const CROSSREF_ENRICH_TIMEOUT_MS = 1200;
+const CROSSREF_ENRICH_CONCURRENCY = 3;
 
 let lastRequestTime = 0;
 
@@ -213,17 +217,28 @@ function shouldEnrichFromCrossref(result: SearchResult): boolean {
   return false;
 }
 
-async function enrichFromCrossref(results: SearchResult[]): Promise<void> {
+async function enrichFromCrossref(
+  results: SearchResult[],
+  options?: { signal?: AbortSignal }
+): Promise<void> {
   const candidates = results
     .map((result) => ({ result }))
     .filter((item) => shouldEnrichFromCrossref(item.result))
     .slice(0, CROSSREF_ENRICH_LIMIT);
 
-  await Promise.all(
-    candidates.map(async ({ result }) => {
+  let nextIndex = 0;
+  const workerCount = Math.min(CROSSREF_ENRICH_CONCURRENCY, candidates.length);
+
+  const enrichOne = async ({ result }: { result: SearchResult }) => {
+    try {
+      throwIfAborted(options?.signal);
       const doi = result.doi;
       if (!doi) return;
-      const crossref = await fetchCrossrefMetadata(doi);
+      const crossref = await fetchCrossrefMetadata(doi, {
+        timeoutMs: CROSSREF_ENRICH_TIMEOUT_MS,
+        signal: options?.signal,
+      });
+      throwIfAborted(options?.signal);
       if (!crossref) return;
 
       if ((!result.title || result.title === "Untitled") && crossref.title) {
@@ -243,8 +258,23 @@ async function enrichFromCrossref(results: SearchResult[]): Promise<void> {
         ...(result.metadata ?? {}),
         crossrefEnriched: true,
       };
-    })
-  );
+    } catch (error) {
+      if (isAbortLikeError(error)) {
+        throw error;
+      }
+      logServerError("openalex", "crossref enrichment failed", {
+        doi: result.doi ?? "unknown",
+      }, error);
+    }
+  };
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < candidates.length) {
+      const candidate = candidates[nextIndex++];
+      if (!candidate) return;
+      await enrichOne(candidate);
+    }
+  }));
 }
 
 /**
@@ -277,7 +307,7 @@ export async function searchOpenAlex(
   const data = (await res.json()) as OpenAlexSearchResponse;
   const works = data.results ?? [];
   const parsed = works.map(parseOpenAlexWork);
-  await enrichFromCrossref(parsed);
+  await enrichFromCrossref(parsed, { signal: options?.signal });
 
   const yearFilter = parseYearRange(options?.yearRange);
   const filtered = parsed.filter((result) => matchesYearRange(result.year, yearFilter));

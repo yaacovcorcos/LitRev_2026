@@ -23,8 +23,16 @@ export type ToolIdempotencyReservation =
   | { status: "replay"; result: ToolResult }
   | { status: "in_flight"; reservationId: string | null };
 
+export type ToolIdempotencyReserveOptions = {
+  staleRunningBefore?: Date;
+  now?: Date;
+};
+
 export type ToolIdempotencyStore = {
-  reserve(input: ToolIdempotencyReservationInput): Promise<ToolIdempotencyReservation>;
+  reserve(
+    input: ToolIdempotencyReservationInput,
+    options?: ToolIdempotencyReserveOptions
+  ): Promise<ToolIdempotencyReservation>;
   complete(input: ToolIdempotencyReservationInput & {
     reservationId?: string | null;
     result: ToolResult;
@@ -63,7 +71,7 @@ function fromStoredToolResult(value: Prisma.JsonValue | null): ToolResult | null
 
 export function createPrismaToolIdempotencyStore(): ToolIdempotencyStore {
   return {
-    async reserve(input) {
+    async reserve(input, options) {
       try {
         const created = await prisma.toolIdempotencyRecord.create({
           data: {
@@ -98,6 +106,7 @@ export function createPrismaToolIdempotencyStore(): ToolIdempotencyStore {
           id: true,
           status: true,
           result: true,
+          createdAt: true,
         },
       });
 
@@ -105,6 +114,32 @@ export function createPrismaToolIdempotencyStore(): ToolIdempotencyStore {
         const result = fromStoredToolResult(existing.result);
         if (result) {
           return { status: "replay", result };
+        }
+      }
+
+      if (
+        existing?.status === "running"
+        && options?.staleRunningBefore
+        && existing.createdAt < options.staleRunningBefore
+      ) {
+        const updated = await prisma.toolIdempotencyRecord.updateMany({
+          where: {
+            id: existing.id,
+            status: "running",
+            createdAt: { lt: options.staleRunningBefore },
+          },
+          data: {
+            callId: input.callId,
+            runId: input.runId ?? null,
+            projectId: input.projectId ?? null,
+            userId: input.userId ?? null,
+            studyId: input.studyId ?? null,
+            completedAt: null,
+            createdAt: options.now ?? new Date(),
+          },
+        });
+        if (updated.count > 0) {
+          return { status: "reserved", reservationId: existing.id };
         }
       }
 

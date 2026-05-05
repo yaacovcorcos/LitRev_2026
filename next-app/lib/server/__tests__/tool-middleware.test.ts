@@ -17,21 +17,30 @@ function createFakeIdempotencyStore(): ToolIdempotencyStore {
     id: string;
     status: "running" | "completed";
     result?: ToolResult;
+    createdAt: Date;
   }>();
   let nextId = 1;
   const keyFor = (input: ToolIdempotencyReservationInput) => `${input.scopeKey}:${input.toolName}:${input.fingerprint}`;
 
-  const reserve = vi.fn<ToolIdempotencyStore["reserve"]>(async (input) => {
+  const reserve = vi.fn<ToolIdempotencyStore["reserve"]>(async (input, options) => {
     const key = keyFor(input);
     const existing = records.get(key);
     if (existing?.status === "completed" && existing.result) {
       return { status: "replay", result: existing.result };
     }
     if (existing) {
+      if (
+        options?.staleRunningBefore
+        && existing.status === "running"
+        && existing.createdAt < options.staleRunningBefore
+      ) {
+        existing.createdAt = options.now ?? new Date();
+        return { status: "reserved", reservationId: existing.id };
+      }
       return { status: "in_flight", reservationId: existing.id };
     }
     const id = `receipt-${nextId++}`;
-    records.set(key, { id, status: "running" });
+    records.set(key, { id, status: "running", createdAt: options?.now ?? new Date() });
     return { status: "reserved", reservationId: id };
   });
 
@@ -41,6 +50,7 @@ function createFakeIdempotencyStore(): ToolIdempotencyStore {
       id: input.reservationId ?? `receipt-${nextId++}`,
       status: "completed",
       result: { ...input.result, callId: "" },
+      createdAt: new Date(),
     });
   });
 
@@ -526,5 +536,120 @@ describe("tool middleware pipeline", () => {
     expect(store.reserve).toHaveBeenCalledTimes(1);
     expect(store.complete).not.toHaveBeenCalled();
     expect(store.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("releases a persistent reservation when the protected tool executor throws", async () => {
+    const executor = vi.fn()
+      .mockRejectedValueOnce(new Error("executor boom"))
+      .mockResolvedValueOnce({ callId: "c2", result: { added: 1 } });
+    const store = createFakeIdempotencyStore();
+    const middleware = createIdempotencyMiddleware({
+      toolNames: ["add_to_ledger"],
+      store,
+    });
+
+    const first = await executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: { results: [{ title: "Study A", authors: "A", year: 2024 }] },
+        callId: "c1",
+        context: { projectId: "p1", userId: "u1", runId: "r1", rootRunId: "root-1" },
+      },
+      [middleware],
+      executor
+    );
+    const second = await executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: { results: [{ title: "Study A", authors: "A", year: 2024 }] },
+        callId: "c2",
+        context: { projectId: "p1", userId: "u1", runId: "r2", rootRunId: "root-1" },
+      },
+      [middleware],
+      executor
+    );
+
+    expect(first).toEqual({
+      callId: "c1",
+      result: null,
+      error: "Tool execution failed: executor boom",
+    });
+    expect(store.release).toHaveBeenCalledTimes(1);
+    expect(second.error).toBeUndefined();
+    expect(second.result).toEqual({ added: 1 });
+    expect(executor).toHaveBeenCalledTimes(2);
+  });
+
+  it("releases a persistent reservation when a later before hook blocks", async () => {
+    const executor = vi.fn(async () => ({ callId: "c1", result: { added: 1 } }));
+    const store = createFakeIdempotencyStore();
+    const middleware = createIdempotencyMiddleware({
+      toolNames: ["add_to_ledger"],
+      store,
+    });
+    const policyGate: ToolMiddleware = {
+      name: "policy-gate",
+      before: () => null,
+    };
+
+    const result = await executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: { results: [{ title: "Study A", authors: "A", year: 2024 }] },
+        callId: "c1",
+        context: { projectId: "p1", userId: "u1", runId: "r1", rootRunId: "root-1" },
+      },
+      [middleware, policyGate],
+      executor
+    );
+
+    expect(executor).not.toHaveBeenCalled();
+    expect(result.error).toContain("blocked");
+    expect(store.complete).not.toHaveBeenCalled();
+    expect(store.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a stale persistent reservation be taken over instead of blocking forever", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));
+    const abortError = new DOMException("The operation was aborted.", "AbortError");
+    const executor = vi.fn()
+      .mockRejectedValueOnce(abortError)
+      .mockResolvedValueOnce({ callId: "c2", result: { added: 1 } });
+    const store = createFakeIdempotencyStore();
+    const middleware = createIdempotencyMiddleware({
+      toolNames: ["add_to_ledger"],
+      staleRunningMs: 1_000,
+      store,
+    });
+
+    await expect(executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: { results: [{ title: "Study A", authors: "A", year: 2024 }] },
+        callId: "c1",
+        context: { projectId: "p1", userId: "u1", runId: "r1", rootRunId: "root-1" },
+      },
+      [middleware],
+      executor
+    )).rejects.toThrow("The operation was aborted.");
+
+    vi.setSystemTime(new Date("2026-05-06T00:00:02.000Z"));
+    const retry = await executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: { results: [{ title: "Study A", authors: "A", year: 2024 }] },
+        callId: "c2",
+        context: { projectId: "p1", userId: "u1", runId: "r2", rootRunId: "root-1" },
+      },
+      [middleware],
+      executor
+    );
+
+    expect(retry.error).toBeUndefined();
+    expect(retry.result).toEqual({ added: 1 });
+    expect(store.release).not.toHaveBeenCalled();
+    expect(executor).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 });

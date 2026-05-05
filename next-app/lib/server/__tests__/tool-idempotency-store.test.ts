@@ -91,6 +91,7 @@ describe("tool idempotency store", () => {
       id: "receipt-1",
       status: "running",
       result: null,
+      createdAt: new Date("2026-05-06T00:00:00.000Z"),
     });
     const store = createPrismaToolIdempotencyStore();
 
@@ -102,6 +103,52 @@ describe("tool idempotency store", () => {
     });
 
     expect(result).toEqual({ status: "in_flight", reservationId: "receipt-1" });
+  });
+
+  it("takes over a stale running receipt with a fresh reservation lease", async () => {
+    const staleRunningBefore = new Date("2026-05-06T00:01:00.000Z");
+    const now = new Date("2026-05-06T00:02:00.000Z");
+    mocks.create.mockRejectedValue({ code: "P2002" });
+    mocks.findUnique.mockResolvedValue({
+      id: "receipt-1",
+      status: "running",
+      result: null,
+      createdAt: new Date("2026-05-06T00:00:00.000Z"),
+    });
+    mocks.updateMany.mockResolvedValue({ count: 1 });
+    const store = createPrismaToolIdempotencyStore();
+
+    const result = await store.reserve(
+      {
+        scopeKey: "root-1",
+        toolName: "add_to_ledger",
+        fingerprint: "fp",
+        callId: "c2",
+        runId: "run-2",
+        projectId: "project-1",
+        userId: "user-1",
+        studyId: null,
+      },
+      { staleRunningBefore, now }
+    );
+
+    expect(result).toEqual({ status: "reserved", reservationId: "receipt-1" });
+    expect(mocks.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "receipt-1",
+        status: "running",
+        createdAt: { lt: staleRunningBefore },
+      },
+      data: {
+        callId: "c2",
+        runId: "run-2",
+        projectId: "project-1",
+        userId: "user-1",
+        studyId: null,
+        completedAt: null,
+        createdAt: now,
+      },
+    });
   });
 
   it("completes a reservation with a replay-safe callId-neutral result", async () => {

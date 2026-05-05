@@ -8,6 +8,7 @@ import {
     normalizeDoi,
     resolveCitationKey,
 } from "@/lib/citation-key";
+import { createLinkedAbortController, isAbortLikeError } from "@/lib/abort";
 import { logServerError } from "@/lib/server/logging";
 
 export type CitationResolution = {
@@ -150,25 +151,31 @@ async function fetchWithTimeout(
     input: RequestInfo | URL,
     init: RequestInit,
     timeoutMs: number,
+    signal?: AbortSignal,
 ): Promise<{ response: Response | null; timedOut: boolean }> {
     if (timeoutMs <= 0) return { response: null, timedOut: true };
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutController = new AbortController();
+    const linkedAbort = createLinkedAbortController([timeoutController.signal, signal]);
+    const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
 
     try {
         const response = await fetch(input, {
             ...init,
-            signal: controller.signal,
+            signal: linkedAbort.signal,
         });
         return { response, timedOut: false };
     } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
+        if (isAbortLikeError(error)) {
+            if (signal?.aborted) {
+                throw error;
+            }
             return { response: null, timedOut: true };
         }
         throw error;
     } finally {
         clearTimeout(timeoutId);
+        linkedAbort.dispose();
     }
 }
 
@@ -521,6 +528,7 @@ async function fetchCrossrefMetadataWithStatus(
     doi: string,
     options?: {
         timeoutMs?: number;
+        signal?: AbortSignal;
     },
 ): Promise<CrossrefLookupResult> {
     try {
@@ -537,6 +545,7 @@ async function fetchCrossrefMetadataWithStatus(
                     next: { revalidate: 3600 },
                 },
                 options.timeoutMs,
+                options.signal,
             )
             : {
                 response: await fetch(url, {
@@ -544,6 +553,7 @@ async function fetchCrossrefMetadataWithStatus(
                         "User-Agent": CROSSREF_USER_AGENT,
                     },
                     next: { revalidate: 3600 },
+                    signal: options?.signal,
                 }),
                 timedOut: false,
             };
@@ -600,6 +610,12 @@ async function fetchCrossrefMetadataWithStatus(
             },
         };
     } catch (error) {
+        if (isAbortLikeError(error)) {
+            if (options?.signal?.aborted) {
+                throw error;
+            }
+            return { metadata: null, status: "timeout" };
+        }
         logServerError("citation-metadata", "crossref fetch failed", { doi }, error);
         return { metadata: null, status: "provider_error" };
     }
@@ -609,6 +625,7 @@ export async function fetchCrossrefMetadata(
     doi: string,
     options?: {
         timeoutMs?: number;
+        signal?: AbortSignal;
     },
 ): Promise<CitationMetadata | null> {
     const result = await fetchCrossrefMetadataWithStatus(doi, options);
