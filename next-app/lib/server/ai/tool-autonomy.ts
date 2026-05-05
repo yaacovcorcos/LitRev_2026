@@ -24,6 +24,7 @@ import { mapToolToArtifactType, mapToolToArtifactTitle } from "./tool-helpers";
 import { createAutonomyBlockedErrorEnvelope } from "@/lib/ai/error-envelope";
 import type { AIService, ToolRuntimeContext } from "./ai-service";
 import { logServerError } from "@/lib/server/logging";
+import { isIdempotencyReplayResult } from "./tool-middleware";
 
 export type DelegatedAutonomyBlockedReason = "disabled_by_autonomy" | "approval_required";
 export type AutonomyLevelOneBehavior = "suggest" | "block";
@@ -308,6 +309,7 @@ export async function executeToolWithAutonomyCore(
             studyId,
             userId,
             runId,
+            rootRunId: runtimeContext?.rootRunId ?? parentRunId ?? runId,
             parentRunId: parentRunId ?? runId,
             conversationId,
             autonomyConfig,
@@ -328,7 +330,12 @@ export async function executeToolWithAutonomyCore(
         durationMs,
     });
 
-    if (result.error || result.requiresUserInput || result.blockedByAutonomy) {
+    if (
+        result.error
+        || result.requiresUserInput
+        || result.blockedByAutonomy
+        || isIdempotencyReplayResult(result)
+    ) {
         return result as ToolResultWithArtifactState;
     }
 

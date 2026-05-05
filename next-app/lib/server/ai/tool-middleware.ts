@@ -3,6 +3,11 @@ import type { ToolResult } from "@/types/ai";
 import type { ToolExecutionContext } from "@/lib/server/ai/tools/base";
 import { logServerError } from "@/lib/server/logging";
 import { isAbortLikeError } from "@/lib/abort";
+import {
+  createPrismaToolIdempotencyStore,
+  type ToolIdempotencyReservationInput,
+  type ToolIdempotencyStore,
+} from "./tool-idempotency-store";
 
 export type ToolExecutionRequest = {
   name: string;
@@ -14,10 +19,15 @@ export type ToolExecutionRequest = {
    * When present, executeWithToolMiddleware returns this result without invoking executor.
    */
   shortCircuitResult?: ToolResult;
+  shortCircuitReason?: "idempotency_replay" | "idempotency_in_flight";
   /**
-   * Internal per-request cache key set by idempotency middleware.
+   * Internal per-request idempotency receipt set by idempotency middleware.
    */
-  idempotencyCacheKey?: string;
+  idempotencyReceipt?: {
+    key: ToolIdempotencyReservationInput;
+    reservationId?: string | null;
+    persistent: boolean;
+  };
 };
 
 export type ToolMiddleware = {
@@ -44,12 +54,22 @@ function blockedResult(request: ToolExecutionRequest, middlewareName?: string): 
 
 const DEFAULT_IDEMPOTENT_MUTATION_TOOLS = new Set([
   "add_to_ledger",
+  "bulk_screening",
+  "create_project",
+  "delete_study",
+  "exclude_study",
+  "forget_memory",
   "update_study",
+  "update_study_direct",
+  "update_protocol",
+  "update_criteria",
+  "update_note",
   "store_memory",
 ]);
 
 const DEFAULT_IDEMPOTENCY_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_IDEMPOTENCY_MAX_ENTRIES = 1024;
+const TOOL_IDEMPOTENCY_REPLAY = Symbol.for("litrev.ai.tool_idempotency_replay");
 
 type IdempotencyCacheEntry = {
   result: ToolResult;
@@ -79,28 +99,77 @@ function requestFingerprint(request: ToolExecutionRequest): string {
     userId: request.context?.userId ?? null,
     projectId: request.context?.projectId ?? null,
     studyId: request.context?.studyId ?? null,
-    // Scope deduplication to the current run to prevent masking
-    // intentional repeated actions across separate user turns.
-    runId: request.context?.runId ?? null,
   };
   return createHash("sha256").update(stableSerialize(payload)).digest("hex");
 }
 
-function replayResult(cached: ToolResult, callId: string): ToolResult {
+function toolIdempotencyScopeKey(request: ToolExecutionRequest): string | null {
+  return (
+    request.context?.rootRunId
+    ?? request.context?.parentRunId
+    ?? request.context?.runId
+    ?? null
+  );
+}
+
+function buildReceiptKey(
+  request: ToolExecutionRequest,
+  scopeKey: string,
+  fingerprint: string,
+): ToolIdempotencyReservationInput {
   return {
+    scopeKey,
+    toolName: request.name,
+    fingerprint,
+    callId: request.callId,
+    runId: request.context?.runId ?? null,
+    projectId: request.context?.projectId ?? null,
+    userId: request.context?.userId ?? null,
+    studyId: request.context?.studyId ?? null,
+  };
+}
+
+function inFlightResult(request: ToolExecutionRequest): ToolResult {
+  return {
+    callId: request.callId,
+    result: null,
+    error: `Tool "${request.name}" is already running for this run lineage. Continue from the recorded result instead of executing the same mutation twice.`,
+  };
+}
+
+export function markIdempotencyReplayResult(result: ToolResult): ToolResult {
+  Object.defineProperty(result, TOOL_IDEMPOTENCY_REPLAY, {
+    value: true,
+    enumerable: false,
+  });
+  return result;
+}
+
+function replayResult(cached: ToolResult, callId: string, markReplay = true): ToolResult {
+  const result = {
     ...cached,
     callId,
   };
+  if (markReplay) {
+    markIdempotencyReplayResult(result);
+  }
+  return result;
+}
+
+export function isIdempotencyReplayResult(result: ToolResult): boolean {
+  return Boolean((result as ToolResult & { [TOOL_IDEMPOTENCY_REPLAY]?: true })[TOOL_IDEMPOTENCY_REPLAY]);
 }
 
 export function createIdempotencyMiddleware(config?: {
   toolNames?: string[];
   ttlMs?: number;
   maxEntries?: number;
+  store?: ToolIdempotencyStore | null;
 }): ToolMiddleware {
   const protectedTools = new Set(config?.toolNames ?? Array.from(DEFAULT_IDEMPOTENT_MUTATION_TOOLS));
   const ttlMs = Math.max(1_000, config?.ttlMs ?? DEFAULT_IDEMPOTENCY_TTL_MS);
   const maxEntries = Math.max(32, config?.maxEntries ?? DEFAULT_IDEMPOTENCY_MAX_ENTRIES);
+  const store = config?.store === undefined ? createPrismaToolIdempotencyStore() : config.store;
   const cache = new Map<string, IdempotencyCacheEntry>();
 
   const pruneExpired = (now: number) => {
@@ -121,29 +190,88 @@ export function createIdempotencyMiddleware(config?: {
 
   return {
     name: "idempotency-envelope",
-    before: (request) => {
+    before: async (request) => {
       if (!protectedTools.has(request.name)) return request;
+      const scopeKey = toolIdempotencyScopeKey(request);
+      const fingerprint = requestFingerprint(request);
+
+      if (store && scopeKey) {
+        const receiptKey = buildReceiptKey(request, scopeKey, fingerprint);
+        const reservation = await store.reserve(receiptKey);
+        if (reservation.status === "replay") {
+          return {
+            ...request,
+            shortCircuitReason: "idempotency_replay",
+            shortCircuitResult: reservation.result,
+          };
+        }
+        if (reservation.status === "in_flight") {
+          return {
+            ...request,
+            shortCircuitReason: "idempotency_in_flight",
+            shortCircuitResult: inFlightResult(request),
+          };
+        }
+        return {
+          ...request,
+          idempotencyReceipt: {
+            key: receiptKey,
+            reservationId: reservation.reservationId,
+            persistent: true,
+          },
+        };
+      }
+
+      const cacheScopeKey = scopeKey ?? "process-local";
+      const receiptKey = buildReceiptKey(request, cacheScopeKey, fingerprint);
       const now = Date.now();
       pruneExpired(now);
-      const key = requestFingerprint(request);
+      const key = `${cacheScopeKey}:${request.name}:${fingerprint}`;
       const cached = cache.get(key);
       if (cached && cached.expiresAt > now) {
         return {
           ...request,
-          idempotencyCacheKey: key,
-          shortCircuitResult: replayResult(cached.result, request.callId),
+          shortCircuitReason: "idempotency_replay",
+          shortCircuitResult: cached.result,
         };
       }
-      return { ...request, idempotencyCacheKey: key };
+      return {
+        ...request,
+        idempotencyReceipt: {
+          key: receiptKey,
+          persistent: false,
+        },
+      };
     },
-    after: (request, result) => {
+    after: async (request, result) => {
       if (!protectedTools.has(request.name)) return;
-      if (!request.idempotencyCacheKey) return;
+      if (!request.idempotencyReceipt) return;
+
+      if (request.idempotencyReceipt.persistent && store) {
+        if (result.error) {
+          await store.release({
+            scopeKey: request.idempotencyReceipt.key.scopeKey,
+            toolName: request.idempotencyReceipt.key.toolName,
+            fingerprint: request.idempotencyReceipt.key.fingerprint,
+            reservationId: request.idempotencyReceipt.reservationId,
+          });
+          return;
+        }
+        await store.complete({
+          ...request.idempotencyReceipt.key,
+          callId: request.callId,
+          reservationId: request.idempotencyReceipt.reservationId,
+          result,
+        });
+        return;
+      }
+
       if (result.error) return;
 
       const now = Date.now();
       pruneExpired(now);
-      cache.set(request.idempotencyCacheKey, {
+      const key = `${request.idempotencyReceipt.key.scopeKey}:${request.name}:${request.idempotencyReceipt.key.fingerprint}`;
+      cache.set(key, {
         result: {
           ...result,
           // Replay result should always use the current callId.
@@ -174,7 +302,11 @@ export async function executeWithToolMiddleware(
       if (nextRequest) {
         resolvedRequest = nextRequest;
         if (resolvedRequest.shortCircuitResult) {
-          return replayResult(resolvedRequest.shortCircuitResult, resolvedRequest.callId);
+          return replayResult(
+            resolvedRequest.shortCircuitResult,
+            resolvedRequest.callId,
+            resolvedRequest.shortCircuitReason === "idempotency_replay",
+          );
         }
       }
     } catch (error) {

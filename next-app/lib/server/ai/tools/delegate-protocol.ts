@@ -71,6 +71,7 @@ export const delegateProtocolTool: AITool = {
             projectId: context?.projectId,
             userId: context?.userId,
             parentRunId: context?.runId,
+            rootRunId: context?.rootRunId,
             conversationId: context?.conversationId,
             autonomyConfig: context?.autonomyConfig,
             systemContexts: context?.systemContexts,

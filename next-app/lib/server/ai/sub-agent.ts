@@ -48,6 +48,8 @@ export interface SubAgentParams {
     studyId?: string;
     /** Parent run ID for tracing lineage */
     parentRunId?: string;
+    /** Root run ID for retry/continuation-safe idempotency across the delegated lineage. */
+    rootRunId?: string;
     /** Parent conversation ID for delegated artifact visibility */
     conversationId?: string;
     /** Cached autonomy configuration from the parent run. */
@@ -172,6 +174,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
     const toolLog: SubAgentResult["toolLog"] = [];
     const delegatedArtifacts: ToolResultArtifact[] = [];
     let childRunId: string | null = null;
+    let childRootRunId: string | null = null;
     let childRunHeartbeat: RunHeartbeatController | null = null;
     let childRunStatus: Extract<RunStatus, "completed" | "failed" | "cancelled" | "paused"> = "completed";
     let pendingUserInputRequest: UserInputRequest | undefined;
@@ -212,6 +215,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             model: params.model,
         });
         childRunId = childRun.id;
+        childRootRunId = childRun.rootRunId ?? params.rootRunId ?? childRun.id;
         childRunHeartbeat = startRunHeartbeat(childRun.id, {
             onError: (error) => {
                 logServerWarn("sub-agent", "run heartbeat failed", {
@@ -382,6 +386,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                     cachedAutonomyConfig: params.autonomyConfig,
                     runtimeContext: {
                         signal,
+                        rootRunId: childRootRunId,
                         protocolData: null,
                         autonomyConfig: params.autonomyConfig,
                         systemContexts,

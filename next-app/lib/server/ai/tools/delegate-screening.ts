@@ -72,6 +72,7 @@ export const delegateScreeningTool: AITool = {
             userId: context?.userId,
             studyId: context?.studyId,
             parentRunId: context?.runId,
+            rootRunId: context?.rootRunId,
             conversationId: context?.conversationId,
             autonomyConfig: context?.autonomyConfig,
             systemContexts: context?.systemContexts,

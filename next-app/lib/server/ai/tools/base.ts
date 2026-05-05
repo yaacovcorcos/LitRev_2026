@@ -85,6 +85,8 @@ export interface ToolExecutionContext {
     studyId?: string;
     userId?: string;
     runId?: string;
+    /** Root run ID for retry/continuation-safe idempotency across a run lineage. */
+    rootRunId?: string;
     /** Parent run ID when executing inside a sub-agent */
     parentRunId?: string;
     /** Parent-visible conversation ID for artifact routing when available. */
