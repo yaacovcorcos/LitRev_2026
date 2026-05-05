@@ -605,6 +605,7 @@ model AgentRun {
   events      RunEvent[]
   checkpoints RunCheckpoint[]
   toolIdempotencyRecords ToolIdempotencyRecord[]
+  decisionRequests DecisionRequestRecord[]
   artifacts   Artifact[]
 
   @@index([projectId, startedAt])
@@ -687,6 +688,47 @@ model ToolIdempotencyRecord {
   @@index([runId])
   @@index([projectId])
   @@index([userId])
+}
+
+model DecisionRequestRecord {
+  id                  String    @id @default(cuid())
+  callId              String
+  sourceRunId         String
+  rootRunId           String?
+  conversationId      String?
+  projectId           String?
+  userId              String?
+  studyId             String?
+  decisionBoundaryKey String
+  status              String    @default("pending") // "pending" | "answered" | "accepted_recommended" | "cancelled" | "superseded" | "interrupted" | "stale" | "expired"
+  request             Json
+  createdAt           DateTime  @default(now())
+  resolvedAt          DateTime?
+
+  run        AgentRun                  @relation(fields: [sourceRunId], references: [id], onDelete: Cascade)
+  resolution DecisionResolutionRecord?
+
+  @@unique([sourceRunId, callId])
+  @@index([conversationId, status, createdAt])
+  @@index([rootRunId, createdAt])
+  @@index([projectId, status, createdAt])
+  @@index([decisionBoundaryKey, status])
+}
+
+model DecisionResolutionRecord {
+  id             String   @id @default(cuid())
+  requestId      String   @unique
+  callId         String
+  sourceRunId    String
+  resolutionKind String
+  resolution     Json
+  userId         String?
+  createdAt      DateTime @default(now())
+
+  request DecisionRequestRecord @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([sourceRunId, createdAt])
+  @@index([callId])
 }
 
 model ChatUnificationMetric {

@@ -1,8 +1,17 @@
 import "server-only";
 
+import {
+    normalizeUserInputRequestWithDecisionRequest,
+    resolveDecisionBoundaryKeyFromQuestion,
+} from "@/lib/ai/decision-requests";
 import { resolveUserInputQuestionId } from "@/lib/ai/user-input";
 import { prisma } from "@/lib/server/prisma";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
+import {
+    findDecisionRequestRecordForUserInput,
+    parseDecisionRequestRecordRequest,
+    resolveDecisionRequestForUserInputWithinTransaction,
+} from "@/lib/server/ai/decision-request-store";
 import type {
     ClarificationFallbackAction,
     ToolResult,
@@ -128,14 +137,7 @@ export function resolveDecisionBoundaryKey(params: {
     decisionBoundaryKey?: string | null;
     question: string;
 }): string {
-    const explicit = params.decisionBoundaryKey?.trim();
-    if (explicit) return explicit;
-    return params.question
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 120);
+    return resolveDecisionBoundaryKeyFromQuestion(params);
 }
 
 export async function hydrateClarificationControllerState(params: {
@@ -440,6 +442,31 @@ export async function resolvePendingUserInputSource(params: {
         throw new Error("The pending clarification source run could not be found.");
     }
 
+    const decisionRecord = await findDecisionRequestRecordForUserInput({
+        sourceRunId: run.id,
+        conversationId: params.conversationId ?? null,
+        callId: params.callId,
+    });
+    if (decisionRecord) {
+        if (decisionRecord.status !== "pending") {
+            throw new Error("That clarification request has already been resolved.");
+        }
+        const request = parseDecisionRequestRecordRequest(decisionRecord);
+        if (!request?.callId) {
+            throw new Error("The pending clarification payload is invalid.");
+        }
+        return {
+            sourceRunId: run.id,
+            conversationId: run.conversationId ?? decisionRecord.conversationId ?? null,
+            request: {
+                ...request,
+                questionId: resolveUserInputQuestionId(request.questionId, request.callId),
+                sourceRunId: run.id,
+            },
+            requiredSequence: -1,
+        };
+    }
+
     const events = await prisma.runEvent.findMany({
         where: {
             runId: run.id,
@@ -483,13 +510,18 @@ export async function resolvePendingUserInputSource(params: {
     if (!request?.callId) {
         throw new Error("The pending clarification payload is invalid.");
     }
+    const normalizedRequest = normalizeUserInputRequestWithDecisionRequest({
+        request,
+        sourceRunId: run.id,
+        conversationId: run.conversationId ?? null,
+    });
 
     return {
         sourceRunId: run.id,
         conversationId: run.conversationId ?? null,
         request: {
-            ...request,
-            questionId: resolveUserInputQuestionId(request.questionId, request.callId),
+            ...normalizedRequest,
+            questionId: resolveUserInputQuestionId(normalizedRequest.questionId, normalizedRequest.callId),
             sourceRunId: run.id,
         },
         requiredSequence: requiredEvent.sequence,
@@ -498,11 +530,21 @@ export async function resolvePendingUserInputSource(params: {
 
 export async function persistUserInputResolution(params: {
     resolution: UserInputResolution;
+    request?: UserInputRequest;
 }): Promise<void> {
+    const request = params.request;
     await recordRunEvent({
         runId: params.resolution.sourceRunId,
         type: "user_input_resolved",
         payload: params.resolution,
+        afterCreateInTransaction: request
+            ? async (tx) => {
+                await resolveDecisionRequestForUserInputWithinTransaction(tx, {
+                    request,
+                    resolution: params.resolution,
+                });
+            }
+            : undefined,
         failureMode: "strict",
         degradationReason: "user_input_resolved_persistence_failed",
         logContext: "user_input_resolved",

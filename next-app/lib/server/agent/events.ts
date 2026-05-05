@@ -27,6 +27,10 @@ export interface EmitEventExtras {
 const MAX_SEQUENCE_RETRY_ATTEMPTS = 5;
 
 type RunEventTransactionClient = Prisma.TransactionClient;
+export type EmitEventAfterCreate = (
+    tx: RunEventTransactionClient,
+    event: Awaited<ReturnType<typeof emitEventWithinTransaction>>,
+) => Promise<void>;
 
 function getAllowedStatusesForEventType(type: RunEventType) {
     return type === "user_input_resolved"
@@ -128,17 +132,22 @@ export async function emitEvent(
     runId: string,
     type: RunEventType,
     payload: unknown,
-    extras?: EmitEventExtras
+    extras?: EmitEventExtras,
+    afterCreateInTransaction?: EmitEventAfterCreate,
 ) {
     for (let attempt = 0; attempt < MAX_SEQUENCE_RETRY_ATTEMPTS; attempt++) {
         try {
-            const created = await prisma.$transaction(async (tx) => emitEventWithinTransaction(
-                tx,
-                runId,
-                type,
-                payload,
-                extras,
-            ));
+            const created = await prisma.$transaction(async (tx) => {
+                const event = await emitEventWithinTransaction(
+                    tx,
+                    runId,
+                    type,
+                    payload,
+                    extras,
+                );
+                await afterCreateInTransaction?.(tx, event);
+                return event;
+            });
             noteObservedRunActivity(runId, created.createdAt);
             return created;
         } catch (error) {

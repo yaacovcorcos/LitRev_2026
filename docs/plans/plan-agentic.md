@@ -86,6 +86,9 @@ The agent should not merely "feel smart." It should be:
   - canonical identity is `sourceRunId + callId`
   - `questionId` support already exists as additive question-level structure
   - answer/default/cancel are structured runtime actions, not shell-local hacks
+  - new pauses are mirrored as `user_input_required` stream/run events but also persisted as canonical `DecisionRequestRecord` rows
+  - resumed answers/defaults/cancellations are mirrored as `user_input_resolved` stream/run events but also persisted as canonical `DecisionResolutionRecord` rows
+  - pending clarification lookup prefers first-class decision records and falls back to run events for legacy lineages
 - Tool boundaries are materially better:
   - typed tool payload parsing
   - structured tool-boundary failures
@@ -194,6 +197,7 @@ Active work:
     - one to three tightly coupled questions
     - structured option + nuance support
     - durable decision objects instead of thin answer strings
+    - current runtime foundation persists canonical decision requests/resolutions while preserving legacy stream-event compatibility
 
 - [ ] `C-002` Ship `CAG-019` user-visible run board for tasks, blockers, and clarifications.
   - outcome:

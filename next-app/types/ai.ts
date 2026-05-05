@@ -59,14 +59,105 @@ export type ToolCall = {
 export type UserInputQuestionType = "single_choice" | "yes_no" | "free_text" | "multi_select";
 
 export type UserInputOption = {
+    optionId?: string;
     label: string;
     description?: string;
+    impact?: string;
+    isRecommended?: boolean;
+    recommendedReason?: string;
 };
 
 export type UserInputResolutionKind =
     | "answered"
     | "accept_recommended"
     | "cancelled";
+
+export type DecisionRequestStatus =
+    | "pending"
+    | "answered"
+    | "accepted_recommended"
+    | "cancelled"
+    | "superseded"
+    | "interrupted"
+    | "stale"
+    | "expired";
+
+export type DecisionBlockingLevel = "blocking" | "reviewable";
+
+export type DecisionOption = {
+    optionId: string;
+    label: string;
+    description?: string;
+    impact?: string;
+    isRecommended?: boolean;
+    recommendedReason?: string;
+};
+
+export type DecisionQuestion = {
+    questionId: string;
+    header?: string;
+    prompt: string;
+    responseKind: UserInputQuestionType;
+    required: boolean;
+    allowNote: boolean;
+    allowOther: boolean;
+    isSecret: boolean;
+    recommendedOptionId?: string;
+    options?: DecisionOption[];
+};
+
+export type DecisionRequest = {
+    id: string;
+    callId: string;
+    sourceRunId?: string;
+    rootRunId?: string;
+    conversationId?: string;
+    projectId?: string;
+    studyId?: string;
+    userId?: string;
+    decisionBoundaryKey: string;
+    decisionKind: string;
+    blockingLevel: DecisionBlockingLevel;
+    whyThisDecisionIsNeeded?: string;
+    whatChangesIfYouChooseDifferently?: string;
+    reversible?: boolean;
+    canProceedUnderRecommendation?: boolean;
+    recommendedPathSummary?: string;
+    recommendedPathReason?: string;
+    status: DecisionRequestStatus;
+    questions: DecisionQuestion[];
+    createdAt?: string;
+    resolvedAt?: string;
+    supersededByTurnId?: string;
+};
+
+export type DecisionResolutionKind =
+    | "answered"
+    | "accepted_recommended"
+    | "cancelled"
+    | "superseded"
+    | "interrupted"
+    | "stale"
+    | "expired";
+
+export type DecisionAnswer = {
+    questionId: string;
+    selectedOptionIds?: string[];
+    note?: string;
+    freeText?: string;
+    skipped?: boolean;
+};
+
+export type DecisionResolution = {
+    requestId: string;
+    callId: string;
+    sourceRunId: string;
+    resolutionKind: DecisionResolutionKind;
+    answers: DecisionAnswer[];
+    answeredAt: string;
+    decisionBoundaryKey: string;
+    resolvedByUserTurnId?: string;
+};
 
 export type ClarificationFallbackAction =
     | "use_recommended_default"
@@ -96,6 +187,8 @@ export type UserInputRequest = {
     answered?: boolean;
     /** Client-visible resolved answer text, when present. */
     answer?: string;
+    /** Canonical decision-domain request. Legacy fields above mirror its primary question. */
+    decisionRequest?: DecisionRequest;
 };
 
 export type UserInputResolution = {
@@ -108,6 +201,10 @@ export type UserInputResolution = {
     selectedOptions?: string[];
     answeredAt: string;
     decisionBoundaryKey?: string;
+    /** Canonical structured answers when the client can provide them. */
+    answers?: DecisionAnswer[];
+    /** Canonical decision-domain resolution. Legacy fields above remain transport mirrors. */
+    decisionResolution?: DecisionResolution;
 };
 
 export type RuntimeSendOverrides = {

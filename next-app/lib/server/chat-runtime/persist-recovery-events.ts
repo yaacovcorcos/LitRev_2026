@@ -5,6 +5,8 @@ import {
   recordRunEvent,
   type RunEventFailureMode,
 } from "@/lib/server/agent/run-event-recorder";
+import { normalizeUserInputRequestWithDecisionRequest } from "@/lib/ai/decision-requests";
+import { upsertDecisionRequestForUserInputWithinTransaction } from "@/lib/server/ai/decision-request-store";
 
 export async function persistRecoveryAuthoritativeRuntimeEvent(params: {
   runId: string;
@@ -13,15 +15,37 @@ export async function persistRecoveryAuthoritativeRuntimeEvent(params: {
 }): Promise<void> {
     switch (params.event.type) {
         case "user_input_required":
+        {
+            const userInputRequest = normalizeUserInputRequestWithDecisionRequest({
+                request: params.event.userInputRequest,
+                sourceRunId: params.event.userInputRequest.sourceRunId ?? params.runId,
+                rootRunId: params.event.userInputRequest.decisionRequest?.rootRunId,
+                conversationId: params.event.conversationId,
+                projectId: params.event.userInputRequest.decisionRequest?.projectId,
+                userId: params.event.userInputRequest.decisionRequest?.userId,
+                studyId: params.event.userInputRequest.decisionRequest?.studyId,
+            });
             await recordRunEvent({
                 runId: params.runId,
                 type: "user_input_required",
-        payload: params.event.userInputRequest,
-        failureMode: params.failureMode ?? "strict",
-        degradationReason: "user_input_required_persistence_failed",
+                payload: userInputRequest,
+                afterCreateInTransaction: async (tx) => {
+                    await upsertDecisionRequestForUserInputWithinTransaction(tx, {
+                        request: userInputRequest,
+                        sourceRunId: userInputRequest.sourceRunId ?? params.runId,
+                        rootRunId: userInputRequest.decisionRequest?.rootRunId,
+                        conversationId: params.event.conversationId,
+                        projectId: userInputRequest.decisionRequest?.projectId,
+                        userId: userInputRequest.decisionRequest?.userId,
+                        studyId: userInputRequest.decisionRequest?.studyId,
+                    });
+                },
+                failureMode: params.failureMode ?? "strict",
+                degradationReason: "user_input_required_persistence_failed",
                 logContext: "user_input_required",
             });
             return;
+        }
         case "user_input_resolved":
             await recordRunEvent({
                 runId: params.runId,
