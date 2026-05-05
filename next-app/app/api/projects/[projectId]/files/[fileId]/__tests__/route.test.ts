@@ -112,7 +112,9 @@ describe("GET /api/projects/[projectId]/files/[fileId]", () => {
     expect(response.headers.get("Content-Type")).toBe("application/pdf");
     expect(response.headers.get("Content-Length")).toBe("10");
     expect(response.headers.get("Cache-Control")).toBe("private, no-store, max-age=0");
+    expect(response.headers.get("Content-Disposition")).toContain("attachment;");
     expect(response.headers.get("Content-Disposition")).toContain("paper.pdf");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     await expect(response.text()).resolves.toBe("file-bytes");
     expect(mocks.fetchFileAssetResponse).toHaveBeenCalledWith(
       expect.objectContaining({ id: "file-1" }),
@@ -140,5 +142,26 @@ describe("GET /api/projects/[projectId]/files/[fileId]", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: "Not found" });
+  });
+
+  it("forces attachment and nosniff even when upstream storage returns browser-active content", async () => {
+    mocks.fetchFileAssetResponse.mockResolvedValue(
+      new Response("<script>alert(1)</script>", {
+        headers: {
+          "content-type": "text/html",
+          "content-length": "25",
+        },
+      }),
+    );
+
+    const response = await GET(buildRequest(), {
+      params: Promise.resolve({ projectId: "proj-1", fileId: "file-1" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("text/html");
+    expect(response.headers.get("Content-Disposition")).toContain("attachment;");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    await expect(response.text()).resolves.toBe("<script>alert(1)</script>");
   });
 });

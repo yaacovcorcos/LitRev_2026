@@ -21,6 +21,8 @@ import { deleteFileAssetBlob, fetchFileAssetBytes, getClientFileAssetUrls } from
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET ?? "study-assets";
+const PDF_SIGNATURE = "%PDF-";
+const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 export type GeneratedProjectFileInput = {
   directory: string;
@@ -31,6 +33,12 @@ export type GeneratedProjectFileInput = {
   bytes: Uint8Array | Buffer;
   version?: number;
   metadata?: Record<string, unknown> | null;
+};
+
+type ValidatedStudyFileUpload = {
+  bytes: Uint8Array;
+  format: "pdf" | "docx";
+  mimeType: "application/pdf" | typeof DOCX_MIME_TYPE;
 };
 
 function toFileAsset(record: {
@@ -153,11 +161,6 @@ async function uploadBytesToSupabaseStorage(
   };
 }
 
-async function uploadToSupabaseStorage(path: string, file: File): Promise<{ storagePath: string }> {
-  const body = new Uint8Array(await file.arrayBuffer());
-  return uploadBytesToSupabaseStorage(path, body, file.type || "application/octet-stream");
-}
-
 function splitStoragePath(storagePath: string): { bucket: string; objectPath: string } {
   const trimmed = storagePath.trim().replace(/^\/+/, "");
   const idx = trimmed.indexOf("/");
@@ -199,10 +202,14 @@ export async function uploadStudyFile(
   file: File
 ): Promise<FileAsset> {
   const scope = await assertProjectAccess(scopeInput, projectId);
-  const ext = file.name.toLowerCase().slice(file.name.lastIndexOf(".") + 1);
+  const validated = await readValidatedStudyFileUpload(file);
   const safeName = sanitizeFilename(file.name);
   const objectPath = `projects/${projectId}/studies/${studyId}/${randomUUID()}-${safeName}`;
-  const { storagePath } = await uploadToSupabaseStorage(objectPath, file);
+  const { storagePath } = await uploadBytesToSupabaseStorage(
+    objectPath,
+    validated.bytes,
+    validated.mimeType
+  );
 
   const created = await prisma.fileAsset.create({
     data: {
@@ -210,9 +217,9 @@ export async function uploadStudyFile(
       workspaceId: scope.workspaceId,
       studyId,
       kind: "source",
-      format: ext || undefined,
+      format: validated.format,
       filename: file.name,
-      mimeType: file.type || "application/octet-stream",
+      mimeType: validated.mimeType,
       size: file.size,
       storagePath,
     },
@@ -298,22 +305,25 @@ export async function uploadChatAttachment(
   file: File
 ): Promise<{ fileAsset: FileAsset; extraction: PendingAttachmentExtraction }> {
   const scope = await assertProjectAccess(scopeInput, projectId);
-  validateFileServer(file);
+  const validated = await readValidatedStudyFileUpload(file);
 
-  const ext = file.name.toLowerCase().slice(file.name.lastIndexOf(".") + 1);
-  if (ext !== "pdf") {
+  if (validated.format !== "pdf") {
     throw new Error("Only PDF files can be attached to conversations.");
   }
 
   const safeName = sanitizeFilename(file.name);
   const objectPath = `projects/${projectId}/conversations/${randomUUID()}-${safeName}`;
-  const { storagePath } = await uploadToSupabaseStorage(objectPath, file);
+  const { storagePath } = await uploadBytesToSupabaseStorage(
+    objectPath,
+    validated.bytes,
+    validated.mimeType
+  );
 
   // Extract text from the uploaded PDF
   const { extractTextFromPdf } = await import("./pdf-extraction");
   let extraction: PendingAttachmentExtraction;
   try {
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const buffer = Buffer.from(validated.bytes);
     extraction = {
       status: "ready",
       text: await extractTextFromPdf(buffer),
@@ -331,9 +341,9 @@ export async function uploadChatAttachment(
       projectId,
       workspaceId: scope.workspaceId,
       kind: "attachment",
-      format: ext,
+      format: validated.format,
       filename: file.name,
-      mimeType: file.type || "application/pdf",
+      mimeType: validated.mimeType,
       size: file.size,
       storagePath,
       metadata: {
@@ -391,14 +401,49 @@ export async function extractTextFromExistingFile(
   return { fileAsset: toFileAsset(file), extraction };
 }
 
-function validateFileServer(file: File): void {
+async function readValidatedStudyFileUpload(file: File): Promise<ValidatedStudyFileUpload> {
   if (file.size > MAX_STUDY_FILE_SIZE) {
     throw new Error(`File too large. Maximum size is 100 MB.`);
   }
+
   const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
   if (!ALLOWED_STUDY_FILE_EXTENSIONS.includes(ext) && !ALLOWED_STUDY_FILE_TYPES.includes(file.type)) {
     throw new Error("Only PDF and DOCX files are allowed.");
   }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (ext === ".pdf") {
+    if (!hasPdfSignature(bytes)) {
+      throw new Error("Only valid PDF and DOCX files are allowed.");
+    }
+    return { bytes, format: "pdf", mimeType: "application/pdf" };
+  }
+
+  if (ext === ".docx") {
+    if (!hasDocxSignature(bytes)) {
+      throw new Error("Only valid PDF and DOCX files are allowed.");
+    }
+    return { bytes, format: "docx", mimeType: DOCX_MIME_TYPE };
+  }
+
+  throw new Error("Only PDF and DOCX files are allowed.");
+}
+
+function hasPdfSignature(bytes: Uint8Array): boolean {
+  const decoder = new TextDecoder("ascii");
+  const header = decoder.decode(bytes.slice(0, Math.min(bytes.byteLength, 1024)));
+  const trimmedHeader = header.replace(/^\uFEFF/, "").trimStart();
+  return trimmedHeader.startsWith(PDF_SIGNATURE);
+}
+
+function hasDocxSignature(bytes: Uint8Array): boolean {
+  if (bytes.byteLength < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+    return false;
+  }
+
+  const decoder = new TextDecoder("ascii");
+  const archiveText = decoder.decode(bytes);
+  return archiveText.includes("[Content_Types].xml") && archiveText.includes("word/");
 }
 
 /**
@@ -412,7 +457,7 @@ export async function importStudyWithPdf(
   file: File
 ): Promise<{ study: Study; fileAsset: FileAsset }> {
   const scope = await assertProjectAccess(scopeInput, projectId);
-  validateFileServer(file);
+  const validated = await readValidatedStudyFileUpload(file);
 
   const inferredTitle = file.name.replace(/\.[^/.]+$/, "").trim() || "Untitled Study";
   const inferredYear = new Date().getFullYear();
@@ -427,12 +472,15 @@ export async function importStudyWithPdf(
   const matchedDuplicate = duplicates[0];
 
   const studyId = matchedDuplicate?.existingStudyId ?? randomUUID();
-  const ext = file.name.toLowerCase().slice(file.name.lastIndexOf(".") + 1);
   const safeName = sanitizeFilename(file.name);
   const objectPath = `projects/${projectId}/studies/${studyId}/${randomUUID()}-${safeName}`;
 
   // 1. Upload blob first (can't be inside a DB transaction)
-  const { storagePath } = await uploadToSupabaseStorage(objectPath, file);
+  const { storagePath } = await uploadBytesToSupabaseStorage(
+    objectPath,
+    validated.bytes,
+    validated.mimeType
+  );
 
   // 2. Create Study + FileAsset in a single DB transaction
   try {
@@ -465,9 +513,9 @@ export async function importStudyWithPdf(
           workspaceId: scope.workspaceId,
           studyId,
           kind: "source",
-          format: ext || undefined,
+          format: validated.format,
           filename: file.name,
-          mimeType: file.type || "application/octet-stream",
+          mimeType: validated.mimeType,
           size: file.size,
           storagePath,
         },

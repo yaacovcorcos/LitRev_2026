@@ -15,9 +15,9 @@ function sanitizeDownloadFilename(filename: string): string {
     .replace(/[^\x20-\x7E]/g, "_");
 }
 
-function buildInlineDisposition(filename: string): string {
+function buildAttachmentDisposition(filename: string): string {
   const fallback = sanitizeDownloadFilename(filename);
-  return `inline; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 export async function GET(
@@ -78,9 +78,10 @@ export async function GET(
     if (contentLength) {
       headers.set("Content-Length", contentLength);
     }
-    headers.set("Content-Disposition", buildInlineDisposition(file.filename));
+    headers.set("Content-Disposition", buildAttachmentDisposition(file.filename));
     headers.set("Cache-Control", "private, no-store, max-age=0");
     headers.set("X-Robots-Tag", "noindex, nofollow");
+    headers.set("X-Content-Type-Options", "nosniff");
     headers.set("Cross-Origin-Resource-Policy", "same-origin");
 
     return new NextResponse(upstream.body, {

@@ -85,6 +85,8 @@ For LitRev specifically:
 - storage identity must be server-owned
 - raw storage paths are not a client contract
 - file reads must start from validated project-owned records
+- file uploads must enforce the file-type contract server-side before any privileged blob write
+- stored MIME metadata for user uploads must come from server validation rather than caller-provided content metadata
 - tenant-scoped files must not rely on direct public object URLs; user-facing file access should stay behind a private bucket plus signed or app-authorized delivery
 
 Primary references:

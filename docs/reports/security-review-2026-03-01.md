@@ -124,7 +124,7 @@ Or better: stop accepting `storagePath` from the client entirely — generate it
 | **Citation metadata** | Missing `withAuth` but no SSRF (hardcoded hosts), no data exposure — cosmetic deviation only |
 | **Client-side rendering** | No `eval`, no `innerHTML`, no `postMessage`, no iframes with dynamic src |
 | **Markdown rendering** | `react-markdown` without `rehype-raw`; raw HTML stripped by default |
-| **File upload validation** | `uploadChatAttachment` and `importStudyWithPdf` call `validateFileServer`; `uploadStudyFile` skips it (low risk — not an injection vector) |
+| **File upload validation** | Study uploads now enforce server-side PDF/DOCX byte-signature validation before blob storage, store canonical MIME metadata, and the authenticated file route uses attachment/no-sniff delivery by default. |
 
 
 ---
@@ -155,6 +155,8 @@ Move canonical project files to a private bucket and replace public URLs with sh
 Fixed in commit `e6952771`.
 
 Canonical tenant-scoped `FileAsset` rows no longer mint or persist direct public storage object URLs. Canonical clients now receive authenticated app-owned download routes at `/api/projects/[projectId]/files/[fileId]`, and the production `study-assets` bucket was flipped from `public: true` to `public: false` after the merged route was live in production. Explicit `external/demo/*` compatibility remains the only public-URL legacy path.
+
+Follow-up hardening closed the remaining study-upload content boundary: direct `uploadStudyFile` callers no longer rely on client-side file validation or caller-supplied MIME metadata, and authenticated file delivery defaults to attachment/no-sniff behavior instead of inline rendering.
 
 ---
 
