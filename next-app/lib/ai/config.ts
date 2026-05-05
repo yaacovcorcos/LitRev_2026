@@ -120,6 +120,20 @@ export const MODEL_CAPABILITY_REGISTRY = [
         },
     },
     {
+        id: "grok-4.3",
+        name: "Grok 4.3",
+        provider: "xai",
+        contextWindow: 1000000,
+        capabilities: ["chat", "vision", "tools"],
+        reasoningSupport: "best_effort",
+        temperatureSupport: "full",
+        selectable: true,
+        ui: {
+            description: "Flagship xAI reasoning, 1M context",
+            icon: "psychology",
+        },
+    },
+    {
         id: "gemini-3-flash-preview",
         name: "Gemini 3 Flash",
         provider: "google",

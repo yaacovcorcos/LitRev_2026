@@ -62,7 +62,7 @@ describe("request policy normalization", () => {
 
     it("keeps temperature for models with full support", () => {
         const normalized = normalizeChatOptionsForModel({
-            model: "grok-4-1-fast",
+            model: "grok-4.3",
             temperature: 0.4,
         });
 
