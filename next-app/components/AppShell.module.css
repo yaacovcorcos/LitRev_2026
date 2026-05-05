@@ -6,6 +6,7 @@
     color: var(--text-primary);
     padding-left: var(--shell-sidebar-width, 200px);
     --mobile-nav-offset: 0px;
+    --visible-mobile-nav-offset: var(--mobile-nav-offset);
 }
 
 .shellV2 {
@@ -30,20 +31,30 @@
     padding: 56px 0 0;
 }
 
+.appContainer:not(.shellV2).mobileFullBleed .mainContent,
+.shellV2.mobileFullBleed .mainContent {
+    padding-top: 0;
+}
+
+.appContainer:not(.shellV2).mobileFullBleed .mainContentNoPad,
+.shellV2.mobileFullBleed .mainContentNoPad {
+    padding-top: 0;
+}
 
 @media (max-width: 900px) {
     .appContainer:not(.shellV2) {
         padding-left: 0;
         --mobile-nav-offset: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom));
+        --visible-mobile-nav-offset: max(0px, calc(var(--mobile-nav-offset) - var(--keyboard-inset, 0px)));
     }
 
     .appContainer:not(.shellV2) .mainContent {
-        padding: 56px 20px var(--mobile-nav-offset) 20px;
+        padding: 56px 20px var(--visible-mobile-nav-offset) 20px;
         height: auto;
     }
 
     .appContainer:not(.shellV2) .mainContentNoPad {
-        padding: 56px 0 var(--mobile-nav-offset);
+        padding: 56px 0 var(--visible-mobile-nav-offset);
         height: auto;
     }
 }
@@ -68,23 +79,15 @@
     .shellV2 {
         padding-left: 0;
         --mobile-nav-offset: calc(var(--mobile-nav-height) + var(--safe-area-bottom));
+        --visible-mobile-nav-offset: max(0px, calc(var(--mobile-nav-offset) - var(--keyboard-inset, 0px)));
     }
 
     .shellV2 .mainContent {
-        padding: 56px var(--phone-page-gutter) var(--mobile-nav-offset) var(--phone-page-gutter);
+        padding: 56px var(--phone-page-gutter) var(--visible-mobile-nav-offset) var(--phone-page-gutter);
     }
 
     .shellV2 .mainContentNoPad {
-        padding: 56px 0 var(--mobile-nav-offset);
+        padding: 56px 0 var(--visible-mobile-nav-offset);
     }
 
-    .appContainer:not(.shellV2).mobileFullBleed .mainContent,
-    .shellV2.mobileFullBleed .mainContent {
-        padding-top: 0;
-    }
-
-    .appContainer:not(.shellV2).mobileFullBleed .mainContentNoPad,
-    .shellV2.mobileFullBleed .mainContentNoPad {
-        padding-top: 0;
-    }
 }

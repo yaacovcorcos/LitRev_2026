@@ -454,6 +454,15 @@ export function ChatComposerCore({
         cancelStream();
     }, [cancelStream, voiceState, stopRecording]);
 
+    const handleComposerSurfaceClick = useCallback((event: ReactMouseEvent<HTMLFormElement>) => {
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        if (target?.closest("button, a, input, textarea, select, [role='button'], [role='menuitem']")) {
+            return;
+        }
+
+        getTextareaElement()?.focus();
+    }, [getTextareaElement]);
+
     const handleQueueNext = useCallback(() => {
         if (interactionLocked) return;
         const text = input.trim();
@@ -658,6 +667,7 @@ export function ChatComposerCore({
                     e.preventDefault();
                     handleSend();
                 }}
+                onClick={handleComposerSurfaceClick}
             >
                 {(input.trim() || isManualMode) && (
                     <div className={styles.modePill}>

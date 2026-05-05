@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, expect, it } from "vitest";
-import { getEffectiveViewportHeight, setMobileViewportVars } from "@/lib/mobile/viewport";
+import { getEffectiveViewportHeight, getKeyboardInset, setMobileViewportVars } from "@/lib/mobile/viewport";
 
 describe("mobile viewport utilities", () => {
   it("prefers visualViewport height when available", () => {
@@ -24,9 +24,28 @@ describe("mobile viewport utilities", () => {
 
   it("sets viewport css variables", () => {
     const root = document.createElement("div");
-    setMobileViewportVars(root, 700);
+    setMobileViewportVars(root, 700, 280);
 
     expect(root.style.getPropertyValue("--app-vh")).toBe("7px");
     expect(root.style.getPropertyValue("--app-height")).toBe("700px");
+    expect(root.style.getPropertyValue("--keyboard-inset")).toBe("280px");
+  });
+
+  it("detects meaningful keyboard inset from the visual viewport", () => {
+    const win = {
+      innerHeight: 900,
+      visualViewport: { height: 560, offsetTop: 0 },
+    } as unknown as Window;
+
+    expect(getKeyboardInset(win)).toBe(340);
+  });
+
+  it("ignores small browser chrome viewport differences", () => {
+    const win = {
+      innerHeight: 900,
+      visualViewport: { height: 860, offsetTop: 0 },
+    } as unknown as Window;
+
+    expect(getKeyboardInset(win)).toBe(0);
   });
 });
