@@ -44,17 +44,23 @@ const DEFAULT_OUTPUT_PATHS: Record<ProbeMatrixName, string> = {
 const DEFAULT_BASE_URL = process.env.PERF_PROBE_BASE_URL ?? "http://127.0.0.1:3201";
 const DEFAULT_RUNS = 9;
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+const SESSION_COOKIE_VALIDATION_ATTEMPTS = 10;
+const QUICK_LOGIN_COOKIE_ATTEMPTS = 3;
+const SAMPLE_AUTH_ATTEMPTS = 3;
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
 const ARTIFACT_ROOTS = createPerformanceArtifactRoots(REPO_ROOT);
 const ALLOWED_PROBE_HOSTS = parseAllowList(process.env.PERF_PROBE_ALLOWED_HOSTS);
 const ALLOWED_PROBE_ORIGINS = parseAllowList(process.env.PERF_PROBE_ALLOWED_ORIGINS);
 
-const PERF_USER_ID = "perf-probe-user";
+const PERF_USER_ID = "preview-dev-user";
 const PERF_WORKSPACE_ID = `workspace-${PERF_USER_ID}`;
 const PERF_PROJECT_ID = "perf-probe-project";
 const PERF_STUDY_A_ID = "perf-probe-study-a";
 const PERF_STUDY_B_ID = "perf-probe-study-b";
+const PERF_USER_EMAIL = "preview-dev-user@local.invalid";
+const PERF_USER_NAME = "Preview Dev User";
+const PERF_WORKSPACE_NAME = "Preview Dev Workspace";
 const DEV_FALLBACK_AUTH_SECRET = "litrev-dev-only-better-auth-secret";
 const DATABASE_URL = process.env.DATABASE_URL || "";
 
@@ -218,6 +224,36 @@ function parseCookieValue(serializedCookie: string): string {
   return nameValue.slice(separatorIndex + 1);
 }
 
+function parsePerfCookieFromSetCookieHeader(setCookieHeader: string, baseUrl: string): PerfCookie {
+  const [nameValue] = setCookieHeader.split(";");
+  const separatorIndex = nameValue?.indexOf("=");
+  if (nameValue == null || separatorIndex == null || separatorIndex < 0) {
+    throw new Error("Unable to parse quick-login session cookie.");
+  }
+
+  const cookieName = nameValue.slice(0, separatorIndex);
+  return {
+    name: cookieName,
+    value: nameValue.slice(separatorIndex + 1),
+    url: baseUrl,
+    httpOnly: true,
+    sameSite: "Lax",
+    secure: cookieName.startsWith("__Secure-"),
+  };
+}
+
+function toCookieHeader(cookie: PerfCookie): string {
+  return `${cookie.name}=${cookie.value}`;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isUnexpectedLoginRedirectError(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith("Unexpected login redirect for ");
+}
+
 function routeTemplateToPath(routeTemplate: PerformanceRouteTemplate, projectId: string): string {
   switch (routeTemplate) {
     case "/ai":
@@ -239,7 +275,7 @@ function routeTemplateToPath(routeTemplate: PerformanceRouteTemplate, projectId:
   }
 }
 
-async function seedProbeFixture(baseUrl: string): Promise<{ cookie: PerfCookie; projectId: string }> {
+async function seedProbeFixture(): Promise<{ projectId: string }> {
   const protocol = createDefaultProtocolData();
   protocol.researchQuestion = "How does the perf probe behave under CI?";
   protocol.eligibility.inclusion = ["Peer-reviewed studies"];
@@ -250,24 +286,24 @@ async function seedProbeFixture(baseUrl: string): Promise<{ cookie: PerfCookie; 
   await prisma.user.upsert({
     where: { id: PERF_USER_ID },
     update: {
-      email: "perf-probe@example.com",
-      name: "Perf Probe User",
+      email: PERF_USER_EMAIL,
+      name: PERF_USER_NAME,
       emailVerified: true,
     },
     create: {
       id: PERF_USER_ID,
-      email: "perf-probe@example.com",
-      name: "Perf Probe User",
+      email: PERF_USER_EMAIL,
+      name: PERF_USER_NAME,
       emailVerified: true,
     },
   });
 
   await prisma.workspace.upsert({
     where: { id: PERF_WORKSPACE_ID },
-    update: { name: "Perf Probe Workspace" },
+    update: { name: PERF_WORKSPACE_NAME },
     create: {
       id: PERF_WORKSPACE_ID,
-      name: "Perf Probe Workspace",
+      name: PERF_WORKSPACE_NAME,
     },
   });
 
@@ -284,6 +320,10 @@ async function seedProbeFixture(baseUrl: string): Promise<{ cookie: PerfCookie; 
       userId: PERF_USER_ID,
       role: "owner",
     },
+  });
+
+  await prisma.session.deleteMany({
+    where: { userId: PERF_USER_ID },
   });
 
   await prisma.project.upsert({
@@ -377,50 +417,120 @@ async function seedProbeFixture(baseUrl: string): Promise<{ cookie: PerfCookie; 
     },
   });
 
-  await prisma.session.deleteMany({
-    where: { userId: PERF_USER_ID },
-  });
+  return {
+    projectId: PERF_PROJECT_ID,
+  };
+}
 
-  const token = randomBytes(32).toString("hex");
-  await prisma.session.create({
-    data: {
-      userId: PERF_USER_ID,
-      token,
-      expiresAt: new Date(Date.now() + SESSION_TTL_SECONDS * 1000),
-      ipAddress: "127.0.0.1",
-      userAgent: "perf-probe-playwright",
-    },
-  });
+async function createProbeSessionCookie(baseUrl: string): Promise<PerfCookie> {
+  const quickLoginCookie = await createQuickLoginSessionCookie(baseUrl);
+  if (quickLoginCookie) {
+    return quickLoginCookie;
+  }
 
   const url = new URL(baseUrl);
   const secure = url.protocol === "https:";
   const cookieName = secure
     ? "__Secure-better-auth.session_token"
     : "better-auth.session_token";
-  const serializedCookie = await serializeSignedCookie(
-    cookieName,
-    token,
-    getBetterAuthSecret(),
-    {
-      httpOnly: true,
-      sameSite: "lax",
-      secure,
-      path: "/",
-      maxAge: SESSION_TTL_SECONDS,
-    },
-  );
 
-  return {
-    projectId: PERF_PROJECT_ID,
-    cookie: {
+  for (let attempt = 1; attempt <= SESSION_COOKIE_VALIDATION_ATTEMPTS; attempt += 1) {
+    const token = randomBytes(32).toString("hex");
+    await prisma.session.create({
+      data: {
+        userId: PERF_USER_ID,
+        token,
+        expiresAt: new Date(Date.now() + SESSION_TTL_SECONDS * 1000),
+        ipAddress: "127.0.0.1",
+        userAgent: "perf-probe-playwright",
+      },
+    });
+
+    const serializedCookie = await serializeSignedCookie(
+      cookieName,
+      token,
+      getBetterAuthSecret(),
+      {
+        httpOnly: true,
+        sameSite: "lax",
+        secure,
+        path: "/",
+        maxAge: SESSION_TTL_SECONDS,
+      },
+    );
+    const cookie = {
       name: cookieName,
       value: parseCookieValue(serializedCookie),
       url: baseUrl,
       httpOnly: true,
       sameSite: "Lax",
       secure,
+    } satisfies PerfCookie;
+
+    await wait(50 * attempt);
+    if (await validateProbeSessionCookie(baseUrl, cookie)) {
+      return cookie;
+    }
+    await wait(100 * attempt);
+  }
+
+  throw new Error("Unable to create a validated Better Auth session cookie for the performance probe.");
+}
+
+async function createQuickLoginSessionCookie(baseUrl: string): Promise<PerfCookie | null> {
+  const baseOrigin = new URL(baseUrl).origin;
+  for (let attempt = 1; attempt <= QUICK_LOGIN_COOKIE_ATTEMPTS; attempt += 1) {
+    const response = await fetch(new URL("/api/dev/quick-login", baseUrl), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: baseOrigin,
+      },
+      body: JSON.stringify({ callbackUrl: "/" }),
+      cache: "no-store",
+    }).catch(() => null);
+
+    if (!response?.ok) {
+      await wait(100 * attempt);
+      continue;
+    }
+
+    const setCookieHeader = response.headers.get("set-cookie");
+    if (!setCookieHeader) {
+      await wait(100 * attempt);
+      continue;
+    }
+
+    const cookie = parsePerfCookieFromSetCookieHeader(setCookieHeader, baseUrl);
+    if (await validateProbeSessionCookie(baseUrl, cookie)) {
+      return cookie;
+    }
+
+    await wait(100 * attempt);
+  }
+
+  return null;
+}
+
+async function validateProbeSessionCookie(baseUrl: string, cookie: PerfCookie): Promise<boolean> {
+  const sessionUrl = new URL("/api/auth/get-session", baseUrl);
+  sessionUrl.searchParams.set("disableCookieCache", "true");
+  sessionUrl.searchParams.set("disableRefresh", "true");
+
+  const response = await fetch(sessionUrl, {
+    method: "GET",
+    headers: {
+      cookie: toCookieHeader(cookie),
     },
-  };
+    cache: "no-store",
+  }).catch(() => null);
+  if (!response?.ok) return false;
+
+  const payload = (await response.json().catch(() => null)) as unknown;
+  if (!payload || typeof payload !== "object") return false;
+
+  const sessionPayload = payload as { session?: unknown; user?: unknown };
+  return Boolean(sessionPayload.session && sessionPayload.user);
 }
 
 async function installBrowserProbe(context: BrowserContext) {
@@ -454,23 +564,31 @@ async function measureNextPaintLatency(page: Page): Promise<number> {
 }
 
 async function triggerInteraction(page: Page) {
-  const preferredTargets = [
-    "textarea",
-    "button",
-    "[role='button']",
-    "input",
-    "a[href]",
-  ];
+  await page.evaluate(() => {
+    const existing = document.querySelector<HTMLButtonElement>("[data-perf-probe-interaction-target]");
+    if (existing) return;
 
-  for (const selector of preferredTargets) {
-    const target = page.locator(selector).first();
-    if (await target.isVisible().catch(() => false)) {
-      await target.click({ timeout: 5_000 });
-      return;
-    }
-  }
+    const target = document.createElement("button");
+    target.type = "button";
+    target.tabIndex = -1;
+    target.setAttribute("aria-hidden", "true");
+    target.setAttribute("data-perf-probe-interaction-target", "true");
+    target.style.cssText = [
+      "position: fixed",
+      "left: 8px",
+      "bottom: 8px",
+      "width: 8px",
+      "height: 8px",
+      "padding: 0",
+      "border: 0",
+      "opacity: 0.01",
+      "pointer-events: auto",
+      "z-index: 2147483647",
+    ].join(";");
+    document.body.appendChild(target);
+  });
 
-  await page.locator("body").click({ position: { x: 24, y: 24 }, timeout: 5_000 });
+  await page.locator("[data-perf-probe-interaction-target]").click({ timeout: 5_000 });
 }
 
 async function captureSample(args: {
@@ -589,39 +707,60 @@ async function main() {
     matrix: args.matrix,
   });
 
-  const { cookie, projectId } = await seedProbeFixture(args.baseUrl);
+  const { projectId } = await seedProbeFixture();
   let browser: Browser | null = null;
+  let authCookie = await createProbeSessionCookie(args.baseUrl);
   const collectedSamples: ProbeSample[] = [];
 
   try {
     browser = await chromium.launch({ headless: true });
 
     for (const profile of matrix.profiles) {
-      const context = await browser.newContext(PROFILE_CONFIGS[profile]);
-      await context.addCookies([cookie]);
-      await installBrowserProbe(context);
+      for (const routeTemplate of matrix.routes) {
+        const routePath = routeTemplateToPath(routeTemplate, projectId);
+        for (let run = 1; run <= args.runs; run += 1) {
+          console.log(`[perf-probe] ${profile} ${routeTemplate} run ${run}/${args.runs}`);
+          let metrics: Record<ProbeMetricName, number> | null = null;
+          let lastAuthRedirectError: unknown = null;
 
-      try {
-        for (const routeTemplate of matrix.routes) {
-          const routePath = routeTemplateToPath(routeTemplate, projectId);
-          for (let run = 1; run <= args.runs; run += 1) {
-            console.log(`[perf-probe] ${profile} ${routeTemplate} run ${run}/${args.runs}`);
-            const metrics = await captureSample({
-              context,
-              baseUrl: args.baseUrl,
-              profile,
-              routeTemplate,
-              routePath,
-            });
-            collectedSamples.push({
-              routeTemplate,
-              profile,
-              metrics,
-            });
+          for (let attempt = 1; attempt <= SAMPLE_AUTH_ATTEMPTS; attempt += 1) {
+            const context = await browser.newContext(PROFILE_CONFIGS[profile]);
+            await context.addCookies([authCookie]);
+            await installBrowserProbe(context);
+
+            try {
+              metrics = await captureSample({
+                context,
+                baseUrl: args.baseUrl,
+                profile,
+                routeTemplate,
+                routePath,
+              });
+              break;
+            } catch (error) {
+              if (!isUnexpectedLoginRedirectError(error) || attempt === SAMPLE_AUTH_ATTEMPTS) {
+                throw error;
+              }
+              lastAuthRedirectError = error;
+              authCookie = await createProbeSessionCookie(args.baseUrl);
+              await wait(200 * attempt);
+            } finally {
+              await context.close();
+            }
           }
+
+          if (!metrics) {
+            throw lastAuthRedirectError instanceof Error
+              ? lastAuthRedirectError
+              : new Error(`Unable to capture ${routeTemplate} after auth retries.`);
+          }
+
+          collectedSamples.push({
+            routeTemplate,
+            profile,
+            metrics,
+          });
         }
-      } finally {
-        await context.close();
       }
     }
   } finally {
