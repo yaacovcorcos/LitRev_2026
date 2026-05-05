@@ -152,6 +152,8 @@ Active work:
 - [ ] `A-003` Ship `CAG-020` crash-safe long-loop continuation and no-forward-progress detection.
   - outcome:
     - long-running work can pause, recover, or stop honestly without losing the next valid safe step
+    - durable-progress timestamps are advanced only by replayable forward-progress boundaries, not by attempted tool calls, checkpoints, or persisted errors
+    - loop budget, repeat-guard, and no-answer exits fail truthfully unless a real answer or durable output exists
 
 ### Track B — Tool System and Autonomy Boundaries
 

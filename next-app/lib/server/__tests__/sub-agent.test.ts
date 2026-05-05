@@ -54,6 +54,7 @@ vi.mock("@/lib/server/agent/events", () => ({
 }));
 
 const { executeSubAgent } = await import("@/lib/server/ai/sub-agent");
+const { DOOM_LOOP_THRESHOLD } = await import("@/lib/agent/loop-controller");
 
 describe("executeSubAgent", () => {
   beforeEach(() => {
@@ -271,6 +272,35 @@ describe("executeSubAgent", () => {
     expect(result.stopReason).toBe("error");
     expect(result.blockedByAutonomy).toBe(true);
     expect(result.blockedReason).toBe("approval_required");
+    expect(mocks.endRun).toHaveBeenCalledWith("sub-run-1", "failed");
+  });
+
+  it("finalizes child run as failed when delegated tool calls repeat until the loop guard stops it", async () => {
+    mocks.streamChat.mockImplementation(async function* () {
+      yield {
+        type: "tool_call",
+        toolCall: {
+          id: `tc-${mocks.streamChat.mock.calls.length}`,
+          name: "update_protocol",
+          arguments: { field: "researchQuestion", value: "RQ", rationale: "test" },
+        },
+      };
+    });
+    mocks.executeToolWithAutonomyCore.mockResolvedValue({
+      callId: "tc",
+      result: { ok: true },
+    });
+
+    const result = await executeSubAgent({
+      mode: "protocol",
+      task: "Set research question",
+      projectId: "p1",
+      userId: "u1",
+      parentRunId: "run-1",
+    });
+
+    expect(result.stopReason).toBe("repeat_detected");
+    expect(result.totalToolCalls).toBe(DOOM_LOOP_THRESHOLD);
     expect(mocks.endRun).toHaveBeenCalledWith("sub-run-1", "failed");
   });
 

@@ -134,6 +134,14 @@ function mapStopReasonToRunStatus(reason: StopReason | null): Extract<RunStatus,
     if (reason === "error") return "failed";
     if (reason === "cancelled") return "cancelled";
     if (reason === "paused_for_input") return "paused";
+    if (
+        reason === "max_iterations"
+        || reason === "max_tool_calls"
+        || reason === "wall_time"
+        || reason === "repeat_detected"
+    ) {
+        return "failed";
+    }
     return "completed";
 }
 

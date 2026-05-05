@@ -9,6 +9,13 @@ export type RunFacts = {
     cancelledByUser: boolean;
 };
 
+const NO_ANSWER_FAILURE_STOP_REASONS = new Set<StopReason>([
+    "max_iterations",
+    "max_tool_calls",
+    "wall_time",
+    "repeat_detected",
+]);
+
 export function deriveRunOutcome(params: {
     facts: RunFacts;
     stopReason: StopReason | "natural";
@@ -27,10 +34,12 @@ export function deriveRunOutcome(params: {
         return { runStatus: "paused", stopReason: "paused_for_input" };
     }
 
+    const hasUsefulOutput =
+        facts.hadFinalAssistantAnswer || facts.hadSuccessfulToolOrArtifact;
+
     if (
         facts.hadDeterministicNonRetryableFailure
-        && !facts.hadFinalAssistantAnswer
-        && !facts.hadSuccessfulToolOrArtifact
+        && !hasUsefulOutput
     ) {
         stopReason = "error";
         return { runStatus: "failed", stopReason };
@@ -38,6 +47,15 @@ export function deriveRunOutcome(params: {
 
     if (stopReason === "error") {
         return { runStatus: "failed", stopReason };
+    }
+
+    if (!hasUsefulOutput) {
+        if (NO_ANSWER_FAILURE_STOP_REASONS.has(stopReason)) {
+            return { runStatus: "failed", stopReason };
+        }
+        if (stopReason === "natural") {
+            return { runStatus: "failed", stopReason: "error" };
+        }
     }
 
     return { runStatus: "completed", stopReason };

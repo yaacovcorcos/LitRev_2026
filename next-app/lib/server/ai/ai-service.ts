@@ -2308,15 +2308,21 @@ class AIService {
                         });
                     }
                 }
-            } else if (runFacts.hadDeterministicNonRetryableFailure && !runFacts.hadSuccessfulToolOrArtifact) {
-                fullContent = buildFailureFallbackMessage(stopReasonMessage(finalStopReason as StopReason));
-                runFacts.hadFinalAssistantAnswer = true;
-                await addAssistantMessageToConversationForRun({
-                    runId: activeRun.id,
-                    conversationId: conversation.id,
-                    content: fullContent,
+            } else {
+                const noAnswerOutcome = deriveRunOutcome({
+                    facts: runFacts,
+                    stopReason: finalStopReason,
                 });
-                yield { type: "content", content: fullContent, conversationId: conversation.id };
+                if (noAnswerOutcome.runStatus === "failed" && !runFacts.hadSuccessfulToolOrArtifact) {
+                    finalStopReason = noAnswerOutcome.stopReason;
+                    fullContent = buildFailureFallbackMessage(stopReasonMessage(finalStopReason as StopReason));
+                    await addAssistantMessageToConversationForRun({
+                        runId: activeRun.id,
+                        conversationId: conversation.id,
+                        content: fullContent,
+                    });
+                    yield { type: "content", content: fullContent, conversationId: conversation.id };
+                }
             }
 
             if (scopingReportPayload) {
