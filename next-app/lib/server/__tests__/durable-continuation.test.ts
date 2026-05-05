@@ -196,7 +196,7 @@ describe("durable continuation", () => {
     expect(result).toBeNull();
   });
 
-  it("refuses continuation when a newer tool call means the next step depends on transient loop state", async () => {
+  it("resolves a restartable tool-call continuation when a read-only tool was interrupted before result", async () => {
     mocks.agentRunFindFirst.mockResolvedValue({
       id: "run-5",
       conversationId: "conv-5",
@@ -205,7 +205,7 @@ describe("durable continuation", () => {
       {
         sequence: 12,
         type: "tool_call",
-        payload: { callId: "call-4", args: { query: "follow-up" } },
+        payload: { id: "call-4", name: "search_pubmed", arguments: { query: "follow-up" } },
         toolName: "search_pubmed",
         artifactId: null,
         messageRole: null,
@@ -227,6 +227,88 @@ describe("durable continuation", () => {
     const result = await resolveDurableContinuationSource({
       runId: "run-5",
       conversationId: "conv-5",
+    });
+
+    expect(result).toEqual({
+      kind: "tool_call_restart",
+      sourceRunId: "run-5",
+      conversationId: "conv-5",
+      eventSequence: 12,
+      toolCallId: "call-4",
+      toolName: "search_pubmed",
+      toolArguments: { query: "follow-up" },
+      restartPolicy: "restart_read_only",
+    });
+    expect(buildDurableContinuationContext(result!)).toContain("seed_kind=tool_call_restart");
+    expect(buildDurableContinuationContext(result!)).toContain("restart_policy=restart_read_only");
+  });
+
+  it("resolves an idempotent mutation restart with explicit idempotency policy", async () => {
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-6",
+      conversationId: "conv-6",
+    });
+    mocks.runEventFindMany.mockResolvedValue([
+      {
+        sequence: 12,
+        type: "tool_call",
+        payload: {
+          id: "call-5",
+          name: "add_to_ledger",
+          arguments: { results: [{ title: "Study A", authors: "A", year: 2024 }] },
+        },
+        toolName: "add_to_ledger",
+        artifactId: null,
+        messageRole: null,
+      },
+    ]);
+    mocks.artifactFindMany.mockResolvedValue([]);
+
+    const result = await resolveDurableContinuationSource({
+      runId: "run-6",
+      conversationId: "conv-6",
+    });
+
+    expect(result).toMatchObject({
+      kind: "tool_call_restart",
+      toolCallId: "call-5",
+      toolName: "add_to_ledger",
+      restartPolicy: "retry_idempotent_mutation",
+    });
+    expect(buildDurableContinuationContext(result!)).toContain("restart_policy=retry_idempotent_mutation");
+  });
+
+  it("refuses continuation when the latest tool call is not safe to restart", async () => {
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-7",
+      conversationId: "conv-7",
+    });
+    mocks.runEventFindMany.mockResolvedValue([
+      {
+        sequence: 12,
+        type: "tool_call",
+        payload: { id: "call-6", name: "delegate_search", arguments: { task: "Find RCTs" } },
+        toolName: "delegate_search",
+        artifactId: null,
+        messageRole: null,
+      },
+      {
+        sequence: 11,
+        type: "tool_result",
+        payload: {
+          callId: "call-3",
+          result: { ok: true },
+        },
+        toolName: "search_pubmed",
+        artifactId: null,
+        messageRole: null,
+      },
+    ]);
+    mocks.artifactFindMany.mockResolvedValue([]);
+
+    const result = await resolveDurableContinuationSource({
+      runId: "run-7",
+      conversationId: "conv-7",
     });
 
     expect(result).toBeNull();

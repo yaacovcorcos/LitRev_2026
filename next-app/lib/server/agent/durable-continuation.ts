@@ -1,7 +1,8 @@
 import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
-import type { ToolResult } from "@/types/ai";
+import { getToolExecutionPolicy, type InterruptedToolCallRestartPolicy } from "@/lib/server/ai/tool-execution-policy";
+import type { ToolCall, ToolResult } from "@/types/ai";
 
 const CONTINUATION_EVENT_SCAN_LIMIT = 50;
 const CONTINUATION_PAYLOAD_MAX_CHARS = 4_000;
@@ -50,6 +51,16 @@ export type DurableContinuationSource =
         artifactTitle: string;
         artifactVersion: number;
         artifactPayload: unknown;
+    }
+    | {
+        kind: "tool_call_restart";
+        sourceRunId: string;
+        conversationId: string;
+        eventSequence: number;
+        toolCallId: string;
+        toolName: string;
+        toolArguments: Record<string, unknown>;
+        restartPolicy: InterruptedToolCallRestartPolicy;
     };
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -68,8 +79,32 @@ function hasAuthoritativeAssistantMessage(event: ContinuationRunEventRecord): bo
 
 function isBlockingContinuationEvent(event: ContinuationRunEventRecord): boolean {
     return hasAuthoritativeAssistantMessage(event)
-        || event.type === "user_input_required"
-        || event.type === "tool_call";
+        || event.type === "user_input_required";
+}
+
+function parseToolCallRestartCandidate(
+    run: ContinuationRunRecord,
+    event: ContinuationRunEventRecord,
+): DurableContinuationSource | null {
+    const payload = asObject(event.payload) as ToolCall | null;
+    const toolCallId = asString(payload?.id);
+    const toolName = asString(event.toolName) ?? asString(payload?.name);
+    const toolArguments = asObject(payload?.arguments);
+    if (!toolCallId || !toolName || !toolArguments) return null;
+
+    const policy = getToolExecutionPolicy(toolName);
+    if (!policy.interruptedRestartPolicy) return null;
+
+    return {
+        kind: "tool_call_restart",
+        sourceRunId: run.id,
+        conversationId: run.conversationId!,
+        eventSequence: event.sequence,
+        toolCallId,
+        toolName,
+        toolArguments,
+        restartPolicy: policy.interruptedRestartPolicy,
+    };
 }
 
 function parseToolResultCandidate(
@@ -199,6 +234,10 @@ export async function resolveDurableContinuationSource(params: {
             return null;
         }
 
+        if (event.type === "tool_call") {
+            return parseToolCallRestartCandidate(run, event);
+        }
+
         if (event.type === "artifact_proposed" || event.type === "artifact_reviewed") {
             const artifactId = event.artifactId ?? asString(asObject(event.payload)?.artifactId);
             if (!artifactId) {
@@ -233,6 +272,22 @@ export function buildDurableContinuationContext(source: DurableContinuationSourc
             "rerun_policy=fresh_retry_only",
             "payload_json:",
             serializeForPrompt(source.toolResult),
+        ].join("\n");
+    }
+
+    if (source.kind === "tool_call_restart") {
+        return [
+            "seed_kind=tool_call_restart",
+            `source_run_id=${source.sourceRunId}`,
+            `source_event_sequence=${source.eventSequence}`,
+            `tool_name=${source.toolName}`,
+            `tool_call_id=${source.toolCallId}`,
+            `restart_policy=${source.restartPolicy}`,
+            "authoritative_input_only=true",
+            "tool_attempt_was_interrupted_before_result=true",
+            "instruction=Before answering, re-run this exact tool request or stop truthfully if runtime policy blocks it. Do not invent a tool result.",
+            "tool_arguments_json:",
+            serializeForPrompt(source.toolArguments),
         ].join("\n");
     }
 

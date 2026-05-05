@@ -8,6 +8,7 @@ import {
   type ToolIdempotencyReservationInput,
   type ToolIdempotencyStore,
 } from "./tool-idempotency-store";
+import { IDEMPOTENT_MUTATION_TOOL_NAMES } from "./tool-execution-policy";
 
 export type ToolExecutionRequest = {
   name: string;
@@ -52,22 +53,10 @@ function blockedResult(request: ToolExecutionRequest, middlewareName?: string): 
   };
 }
 
-const DEFAULT_IDEMPOTENT_MUTATION_TOOLS = new Set([
-  "add_to_ledger",
-  "bulk_screening",
-  "create_project",
-  "delete_study",
-  "exclude_study",
-  "forget_memory",
-  "update_study",
-  "update_study_direct",
-  "update_protocol",
-  "update_criteria",
-  "update_note",
-  "store_memory",
-]);
+const DEFAULT_IDEMPOTENT_MUTATION_TOOLS = new Set<string>(IDEMPOTENT_MUTATION_TOOL_NAMES);
 
 const DEFAULT_IDEMPOTENCY_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_IDEMPOTENCY_STALE_RUNNING_MS = 5 * 60 * 1000;
 const DEFAULT_IDEMPOTENCY_MAX_ENTRIES = 1024;
 const TOOL_IDEMPOTENCY_REPLAY = Symbol.for("litrev.ai.tool_idempotency_replay");
 
@@ -163,11 +152,16 @@ export function isIdempotencyReplayResult(result: ToolResult): boolean {
 export function createIdempotencyMiddleware(config?: {
   toolNames?: string[];
   ttlMs?: number;
+  staleRunningMs?: number;
   maxEntries?: number;
   store?: ToolIdempotencyStore | null;
 }): ToolMiddleware {
   const protectedTools = new Set(config?.toolNames ?? Array.from(DEFAULT_IDEMPOTENT_MUTATION_TOOLS));
   const ttlMs = Math.max(1_000, config?.ttlMs ?? DEFAULT_IDEMPOTENCY_TTL_MS);
+  const staleRunningMs = Math.max(
+    1_000,
+    config?.staleRunningMs ?? DEFAULT_IDEMPOTENCY_STALE_RUNNING_MS,
+  );
   const maxEntries = Math.max(32, config?.maxEntries ?? DEFAULT_IDEMPOTENCY_MAX_ENTRIES);
   const store = config?.store === undefined ? createPrismaToolIdempotencyStore() : config.store;
   const cache = new Map<string, IdempotencyCacheEntry>();
@@ -197,7 +191,11 @@ export function createIdempotencyMiddleware(config?: {
 
       if (store && scopeKey) {
         const receiptKey = buildReceiptKey(request, scopeKey, fingerprint);
-        const reservation = await store.reserve(receiptKey);
+        const now = Date.now();
+        const reservation = await store.reserve(receiptKey, {
+          staleRunningBefore: new Date(now - staleRunningMs),
+          now: new Date(now),
+        });
         if (reservation.status === "replay") {
           return {
             ...request,
@@ -285,41 +283,75 @@ export function createIdempotencyMiddleware(config?: {
   };
 }
 
+async function runAfterHooks(
+  request: ToolExecutionRequest,
+  middlewares: ToolMiddleware[],
+  initialResult: ToolResult
+): Promise<ToolResult> {
+  let result = initialResult;
+  for (const middleware of middlewares) {
+    if (!middleware.after) continue;
+    try {
+      const nextResult = await middleware.after(request, result);
+      if (nextResult) {
+        result = nextResult;
+      }
+    } catch (error) {
+      logServerError("tool-middleware", "after hook failed", {
+        middleware: middleware.name ?? "unnamed",
+        toolName: request.name,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return result;
+}
+
 export async function executeWithToolMiddleware(
   request: ToolExecutionRequest,
   middlewares: ToolMiddleware[],
   executor: ToolExecutor
 ): Promise<ToolResult> {
   let resolvedRequest = request;
+  const appliedBeforeMiddlewares: ToolMiddleware[] = [];
 
   for (const middleware of middlewares) {
     if (!middleware.before) continue;
     try {
       const nextRequest = await middleware.before(resolvedRequest);
       if (nextRequest === null) {
-        return blockedResult(resolvedRequest, middleware.name);
+        return runAfterHooks(
+          resolvedRequest,
+          appliedBeforeMiddlewares,
+          blockedResult(resolvedRequest, middleware.name)
+        );
       }
       if (nextRequest) {
         resolvedRequest = nextRequest;
         if (resolvedRequest.shortCircuitResult) {
-          return replayResult(
-            resolvedRequest.shortCircuitResult,
-            resolvedRequest.callId,
-            resolvedRequest.shortCircuitReason === "idempotency_replay",
+          return runAfterHooks(
+            resolvedRequest,
+            appliedBeforeMiddlewares,
+            replayResult(
+              resolvedRequest.shortCircuitResult,
+              resolvedRequest.callId,
+              resolvedRequest.shortCircuitReason === "idempotency_replay",
+            ),
           );
         }
       }
+      appliedBeforeMiddlewares.push(middleware);
     } catch (error) {
       if (resolvedRequest.context?.signal?.aborted || isAbortLikeError(error)) {
         throw error;
       }
-      return {
+      return runAfterHooks(resolvedRequest, appliedBeforeMiddlewares, {
         callId: resolvedRequest.callId,
         result: null,
         error: error instanceof Error
           ? `Tool middleware before hook failed: ${error.message}`
           : "Tool middleware before hook failed",
-      };
+      });
     }
   }
 
@@ -330,30 +362,14 @@ export async function executeWithToolMiddleware(
     if (resolvedRequest.context?.signal?.aborted || isAbortLikeError(error)) {
       throw error;
     }
-    return {
+    return runAfterHooks(resolvedRequest, appliedBeforeMiddlewares, {
       callId: resolvedRequest.callId,
       result: null,
       error: error instanceof Error
         ? `Tool execution failed: ${error.message}`
         : "Tool execution failed",
-    };
+    });
   }
 
-  for (const middleware of middlewares) {
-    if (!middleware.after) continue;
-    try {
-      const nextResult = await middleware.after(resolvedRequest, result);
-      if (nextResult) {
-        result = nextResult;
-      }
-    } catch (error) {
-      logServerError("tool-middleware", "after hook failed", {
-        middleware: middleware.name ?? "unnamed",
-        toolName: resolvedRequest.name,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  return result;
+  return runAfterHooks(resolvedRequest, middlewares, result);
 }
