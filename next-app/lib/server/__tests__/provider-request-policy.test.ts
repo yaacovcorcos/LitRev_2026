@@ -72,7 +72,7 @@ describe("provider request policy wiring", () => {
         const xaiCreate = vi.fn()
             .mockResolvedValueOnce({
                 id: "resp-xai",
-                model: "grok-4-1-fast",
+                model: "grok-4.3",
                 choices: [{ message: { content: "ok", tool_calls: [] } }],
                 usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
             })
@@ -85,9 +85,11 @@ describe("provider request policy wiring", () => {
         const xaiProvider = new XAIProvider();
         ((xaiProvider as unknown) as { client: unknown }).client = { chat: { completions: { create: xaiCreate } } };
 
-        await xaiProvider.chat([userMessage("hi")], { model: "grok-4-1-fast", temperature: 0.4 });
-        await collectChunks(xaiProvider.streamChat([userMessage("hi")], { model: "grok-4-1-fast", temperature: 0.4 }));
+        await xaiProvider.chat([userMessage("hi")], { model: "grok-4.3", temperature: 0.4 });
+        await collectChunks(xaiProvider.streamChat([userMessage("hi")], { model: "grok-4.3", temperature: 0.4 }));
 
+        expect(xaiCreate.mock.calls[0][0].model).toBe("grok-4.3");
+        expect(xaiCreate.mock.calls[1][0].model).toBe("grok-4.3");
         expect(xaiCreate.mock.calls[0][0].temperature).toBe(0.4);
         expect(xaiCreate.mock.calls[1][0].temperature).toBe(0.4);
 
