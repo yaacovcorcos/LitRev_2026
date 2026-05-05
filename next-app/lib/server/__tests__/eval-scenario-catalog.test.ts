@@ -18,7 +18,6 @@ describe("eval scenario catalog foundation", () => {
 
     it("covers all baseline suites in the foundation catalog", () => {
         const suites = listSuites(CORE_EVAL_SCENARIOS).sort();
-        expect(suites).toEqual(["ask_user", "delegation", "screening", "search"]);
+        expect(suites).toEqual(["ask_user", "delegation", "runtime", "screening", "search"]);
     });
 });
-

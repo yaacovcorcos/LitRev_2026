@@ -58,6 +58,8 @@ Use the canonical shared aliases in `next-app/package.json` when referring to cr
   - canonical citation-provider compatibility smoke lane
 - `npm run check:chat-stream-architecture`
   - canonical local reproduction for the shared architecture guard in `check`
+- `npm run check:agent-quality`
+  - canonical deterministic agent eval, runtime-signal fixture, and burn-in contract gate in `check`
 - `npm run check:pr`
   - canonical local reproduction for the shared non-database portion of the protected `check` workflow
 
@@ -99,6 +101,8 @@ For code changes:
     - `cd next-app && npm run test:smoke:mobile`
    - citation-provider changes or provider drift triage:
     - `cd next-app && npm run test:smoke:citation`
+   - agent eval catalog, runtime fixture, or burn-in contract changes:
+    - `cd next-app && npm run check:agent-quality`
 3. If the change spans multiple domains and the safest shared baseline is not obvious, use the conservative fallback:
    - `cd next-app && npm run typecheck`
    - `cd next-app && npm run lint`
@@ -116,6 +120,7 @@ For docs-only plan or runbook changes:
   - `cd next-app && npm run typecheck`
   - `cd next-app && npm run test:governance`
   - `cd next-app && npm run check:chat-stream-architecture`
+  - `cd next-app && npm run check:agent-quality`
   - `cd next-app && npm run test:vitest`
   - `cd next-app && npx next build`
 - CI-only pieces:
@@ -132,6 +137,7 @@ For docs-only plan or runbook changes:
   - migrate or drift failure -> DB owner docs
   - governance failure -> lint-governance owner docs
   - chat stream architecture guard -> agent-runtime owner docs
+  - agent quality gate -> agent-quality owner docs
   - Vitest, typecheck, or build failure -> the canonical owner for the changed subsystem
 
 ### Governance Informational Reporting
@@ -218,6 +224,7 @@ For docs-only plan or runbook changes:
 - required governance inventory, including raw `npm run lint`
 - informational governance reporting visibility
 - chat stream architecture guard
+- deterministic agent quality gate over eval scenarios, stream fixtures, and burn-in thresholds
 - full `npm run test:vitest`
 - production `next build`
 
@@ -237,6 +244,7 @@ For docs-only plan or runbook changes:
 | migrate deploy or schema drift | DB owner | `docs/runbooks/db-ops.md`, `docs/runbooks/db-architecture.md` |
 | governance required or informational | lint governance owner | `docs/plans/plan-lint-governance.md` |
 | chat stream architecture guard | agent-runtime owner | `docs/plans/plan-agentic.md`, `docs/plans/plan-agent-quality.md` |
+| agent quality gate | agent-quality owner | `docs/plans/plan-agent-quality.md`, `docs/runbooks/chat-runtime-burn-in.md` |
 | mobile foundation | responsive/mobile owner | `docs/runbooks/responsive-foundation-certification.md`, `docs/runbooks/browser-tooling-readiness.md` |
 | performance certification | performance owner | `docs/plans/plan-speed-performance.md` |
 | citation compatibility smoke | citation/provider owner | `docs/runbooks/citation-preview-ops.md` |

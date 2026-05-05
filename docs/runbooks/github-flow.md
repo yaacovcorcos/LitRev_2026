@@ -56,6 +56,7 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
   - `npm run lint`
 - The required governance portion of `check` is reproduced locally by `cd next-app && npm run test:governance`.
 - The informational governance reporting portion of `check` is reproduced locally by `cd next-app && npm run test:governance:informational`.
+- The deterministic agent eval/observability/burn-in contract portion of `check` is reproduced locally by `cd next-app && npm run check:agent-quality`.
 - `governance:ci-required` is the frozen phase-owned governance inventory:
   - `npm run governance:check`
   - `npm run lint`
@@ -71,6 +72,7 @@ gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecisi
 - Prefer the canonical aliases in handoffs and local instructions:
   - `npm run test:governance`
   - `npm run test:governance:informational`
+  - `npm run check:agent-quality`
   - `npm run check:pr`
 - Governance audit artifact upload should remain `if: always()`.
 - Required governance exceptions must be made in the owning phase config/rule/docs, not by workflow-level `continue-on-error`, path skips, or conditional omission.

@@ -1,6 +1,7 @@
 import type { ChatSurface, ChatUnificationMetricType } from "@/types/chat-unification";
+import { CHAT_UNIFICATION_BURN_IN_SURFACES } from "@/lib/ai/chat-unification-burn-in-contract";
 
-const SURFACES: ChatSurface[] = ["ai", "project"];
+const SURFACES: ChatSurface[] = [...CHAT_UNIFICATION_BURN_IN_SURFACES];
 
 export type ChatUnificationBurnInMetricRow = {
   version: number;

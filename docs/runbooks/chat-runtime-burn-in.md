@@ -28,6 +28,7 @@ Current repo/runtime note:
 - No active `NEXT_PUBLIC_ENABLE_CHAT_UNIFICATION_V2` / `ENABLE_CHAT_UNIFICATION_V2` runtime gate is wired in committed code today.
 - Until such a gate is explicitly reintroduced and documented, treat U1.6 burn-in as a deployment-level canary.
 - `workspaceIds` / `userIds` remain the evidence scope filters for validation and sign-off, not a live rollout gate.
+- The protected CI `check` gate now runs `npm run check:agent-quality`, which guards the deterministic eval catalog, runtime-signal fixture coverage, and strict burn-in metric/threshold contract before a runtime PR can merge.
 - Abrupt stream endings without concrete transport evidence now classify as `failed_interrupted` rather than `failed_network`; burn-in spot checks should preserve that distinction and only treat `failed_network` as a true transport failure.
 - As of the `FIX-011b` closeout delta audit on `2026-03-20`, no additional shared-runtime gap was identified beyond the shipped `run-convergence` / `run-recovery` path and current recovery/surface tests. `U1.6` remains the operational blocker for retiring `FIX-011b` only after baseline agent stability/trust is restored under `FIX-012`; until then, burn-in should not be mistaken for the primary rescue task.
 
@@ -69,9 +70,12 @@ Run from `next-app/`:
    - shared/prod: `bash scripts/db-ops.sh migrate`
 5. `npx prisma migrate status`
 6. `npm run typecheck`
-7. `npm run test:vitest`
+7. `npm run check:agent-quality`
+8. `npm run test:vitest`
 
 Record command outputs in the run report.
+
+The agent quality gate is not a substitute for the live seven-day canary. It prevents accidental weakening of the eval/burn-in contract and confirms deterministic runtime-signal coverage before the live evidence window begins.
 
 ## Phase 1 - Canary Enable
 

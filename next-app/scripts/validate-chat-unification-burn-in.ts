@@ -37,6 +37,10 @@ import {
   resolveBurnInWindow,
   summarizeRunEndRunIdCoverage,
 } from "../lib/ai/chat-unification-burn-in-cli";
+import {
+  CHAT_UNIFICATION_BURN_IN_METRIC_TYPES,
+  CHAT_UNIFICATION_BURN_IN_SURFACES,
+} from "../lib/ai/chat-unification-burn-in-contract";
 import type { ChatSurface, ChatUnificationMetricType } from "../types/chat-unification";
 
 const pool = new Pool({
@@ -48,14 +52,8 @@ const prisma = new PrismaClient({
   log: ["error"],
 });
 
-const METRIC_TYPES = [
-  "retry_model_continuity",
-  "ask_user_context_mismatch",
-  "stuck_running_tools_after_run_end",
-  "run_end_observed",
-] as const satisfies readonly ChatUnificationMetricType[];
-
-const SURFACES = ["ai", "project"] as const satisfies readonly ChatSurface[];
+const METRIC_TYPES = CHAT_UNIFICATION_BURN_IN_METRIC_TYPES;
+const SURFACES = CHAT_UNIFICATION_BURN_IN_SURFACES;
 
 function parseArg(name: string): string | undefined {
   const prefix = `--${name}=`;

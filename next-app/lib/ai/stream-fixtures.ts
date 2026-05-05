@@ -50,11 +50,61 @@ export const CHAT_STREAM_FIXTURES_V1: ChatStreamFixture[] = [
           callId: "ask-1",
           question: "Continue with strict mode?",
           questionType: "yes_no",
+          decisionRequest: {
+            id: "ask-1",
+            callId: "ask-1",
+            sourceRunId: "run-ask",
+            conversationId: "conv-ask",
+            decisionBoundaryKey: "continue-with-strict-mode",
+            decisionKind: "clarification",
+            blockingLevel: "blocking",
+            status: "pending",
+            questions: [
+              {
+                questionId: "ask-1:question-1",
+                prompt: "Continue with strict mode?",
+                responseKind: "yes_no",
+                required: true,
+                allowNote: true,
+                allowOther: false,
+                isSecret: false,
+                options: [{ optionId: "yes", label: "Yes" }, { optionId: "no", label: "No" }],
+              },
+            ],
+          },
         },
       },
       { type: "choices", choices: [{ label: "Yes", value: "yes" }, { label: "No", value: "no" }] },
       { type: "navigate", navigateUrl: "/project/abc/draft" },
       { type: "run_end", runStatus: "paused" },
+    ],
+  },
+  {
+    id: "delegated-search-route-trace",
+    description: "Delegation route emits explicit parent tool call and child result summary",
+    page: "ai",
+    chunks: [
+      { type: "run_start", runId: "run-delegate", conversationId: "conv-delegate" },
+      {
+        type: "tool_call",
+        toolCall: {
+          id: "delegate-1",
+          name: "delegate_search",
+          arguments: { task: "Search PubMed for COPD treatment trials" },
+        },
+      },
+      {
+        type: "tool_result",
+        toolName: "delegate_search",
+        toolResult: {
+          callId: "delegate-1",
+          result: {
+            summary: "Search agent found PubMed candidates.",
+            totalToolCalls: 1,
+          },
+        },
+      },
+      { type: "run_end", runStatus: "completed", stopReason: "completed", toolCallCount: 1 },
     ],
   },
   {
@@ -137,6 +187,55 @@ export const CHAT_STREAM_FIXTURES_V1: ChatStreamFixture[] = [
         },
       },
       { type: "run_end", runStatus: "paused" },
+    ],
+  },
+  {
+    id: "openalex-receipt-trace",
+    description: "OpenAlex search emits shared receipt signals with counts",
+    page: "overview",
+    chunks: [
+      { type: "run_start", runId: "run-openalex", conversationId: "conv-openalex" },
+      {
+        type: "tool_call",
+        toolCall: {
+          id: "openalex-1",
+          name: "search_openalex",
+          arguments: { query: "triage AI emergency department", maxResults: 5 },
+        },
+      },
+      {
+        type: "tool_result",
+        toolName: "search_openalex",
+        toolResult: {
+          callId: "openalex-1",
+          result: {
+            source: "OpenAlex",
+            query: "triage AI emergency department",
+            totalResults: 18,
+            returnedCount: 5,
+            results: [{ id: "W123", title: "AI triage" }],
+          },
+        },
+      },
+      { type: "run_end", runStatus: "completed", stopReason: "completed", toolCallCount: 1 },
+    ],
+  },
+  {
+    id: "cancelled-run-terminal-truth",
+    description: "Semantic cancellation remains a terminal run outcome",
+    page: "ai",
+    chunks: [
+      { type: "run_start", runId: "run-cancelled", conversationId: "conv-cancelled" },
+      { type: "run_end", runStatus: "cancelled", stopReason: "cancelled" },
+    ],
+  },
+  {
+    id: "loop-budget-failure-truth",
+    description: "No-answer loop budget exit remains a failed terminal outcome",
+    page: "ai",
+    chunks: [
+      { type: "run_start", runId: "run-budget", conversationId: "conv-budget" },
+      { type: "run_end", runStatus: "failed", stopReason: "max_iterations", iterationCount: 12 },
     ],
   },
   {
