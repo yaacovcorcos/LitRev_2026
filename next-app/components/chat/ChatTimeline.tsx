@@ -754,6 +754,7 @@ export type ChatTimelineProps = {
         title: string;
         description: string;
         suggestions: { label: string; prompt: string; icon?: string; description?: string }[];
+        layout?: "default" | "minimal";
     };
     onSuggestionClick: (prompt: string) => void;
     /** Callback for one-click action prompts from artifact cards (e.g., scoping decision actions). */
@@ -1826,37 +1827,43 @@ function ChatTimelineInner({
 
     // Empty state
     if (timeline.length === 0) {
+        const isMinimalEmptyState = emptyState.layout === "minimal";
+        const hasSuggestions = emptyState.suggestions.length > 0;
         return (
             <div className={`${styles.copilotBody} ${variant === "page" ? styles.pageLayout : ""}`} ref={setContainerRef} onScroll={onScroll}>
-                <div className={styles.emptyPanel}>
-                    <div className={styles.emptyIcon}>
-                        <span className="material-icons-round">{emptyState.icon}</span>
-                    </div>
+                <div className={`${styles.emptyPanel} ${isMinimalEmptyState ? styles.emptyPanelMinimal : ""}`}>
+                    {emptyState.icon ? (
+                        <div className={styles.emptyIcon}>
+                            <span className="material-icons-round">{emptyState.icon}</span>
+                        </div>
+                    ) : null}
                     <h3>{emptyState.title}</h3>
-                    <p>{emptyState.description}</p>
-                    <div className={styles.suggestRow}>
-                        {emptyState.suggestions.map((suggestion) => (
-                            <button
-                                key={suggestion.label}
-                                type="button"
-                                className={suggestion.description ? styles.suggestCard : styles.suggestChip}
-                                onClick={() => onSuggestionClick(suggestion.prompt)}
-                                disabled={isLoading}
-                            >
-                                {suggestion.icon ? (
-                                    <span className={`material-icons-round ${styles.suggestCardIcon}`} aria-hidden="true">
-                                        {suggestion.icon}
-                                    </span>
-                                ) : null}
-                                <span className={styles.suggestCardBody}>
-                                    <span className={styles.suggestCardLabel}>{suggestion.label}</span>
-                                    {suggestion.description ? (
-                                        <span className={styles.suggestCardDescription}>{suggestion.description}</span>
+                    {emptyState.description ? <p>{emptyState.description}</p> : null}
+                    {hasSuggestions ? (
+                        <div className={styles.suggestRow}>
+                            {emptyState.suggestions.map((suggestion) => (
+                                <button
+                                    key={suggestion.label}
+                                    type="button"
+                                    className={suggestion.description ? styles.suggestCard : styles.suggestChip}
+                                    onClick={() => onSuggestionClick(suggestion.prompt)}
+                                    disabled={isLoading}
+                                >
+                                    {suggestion.icon ? (
+                                        <span className={`material-icons-round ${styles.suggestCardIcon}`} aria-hidden="true">
+                                            {suggestion.icon}
+                                        </span>
                                     ) : null}
-                                </span>
-                            </button>
-                        ))}
-                    </div>
+                                    <span className={styles.suggestCardBody}>
+                                        <span className={styles.suggestCardLabel}>{suggestion.label}</span>
+                                        {suggestion.description ? (
+                                            <span className={styles.suggestCardDescription}>{suggestion.description}</span>
+                                        ) : null}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    ) : null}
                 </div>
                 <div ref={bottomRef} style={{ height: 1, flexShrink: 0 }} aria-hidden="true" />
             </div>

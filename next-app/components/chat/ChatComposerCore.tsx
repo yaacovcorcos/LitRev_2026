@@ -108,6 +108,10 @@ export type ChatComposerCoreProps = {
     showAutonomyPreset?: boolean;
     showAttachments?: boolean;
     showVoice?: boolean;
+    /** Hide the inline model selector when another surface owns model selection. */
+    hideModelControl?: boolean;
+    /** Use the compact mobile input styling for full-screen chat surfaces. */
+    compactMobileChrome?: boolean;
 
     onCompress?: () => void | Promise<void>;
     canCompress?: boolean;
@@ -177,6 +181,8 @@ export function ChatComposerCore({
     showAutonomyPreset,
     showAttachments,
     showVoice = true,
+    hideModelControl = false,
+    compactMobileChrome = false,
     onCompress,
     canCompress = false,
     isCompressing = false,
@@ -523,7 +529,7 @@ export function ChatComposerCore({
     const ALL_MODES: AgentMode[] = getUserSelectableAgentModes();
     const isManualMode = isManualComposerModeSelection(modeSelection);
 
-    const modelControl = hasMounted ? (
+    const modelControl = hideModelControl ? null : hasMounted ? (
         <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
                 <button type="button" className={styles.modelBtn}>
@@ -647,6 +653,7 @@ export function ChatComposerCore({
                 ref={inputBoxRef}
                 className={styles.inputBox}
                 data-attached-stack={attachedStack}
+                data-mobile-chrome={compactMobileChrome ? "minimal" : undefined}
                 onSubmit={(e) => {
                     e.preventDefault();
                     handleSend();

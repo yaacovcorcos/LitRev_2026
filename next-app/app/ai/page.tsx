@@ -62,7 +62,6 @@ import {
   RUN_RECOVERY_INTERRUPTED_TOOL_SUMMARY,
   RUN_RECOVERY_RECONNECT_SUMMARY,
 } from "@/lib/ai/run-recovery-client";
-import { isMobileAiV2Enabled } from "@/lib/mobile/feature-flags";
 import { PHONE_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobileTelemetryContext, recordMobileMetric } from "@/lib/mobile/telemetry";
 import {
@@ -119,7 +118,6 @@ const GLOBAL_HISTORY_SCOPE_KEY = "__global__";
 const loadConversationActions = () => import("@/app/actions/conversations");
 const loadAgentActions = () => import("@/app/actions/agent");
 const loadAiAssistantActions = () => import("@/app/actions/ai-assistant");
-const loadSummarizeConversationActions = () => import("@/app/actions/summarize-conversation");
 
 declare global {
   interface Window {
@@ -138,15 +136,6 @@ declare global {
   }
 }
 
-const quickActions = [
-  { id: "summarize", icon: "description", label: "Summarize a paper", prompt: "I need help summarizing a paper. Here's the abstract: " },
-  { id: "draft", icon: "edit_note", label: "Help draft a section", prompt: "Help me draft the Introduction section of my literature review." },
-  { id: "find", icon: "search", label: "Find related studies", prompt: "Find me recent papers about " },
-  { id: "analyze", icon: "analytics", label: "Analyze findings", prompt: "Analyze the key findings across my collected papers." },
-  { id: "compare", icon: "compare_arrows", label: "Compare projects", prompt: "Compare inclusion criteria and progress across my projects. Highlight conflicts and give recommendations." },
-  { id: "methodology", icon: "school", label: "Methodology advisor", prompt: "Act as my methodology advisor. Critique my review design and suggest improvements using PRISMA and evidence-quality best practices." },
-];
-
 const makeId = (prefix: string) =>
   (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
     ? `${prefix}-${crypto.randomUUID()}`
@@ -156,7 +145,6 @@ const AI_HISTORY_COLLAPSED_KEY = "litrev_ai_history_collapsed";
 
 export default function AIView() {
   const router = useRouter();
-  const mobileAiV2Enabled = isMobileAiV2Enabled();
   const progressiveAnswerStreamingEnabled = isProgressiveAnswerStreamingEnabled();
   const { projects } = useProjects();
   const [isHistoryCollapsed, setHistoryCollapsed] = useState<boolean>(() => {
@@ -176,7 +164,6 @@ export default function AIView() {
 
   const [workspaceContextText, setWorkspaceContextText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [isCompressing, setIsCompressing] = useState(false);
   const [branchingConversationId, setBranchingConversationId] = useState<string | null>(null);
   const [branchingMessageId, setBranchingMessageId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; conversationId: string } | null>(null);
@@ -365,7 +352,7 @@ export default function AIView() {
     emitMobileActionTap("ai_history_toggle", 32);
     setHistoryCollapsed((prev) => {
       const next = !prev;
-      if (mobileAiV2Enabled && isPhoneViewport && prev && isMobileTelemetryContext()) {
+      if (isPhoneViewport && prev && isMobileTelemetryContext()) {
         recordMobileMetric({
           type: "mobile_drawer_opened",
           surface: "ai",
@@ -378,7 +365,7 @@ export default function AIView() {
       }
       return next;
     });
-  }, [emitMobileActionTap, isPhoneViewport, mobileAiV2Enabled]);
+  }, [emitMobileActionTap, isPhoneViewport]);
 
   const ensureWorkspaceContextText = useCallback(async () => {
     if (selectedProjectId) return "";
@@ -770,7 +757,7 @@ export default function AIView() {
   }, [activeConversationId, activateConversation, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleSelectConversation = useCallback(async (id: string) => {
-    if (mobileAiV2Enabled && isPhoneViewport) {
+    if (isPhoneViewport) {
       setHistoryCollapsed(true);
     }
     activateConversation(id);
@@ -796,7 +783,7 @@ export default function AIView() {
     } finally {
       setIsConversationLoading(false);
     }
-  }, [activateConversation, isPhoneViewport, mobileAiV2Enabled, timelineByConversation, updateConversationTimeline]);
+  }, [activateConversation, isPhoneViewport, timelineByConversation, updateConversationTimeline]);
 
   useEffect(() => {
     if (historyLoadedScopeRef.current !== historyScopeKey) return;
@@ -1042,7 +1029,7 @@ export default function AIView() {
   }, [contextMenu]);
 
   useEffect(() => {
-    if (!mobileAiV2Enabled || !isPhoneViewport || isHistoryCollapsed) return;
+    if (!isPhoneViewport || isHistoryCollapsed) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setHistoryCollapsed(true);
@@ -1050,63 +1037,7 @@ export default function AIView() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [isHistoryCollapsed, isPhoneViewport, mobileAiV2Enabled]);
-
-  const handleCompressHistory = useCallback(async () => {
-    const sourceId = activeConversationId;
-    if (!sourceId || isCompressing) return;
-    if (isTyping) cancelStream();
-    setIsCompressing(true);
-    try {
-      const { summarizeConversationAction } = await loadSummarizeConversationActions();
-      const { getConversation } = await loadConversationActions();
-      const result = await summarizeConversationAction(sourceId);
-      if (!result.success) throw new Error(result.error);
-
-      // Remove the archived source conversation from the sidebar regardless of
-      // whether we can load the new one — avoids leaving a dead (archived) entry.
-      setConversations((prev) =>
-        sortConversationsByUpdatedAt(prev.filter((c) => c.id !== sourceId))
-      );
-      setTimelineByConversation((prev) => {
-        const next = { ...prev };
-        delete next[sourceId];
-        return next;
-      });
-      timelineLruRef.current = timelineLruRef.current.filter((lruId) => lruId !== sourceId);
-
-      const fullResult = await getConversation(result.data.newConversationId);
-      const full = fullResult.success ? fullResult.data : null;
-      if (!full) {
-        activateConversation(null);
-        return;
-      }
-
-      const mappedItems = mapDbMessagesToTimeline(full.messages, full.artifacts);
-      const newConv: ChatConversation = {
-        id: full.id,
-        title: full.title ?? null,
-        projectId: full.projectId ?? undefined,
-        createdAt: full.createdAt,
-        updatedAt: full.updatedAt,
-      };
-
-      setConversations((prev) =>
-        sortConversationsByUpdatedAt(
-          [newConv, ...prev.filter((c) => c.id !== newConv.id)]
-        )
-      );
-      updateConversationTimeline(full.id, () => mappedItems);
-      activateConversation(full.id);
-      setPendingChoices([]);
-      setPendingUserInput(null);
-      setPrefillCommand(null);
-    } catch (err) {
-      console.error("Failed to compress conversation history", err);
-    } finally {
-      setIsCompressing(false);
-    }
-  }, [activeConversationId, activateConversation, isCompressing, isTyping, cancelStream, sortConversationsByUpdatedAt, updateConversationTimeline]);
+  }, [isHistoryCollapsed, isPhoneViewport]);
 
   const handleNewChat = useCallback(async () => {
     emitMobileActionTap("ai_new_chat", 44);
@@ -1132,13 +1063,13 @@ export default function AIView() {
     setConversations((prev) => sortConversationsByUpdatedAt([newConv, ...prev]));
     activateConversation(id);
     updateConversationTimeline(id, () => []);
-    if (mobileAiV2Enabled && isPhoneViewport) {
+    if (isPhoneViewport) {
       setHistoryCollapsed(true);
     }
     setPendingChoices([]);
     setPendingUserInput(null);
     setPrefillCommand(null);
-  }, [activateConversation, emitMobileActionTap, isPhoneViewport, mobileAiV2Enabled, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
+  }, [activateConversation, emitMobileActionTap, isPhoneViewport, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
   const handleSend = useCallback(async (
     rawText: string,
@@ -2486,11 +2417,11 @@ export default function AIView() {
 
   return (
     <>
-    <AppShell activeNav="ai" noMainPadding initiallyCollapsed>
+    <AppShell activeNav="ai" noMainPadding initiallyCollapsed mobileFullBleed>
       <div
         className={styles.layout}
         data-history-collapsed={isHistoryCollapsed}
-        data-mobile-ai-v2={mobileAiV2Enabled ? "true" : "false"}
+        data-mobile-ai-v2={isPhoneViewport ? "true" : "false"}
       >
         <aside className={historyClass} aria-label="Chat history">
           <div className={styles.sidebarHeader}>
@@ -2538,7 +2469,7 @@ export default function AIView() {
             />
           ) : null}
         </aside>
-        {mobileAiV2Enabled && isPhoneViewport && !isHistoryCollapsed ? (
+        {isPhoneViewport && !isHistoryCollapsed ? (
           <button
             type="button"
             className={styles.mobileHistoryOverlay}
@@ -2549,19 +2480,21 @@ export default function AIView() {
 
         <section className={styles.chatInterface} role="region" aria-label="Chat interface">
           <AIChatHeader
-            mobileAiV2Enabled={mobileAiV2Enabled}
             isPhoneViewport={isPhoneViewport}
             isHistoryCollapsed={isHistoryCollapsed}
             historyContentId={historyContentId}
             selectedProjectId={selectedProjectId}
             selectedScopeLabel={selectedScopeLabel}
             projects={projects.map((project) => ({ id: project.id, name: project.name }))}
+            selectedModel={selectedModel}
             showReasoningControls={showReasoningControls}
             reasoningMode={reasoningMode}
             reasoningSupport={reasoningSupport}
             activeTimelineLength={activeTimeline.length}
             onHistoryToggle={handleHistoryToggle}
+            onNewChat={handleNewChat}
             onSelectProject={handleSelectProject}
+            onModelChange={setSelectedModel}
             onReasoningModeChange={updateReasoningMode}
             onExportMarkdown={handleExportMarkdown}
             onExportPdf={handleExportPdf}
@@ -2580,13 +2513,11 @@ export default function AIView() {
               visibleStep={AI_VISIBLE_TIMELINE_STEP}
               onTimelineReady={handleTimelineReady}
               emptyState={{
-                icon: "auto_awesome",
+                icon: "",
                 title: "How can I help with your research?",
-                description: "Ask me anything about your literature review, or try one of these:",
-                suggestions: quickActions.map((action) => ({
-                  label: action.label,
-                  prompt: action.prompt,
-                })),
+                description: "",
+                suggestions: [],
+                layout: "minimal",
               }}
               onSuggestionClick={handleSuggestionClick}
               onActionPrompt={handleActionPrompt}
@@ -2638,12 +2569,11 @@ export default function AIView() {
                   clearChoices={() => { setPendingChoices([]); setPendingUserInput(null); }}
                   selectedModel={selectedModel}
                   onModelChange={setSelectedModel}
+                  hideModelControl={isPhoneViewport}
+                  compactMobileChrome={isPhoneViewport}
                   showAutonomyPreset={false}
                   showAttachments={false}
                   showVoice
-                  onCompress={handleCompressHistory}
-                  canCompress={activeTimeline.length >= 20}
-                  isCompressing={isCompressing}
                   onReady={markComposerReady}
                 />
               </div>
