@@ -21,7 +21,8 @@ function makeCtx(overrides: Partial<CommandContext> = {}): CommandContext {
 
 const globalCtx = makeCtx();
 const projectCtxConversation = makeCtx({ isInProject: true, projectId: "p1", activeTab: "overview", focusMode: "conversation" });
-const projectCtxView = makeCtx({ isInProject: true, projectId: "p1", activeTab: "overview", focusMode: "view" });
+const projectCtxOverviewView = makeCtx({ isInProject: true, projectId: "p1", activeTab: "overview", focusMode: "view" });
+const projectCtxLedgerView = makeCtx({ isInProject: true, projectId: "p1", activeTab: "ledger", focusMode: "view" });
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -55,12 +56,20 @@ describe("Command Registry", () => {
             expect(cmds.find((c) => c.id === "agent-search")).toBeUndefined();
         });
 
-        it("project context in view mode shows all command types", () => {
-            const cmds = getAvailableCommands(projectCtxView);
+        it("project overview in view mode keeps AI commands but hides side-panel toggles", () => {
+            const cmds = getAvailableCommands(projectCtxOverviewView);
+            expect(cmds.find((c) => c.id === "nav-overview")).toBeTruthy();
+            expect(cmds.find((c) => c.id === "agent-search")).toBeTruthy();
+            expect(cmds.find((c) => c.id === "mode-conversation")).toBeTruthy();
+            expect(cmds.find((c) => c.id === "mode-toggle-copilot")).toBeUndefined();
+            expect(cmds.find((c) => c.id === "mode-workspace")).toBeUndefined();
+        });
+
+        it("project workspace subroutes in view mode show side-panel commands", () => {
+            const cmds = getAvailableCommands(projectCtxLedgerView);
             expect(cmds.find((c) => c.id === "nav-overview")).toBeTruthy();
             expect(cmds.find((c) => c.id === "agent-search")).toBeTruthy();
             expect(cmds.find((c) => c.id === "mode-toggle-copilot")).toBeTruthy();
-            // In view mode, should offer switch to conversation
             expect(cmds.find((c) => c.id === "mode-conversation")).toBeTruthy();
             expect(cmds.find((c) => c.id === "mode-workspace")).toBeUndefined();
         });
@@ -74,7 +83,7 @@ describe("Command Registry", () => {
 
     describe("getGroupedCommands", () => {
         it("returns commands grouped by section", () => {
-            const groups = getGroupedCommands(projectCtxView);
+            const groups = getGroupedCommands(projectCtxLedgerView);
             expect(groups.navigation.length).toBeGreaterThan(0);
             expect(groups.agent.length).toBeGreaterThan(0);
             expect(groups.mode.length).toBeGreaterThan(0);
@@ -97,4 +106,3 @@ describe("Command Registry", () => {
         });
     });
 });
-

@@ -45,6 +45,11 @@ export type CommandDefinition = {
 const always = () => true;
 const inProject = (ctx: CommandContext) => ctx.isInProject;
 const inProjectWithAi = (ctx: CommandContext) => ctx.isInProject;
+const hasVisibleProjectSideCopilot = (ctx: CommandContext) =>
+    ctx.isInProject &&
+    ctx.focusMode === "view" &&
+    ctx.activeTab !== null &&
+    ctx.activeTab !== "overview";
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 
@@ -194,7 +199,7 @@ export const COMMANDS: CommandDefinition[] = [
         section: "mode",
         shortcut: "\u2318/",
         keywords: ["panel", "sidebar", "copilot"],
-        when: inProjectWithAi,
+        when: hasVisibleProjectSideCopilot,
         execute: (h) => { h.closePalette(); h.toggleCopilot(); },
     },
     {
