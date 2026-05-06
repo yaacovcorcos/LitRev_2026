@@ -680,35 +680,6 @@
 }
 
 
-.exportBtn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 10px;
-    border: 1px solid var(--glass-border);
-    border-radius: 10px;
-    background: rgba(var(--rgb-ui-surface), 0.6);
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.exportBtn .material-icons-round {
-    font-size: 16px;
-}
-
-.exportBtn:hover:not(:disabled) {
-    background: rgba(var(--rgb-ui-surface), 0.85);
-    color: var(--text-primary);
-}
-
-.exportBtn:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
 .chatInputContainer {
     padding: 0 clamp(16px, 4vw, 64px) 0;
     display: flex;

@@ -2533,29 +2533,6 @@ export default function AIView() {
     setPrefillCommand(null);
   }, []);
 
-  const activeConversation = useMemo(
-    () => conversations.find((conv) => conv.id === activeConversationId) ?? null,
-    [conversations, activeConversationId]
-  );
-
-  const handleExportMarkdown = useCallback(() => {
-    if (activeTimeline.length === 0) return;
-    const title = activeConversation?.title ?? "AI Conversation";
-    const scopeName = selectedProject?.name;
-    const conversationTitle = activeConversation?.title;
-    void import("./ai-export").then(({ buildExportBaseName, exportTimelineMarkdown }) => {
-      exportTimelineMarkdown(activeTimeline, title, buildExportBaseName(scopeName, conversationTitle));
-    });
-  }, [activeTimeline, activeConversation, selectedProject]);
-
-  const handleExportPdf = useCallback(() => {
-    if (activeTimeline.length === 0) return;
-    const title = activeConversation?.title ?? "AI Conversation";
-    void import("./ai-export").then(({ exportTimelinePdf }) => {
-      exportTimelinePdf(activeTimeline, title);
-    });
-  }, [activeTimeline, activeConversation]);
-
   const pendingApprovalBar = useChatPendingApprovalBarState({
     timeline: activeTimeline,
     conversationId: activeConversationId,
@@ -2648,14 +2625,11 @@ export default function AIView() {
             showReasoningControls={showReasoningControls}
             reasoningMode={reasoningMode}
             reasoningSupport={reasoningSupport}
-            activeTimelineLength={activeTimeline.length}
             onHistoryToggle={handleHistoryToggle}
             onNewChat={handleNewChat}
             onSelectProject={handleSelectProject}
             onModelChange={setSelectedModel}
             onReasoningModeChange={updateReasoningMode}
-            onExportMarkdown={handleExportMarkdown}
-            onExportPdf={handleExportPdf}
           />
 
           <div className={styles.chatContent}>

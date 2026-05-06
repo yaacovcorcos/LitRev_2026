@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FocusMode, ViewTab } from "@/contexts/ProjectShellContext";
 import type { ProjectDataDomain } from "@/lib/project-data-events";
 import { useProjectData } from "@/hooks/useProjectData";
@@ -32,7 +32,6 @@ const TABS: TabDef[] = [
     { key: "protocol", label: "Protocol", icon: "assignment" },
     { key: "ledger", label: "Ledger", icon: "table_chart" },
     { key: "draft", label: "Draft", icon: "edit_note" },
-    { key: "memory", label: "Memory", icon: "psychology" },
     { key: "notes", label: "Notes", icon: "sticky_note_2" },
 ];
 
@@ -54,8 +53,21 @@ export function ProjectTabBar({
     onDeleteProject,
 }: ProjectTabBarProps) {
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const closeDeleteModal = useCallback(() => setIsDeleteOpen(false), []);
+    const settingsRef = useRef<HTMLDivElement | null>(null);
     const { warmDomain } = useProjectData();
+
+    useEffect(() => {
+        if (!isSettingsOpen) return;
+        const handleClick = (event: MouseEvent) => {
+            if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
+                setIsSettingsOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClick);
+        return () => document.removeEventListener("mousedown", handleClick);
+    }, [isSettingsOpen]);
 
     const handleTabHover = useCallback((tab: ViewTab) => {
         const domain = TAB_DOMAIN_MAP[tab];
@@ -81,6 +93,8 @@ export function ProjectTabBar({
             },
         });
     }, []);
+
+    const memoryIsActive = activeTab === "memory" && focusMode === "view";
 
     return (
         <>
@@ -139,17 +153,54 @@ export function ProjectTabBar({
 
                 <StatusIndicator />
 
-                {onDeleteProject ? (
+                <div className={styles.settingsAnchor} ref={settingsRef}>
                     <button
                         type="button"
-                        className={styles.deleteBtn}
-                        title="Delete project"
-                        aria-label="Delete project"
-                        onClick={() => setIsDeleteOpen(true)}
+                        className={`${styles.settingsBtn} ${memoryIsActive ? styles.settingsBtnActive : ""}`}
+                        aria-label="Project settings"
+                        aria-expanded={isSettingsOpen}
+                        title="Project settings"
+                        onClick={() => setIsSettingsOpen((prev) => !prev)}
                     >
-                        <span className="material-icons-round">delete_outline</span>
+                        <span className="material-icons-round">settings</span>
                     </button>
-                ) : null}
+
+                    {isSettingsOpen ? (
+                        <div className={styles.settingsDropdown} role="menu">
+                            <button
+                                type="button"
+                                role="menuitem"
+                                className={`${styles.settingsItem} ${memoryIsActive ? styles.settingsItemActive : ""}`}
+                                onClick={() => {
+                                    recordNavigationTap("settings_memory");
+                                    onTabClick("memory");
+                                    setIsSettingsOpen(false);
+                                }}
+                            >
+                                <span className="material-icons-round">psychology</span>
+                                <span>Memory</span>
+                            </button>
+
+                            {onDeleteProject ? (
+                                <>
+                                    <div className={styles.settingsDivider} />
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        className={`${styles.settingsItem} ${styles.settingsItemDanger}`}
+                                        onClick={() => {
+                                            setIsDeleteOpen(true);
+                                            setIsSettingsOpen(false);
+                                        }}
+                                    >
+                                        <span className="material-icons-round">delete_outline</span>
+                                        <span>Delete project</span>
+                                    </button>
+                                </>
+                            ) : null}
+                        </div>
+                    ) : null}
+                </div>
             </nav>
 
             {onDeleteProject ? (
