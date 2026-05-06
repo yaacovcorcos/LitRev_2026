@@ -23,6 +23,11 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET ?? "study-assets";
 const PDF_SIGNATURE = "%PDF-";
 const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const ZIP_LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
+const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
+const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
+const ZIP_END_OF_CENTRAL_DIRECTORY_MIN_SIZE = 22;
+const ZIP_MAX_COMMENT_LENGTH = 0xffff;
 
 export type GeneratedProjectFileInput = {
   directory: string;
@@ -305,6 +310,9 @@ export async function uploadChatAttachment(
   file: File
 ): Promise<{ fileAsset: FileAsset; extraction: PendingAttachmentExtraction }> {
   const scope = await assertProjectAccess(scopeInput, projectId);
+  if (getFileExtension(file.name) !== ".pdf") {
+    throw new Error("Only PDF files can be attached to conversations.");
+  }
   const validated = await readValidatedStudyFileUpload(file);
 
   if (validated.format !== "pdf") {
@@ -406,7 +414,7 @@ async function readValidatedStudyFileUpload(file: File): Promise<ValidatedStudyF
     throw new Error(`File too large. Maximum size is 100 MB.`);
   }
 
-  const ext = file.name.toLowerCase().slice(file.name.lastIndexOf("."));
+  const ext = getFileExtension(file.name);
   if (!ALLOWED_STUDY_FILE_EXTENSIONS.includes(ext) && !ALLOWED_STUDY_FILE_TYPES.includes(file.type)) {
     throw new Error("Only PDF and DOCX files are allowed.");
   }
@@ -429,6 +437,11 @@ async function readValidatedStudyFileUpload(file: File): Promise<ValidatedStudyF
   throw new Error("Only PDF and DOCX files are allowed.");
 }
 
+function getFileExtension(filename: string): string {
+  const dotIndex = filename.lastIndexOf(".");
+  return dotIndex === -1 ? "" : filename.slice(dotIndex).toLowerCase();
+}
+
 function hasPdfSignature(bytes: Uint8Array): boolean {
   const decoder = new TextDecoder("ascii");
   const header = decoder.decode(bytes.slice(0, Math.min(bytes.byteLength, 1024)));
@@ -437,13 +450,85 @@ function hasPdfSignature(bytes: Uint8Array): boolean {
 }
 
 function hasDocxSignature(bytes: Uint8Array): boolean {
-  if (bytes.byteLength < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
+  if (bytes.byteLength < 4 || readUInt32LE(bytes, 0) !== ZIP_LOCAL_FILE_HEADER_SIGNATURE) {
     return false;
   }
 
-  const decoder = new TextDecoder("ascii");
-  const archiveText = decoder.decode(bytes);
-  return archiveText.includes("[Content_Types].xml") && archiveText.includes("word/");
+  // DOCX is an OOXML ZIP package; validate entry names from the central
+  // directory instead of decoding the entire binary file as text.
+  const entries = readZipCentralDirectoryEntryNames(bytes);
+  if (!entries) return false;
+  const entryNames = new Set(entries);
+  return entryNames.has("[Content_Types].xml") && entryNames.has("word/document.xml");
+}
+
+function readUInt16LE(bytes: Uint8Array, offset: number): number {
+  return bytes[offset] | (bytes[offset + 1] << 8);
+}
+
+function readUInt32LE(bytes: Uint8Array, offset: number): number {
+  return (
+    bytes[offset]
+    | (bytes[offset + 1] << 8)
+    | (bytes[offset + 2] << 16)
+    | (bytes[offset + 3] << 24)
+  ) >>> 0;
+}
+
+function findZipEndOfCentralDirectoryOffset(bytes: Uint8Array): number | null {
+  const minOffset = Math.max(0, bytes.byteLength - ZIP_END_OF_CENTRAL_DIRECTORY_MIN_SIZE - ZIP_MAX_COMMENT_LENGTH);
+  for (let offset = bytes.byteLength - ZIP_END_OF_CENTRAL_DIRECTORY_MIN_SIZE; offset >= minOffset; offset--) {
+    if (readUInt32LE(bytes, offset) === ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
+      return offset;
+    }
+  }
+  return null;
+}
+
+function readZipCentralDirectoryEntryNames(bytes: Uint8Array): string[] | null {
+  const eocdOffset = findZipEndOfCentralDirectoryOffset(bytes);
+  if (eocdOffset === null || eocdOffset + ZIP_END_OF_CENTRAL_DIRECTORY_MIN_SIZE > bytes.byteLength) {
+    return null;
+  }
+
+  const entryCount = readUInt16LE(bytes, eocdOffset + 10);
+  const centralDirectorySize = readUInt32LE(bytes, eocdOffset + 12);
+  const centralDirectoryOffset = readUInt32LE(bytes, eocdOffset + 16);
+  const centralDirectoryEnd = centralDirectoryOffset + centralDirectorySize;
+  if (
+    centralDirectoryOffset >= bytes.byteLength
+    || centralDirectoryEnd > bytes.byteLength
+    || centralDirectoryEnd > eocdOffset
+  ) {
+    return null;
+  }
+
+  const decoder = new TextDecoder("utf-8");
+  const names: string[] = [];
+  let offset = centralDirectoryOffset;
+
+  for (let i = 0; i < entryCount; i++) {
+    if (
+      offset + 46 > centralDirectoryEnd
+      || readUInt32LE(bytes, offset) !== ZIP_CENTRAL_DIRECTORY_SIGNATURE
+    ) {
+      return null;
+    }
+
+    const filenameLength = readUInt16LE(bytes, offset + 28);
+    const extraLength = readUInt16LE(bytes, offset + 30);
+    const commentLength = readUInt16LE(bytes, offset + 32);
+    const nameStart = offset + 46;
+    const nextOffset = nameStart + filenameLength + extraLength + commentLength;
+    if (nameStart + filenameLength > centralDirectoryEnd || nextOffset > centralDirectoryEnd) {
+      return null;
+    }
+
+    names.push(decoder.decode(bytes.slice(nameStart, nameStart + filenameLength)));
+    offset = nextOffset;
+  }
+
+  return names;
 }
 
 /**
