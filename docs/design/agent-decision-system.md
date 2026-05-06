@@ -1,10 +1,10 @@
-# Ask User V2 Design Direction
+# Agent Decision System Design
 
 ## Purpose
 
-Define the target architecture for the next-generation `ask_user` feature before writing an implementation plan.
+Define the target architecture for the next-generation `ask_user` decision system before writing an implementation plan.
 
-This is a design-direction document, not an active implementation tracker. Canonical status still belongs in [plan-agentic.md](../plan-agentic.md). Use this file when the team is ready to write the implementation plan for the clarification/decision-system redesign.
+This is a design-direction document, not an active implementation tracker. Canonical status still belongs in [plan-agentic.md](../plans/plan-agentic.md). Use this file when the team is ready to write the implementation plan for the clarification/decision-system redesign.
 
 Status note:
 - The first-class `DecisionRequest` / `DecisionResolution` runtime and persistence foundation described here is now shipped on `main`.
@@ -25,15 +25,15 @@ The current system already has strong runtime properties. V2 must preserve them.
 
 Current local grounding:
 
-- tool contract: [next-app/lib/server/ai/tools/ask-user.ts](../../../next-app/lib/server/ai/tools/ask-user.ts)
-- shared types: [next-app/types/ai.ts](../../../next-app/types/ai.ts)
-- runtime policy/controller: [next-app/lib/server/ai/clarification-controller.ts](../../../next-app/lib/server/ai/clarification-controller.ts)
-- pause/suppress path: [next-app/lib/server/ai/ai-service.ts](../../../next-app/lib/server/ai/ai-service.ts)
-- structured resolution route: [next-app/app/api/ai/stream/route.ts](../../../next-app/app/api/ai/stream/route.ts)
-- shared reducer/runtime: [next-app/lib/ai/shared-stream-reducer.ts](../../../next-app/lib/ai/shared-stream-reducer.ts), [next-app/lib/ai/ai-stream-runtime.ts](../../../next-app/lib/ai/ai-stream-runtime.ts)
-- project adapter: [next-app/contexts/project-conversation-stream-events.ts](../../../next-app/contexts/project-conversation-stream-events.ts)
-- UI card: [next-app/components/artifacts/UserInputCard.tsx](../../../next-app/components/artifacts/UserInputCard.tsx)
-- current runtime contract docs: [plan-agentic.md](../plan-agentic.md), [plan-agent-quality.md](../plan-agent-quality.md), with historical supporting notes in [chat-runtime.md](../chat-runtime.md) and [transparency-ui.md](../transparency-ui.md)
+- tool contract: [next-app/lib/server/ai/tools/ask-user.ts](../../next-app/lib/server/ai/tools/ask-user.ts)
+- shared types: [next-app/types/ai.ts](../../next-app/types/ai.ts)
+- runtime policy/controller: [next-app/lib/server/ai/clarification-controller.ts](../../next-app/lib/server/ai/clarification-controller.ts)
+- pause/suppress path: [next-app/lib/server/ai/ai-service.ts](../../next-app/lib/server/ai/ai-service.ts)
+- structured resolution route: [next-app/app/api/ai/stream/route.ts](../../next-app/app/api/ai/stream/route.ts)
+- shared reducer/runtime: [next-app/lib/ai/shared-stream-reducer.ts](../../next-app/lib/ai/shared-stream-reducer.ts), [next-app/lib/ai/ai-stream-runtime.ts](../../next-app/lib/ai/ai-stream-runtime.ts)
+- project adapter: [next-app/contexts/project-conversation-stream-events.ts](../../next-app/contexts/project-conversation-stream-events.ts)
+- UI card: [next-app/components/artifacts/UserInputCard.tsx](../../next-app/components/artifacts/UserInputCard.tsx)
+- current runtime contract docs: [plan-agentic.md](../plans/plan-agentic.md) and [plan-agent-quality.md](../plans/plan-agent-quality.md)
 
 Preserve these invariants:
 

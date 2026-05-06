@@ -8,9 +8,6 @@ This file is the active plan registry and the canonical owner for plan-maintenan
 - [**Lint Governance**](plan-lint-governance.md): Canonical tracker for repo-local lint architecture, staged governance rules, audit baselines, and CI rollout.
 - [**Testing Execution**](plan-testing-execution.md): Canonical tracker for shared test command taxonomy, CI lane clarity, changed-scope execution policy, smoke-lane discipline, and cross-cutting testing operations.
 - [**Agent Platform**](plan-agentic.md): Single canonical plan for the agent platform: runtime architecture, orchestration, decisioning, tool boundaries, shared-surface truth, and the long-range agent product roadmap.
-  - Supporting execution detail for active fixes still lives under [**agent-runtime-remediation/**](agent-runtime-remediation/README.md).
-  - Cross-owner sequencing and dependency order now lives in [**Agent Platform Delivery Map**](agent-platform-delivery-map.md).
-  - Historical/supporting runtime and transparency notes remain in [**Chat Runtime**](chat-runtime.md) and [**Transparency UI**](transparency-ui.md), but active status now lives in `plan-agentic.md`.
 - [**Agent Quality**](plan-agent-quality.md): Canonical plan for agent reliability, security, executable evals, rollout discipline, observability, performance efficiency, and long-term benchmark intake.
 - [**Memory, Grounding, and Prompting**](plan-memory.md): The only active memory tracker, now expanded to also own grounding, retrieval-quality, prompt-library, and extraction work for the agent's knowledge layer.
 - **UI, UX, components** — Canonical + archive:
@@ -24,12 +21,21 @@ This file is the active plan registry and the canonical owner for plan-maintenan
   - [**Reliability A0 brief**](reliability-a0-brief.md): Deterministic repro + baseline threshold contract for Track A blocker reliability work.
   - [**Mobile plan**](mobile-plan.md): Canonical app-wide responsive foundation tracker, including mobile/chat follow-up waves.
   - [**Mobile layout contract**](mobile-layout-contract.md): Operational contract for shared phone/compact height, safe-area, and scroll-ownership rules.
-  - [**Transparency UI**](transparency-ui.md): Supporting reference for truthful process visibility across chat surfaces. Active ownership now lives in `plan-agentic.md` and `plan-agent-quality.md`.
-  - [**Chat Runtime**](chat-runtime.md): Supporting reference for shared runtime parity history and burn-in context. Active ownership now lives in `plan-agentic.md` and `plan-agent-quality.md`.
 - [**Guided Setup V2**](plan-guided-setup.md): Dedicated onboarding activation plan for visual redesign, AI-enhanced step flow, personalization, and setup-mode agent behavior.
 - [**Settings**](plan-settings.md): Canonical tracker for user-configurable behavior defaults and future Settings UI controls.
 - [**Speed and Performance**](plan-speed-performance.md): Canonical tracker for Web Vitals budgets, cache/preload policy, route performance, and smooth interaction delivery.
-- [**System Prompts & LLM Extraction**](plan-prompts.md): Supporting reference only; active prompt and extraction ownership now lives in `plan-memory.md`.
+
+## Agent Docs Map
+
+The agent documentation intentionally has few active sources of truth:
+
+- Runtime, orchestration, tool boundaries, decisioning, and roadmap: [`plan-agentic.md`](plan-agentic.md)
+- Reliability, evals, rollout, security, observability, performance, and sign-off: [`plan-agent-quality.md`](plan-agent-quality.md)
+- Memory, retrieval, grounding, prompt-library, and extraction quality: [`plan-memory.md`](plan-memory.md)
+- Operational runtime burn-in procedure: [`../runbooks/chat-runtime-burn-in.md`](../runbooks/chat-runtime-burn-in.md)
+- Decision-system design reference for the next `ask_user` wave: [`../design/agent-decision-system.md`](../design/agent-decision-system.md)
+
+Old remediation plans, runtime notes, transparency notes, and prompt-only plans were pruned so future agents do not mistake historical planning sediment for active status.
 
 ## Plan Filename Policy
 

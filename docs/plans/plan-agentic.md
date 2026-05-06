@@ -23,12 +23,7 @@ It does not own:
 - product-area onboarding flow details
   - use [`plan-guided-setup.md`](./plan-guided-setup.md)
 
-Supporting design detail may still live under:
-- `docs/plans/agent-runtime-remediation/*.md`
-- `docs/plans/chat-runtime.md`
-- `docs/plans/transparency-ui.md`
-
-Those files are supporting references only. Active status lives here.
+Supporting design detail is intentionally sparse. The only retained agent-platform design note outside this plan is [`docs/design/agent-decision-system.md`](../design/agent-decision-system.md), which informs the next `ask_user` decision-system wave. Active status still lives here.
 
 ## North Star
 
@@ -186,7 +181,7 @@ Goal:
 Active work:
 - [ ] `C-001` Complete `ask_user` decision-quality follow-through on top of the first-class `DecisionRequest` foundation.
   - direction owner:
-    - [`agent-runtime-remediation/ask-user-v2-design-direction.md`](./agent-runtime-remediation/ask-user-v2-design-direction.md)
+    - [`docs/design/agent-decision-system.md`](../design/agent-decision-system.md)
   - target outcome:
     - high-trust decision UI and resolved-history rendering
     - partial, superseded, interrupted, stale, and expired lifecycle handling where product flows need it

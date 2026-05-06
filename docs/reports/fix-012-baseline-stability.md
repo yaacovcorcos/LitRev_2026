@@ -32,7 +32,7 @@ The current repo already supports these `FIX-012` baseline claims:
 - `summary` no longer requests provider reasoning in [reasoning-request.ts](../../next-app/lib/ai/reasoning-request.ts).
 - `failed_interrupted` is part of the shared terminal-state contract in [stream-lifecycle.ts](../../next-app/lib/ai/stream-lifecycle.ts).
 - Visible-channel hygiene for known continuation payloads exists in [normalize-assistant-content.ts](../../next-app/lib/ai/normalize-assistant-content.ts).
-- The main plan stack already reflects runtime-led summary semantics in [plan-agentic.md](../plans/plan-agentic.md), [chat-runtime.md](../plans/chat-runtime.md), and [transparency-ui.md](../plans/transparency-ui.md).
+- The main plan stack already reflects runtime-led summary semantics in [plan-agentic.md](../plans/plan-agentic.md), with reliability/sign-off posture in [plan-agent-quality.md](../plans/plan-agent-quality.md).
 - Blocking clarification is now request-bound and runtime-owned on the main surfaces in [clarification-controller.ts](../../next-app/lib/server/ai/clarification-controller.ts), [route.ts](../../next-app/app/api/ai/stream/route.ts), [ai-service.ts](../../next-app/lib/server/ai/ai-service.ts), [page.tsx](../../next-app/app/ai/page.tsx), and [ProjectConversationContext.tsx](../../next-app/contexts/ProjectConversationContext.tsx).
 - Hidden clarification-resume prompt strings have been removed from `/ai` and project surfaces; the route now synthesizes continuation input from structured `userInputResolution` instead of surface-authored control text.
 
@@ -113,7 +113,7 @@ Popup remains a reduced honest subset and does not block `FIX-012` retirement. R
 
 ## Closeout Decision
 
-`FIX-012` can retire only when this evidence record shows the retirement gate in [plan-fix-012-baseline-stability.md](../plans/agent-runtime-remediation/plan-fix-012-baseline-stability.md) is satisfied.
+`FIX-012` is retired. This evidence record is historical; current agent-runtime status belongs in [plan-agentic.md](../plans/plan-agentic.md).
 
 ### Current gate status
 

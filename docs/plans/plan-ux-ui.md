@@ -239,7 +239,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
 - Durable navigation work in this file owns the cross-surface URL/refresh contract; `plan-agentic.md` remains the dependency for shared chat runtime semantics rather than route identity ownership.
 - Durable navigation work in this file must be reflected in `plan-agentic.md` and `plan-speed-performance.md` whenever conversation identity or project-entry restore assumptions change, and in `plan-agent-quality.md` whenever rollout/sign-off assumptions change.
 - Context capture and scoped AI entrypoints: `docs/plans/plan-context-capture.md` (owns composer context receipts/chips and cross-surface context reuse).
-- Transparency/process UI detail: `docs/plans/transparency-ui.md` as a supporting note only.
+- Transparency/process UI vocabulary and presentation terms: `docs/architecture/agentic-ui-glossary.md`.
 - Performance budgets and enforcement: `docs/plans/plan-speed-performance.md`.
 - Reliability blocker baselines and A1 patch targeting: `docs/plans/reliability-a0-brief.md`.
 
