@@ -38,14 +38,11 @@ type AIChatHeaderProps = {
   showReasoningControls: boolean;
   reasoningMode: ReasoningMode;
   reasoningSupport: ReasoningSupportTier;
-  activeTimelineLength: number;
   onHistoryToggle: () => void;
   onNewChat: () => void;
   onSelectProject: (projectId: string | null) => void;
   onModelChange: (modelId: SelectableModelId) => void;
   onReasoningModeChange: (mode: ReasoningMode) => void;
-  onExportMarkdown: () => void;
-  onExportPdf: () => void;
 };
 
 export function AIChatHeader({
@@ -60,14 +57,11 @@ export function AIChatHeader({
   showReasoningControls,
   reasoningMode,
   reasoningSupport,
-  activeTimelineLength,
   onHistoryToggle,
   onNewChat,
   onSelectProject,
   onModelChange,
   onReasoningModeChange,
-  onExportMarkdown,
-  onExportPdf,
 }: AIChatHeaderProps) {
   const [isProjectDropdownOpen, setProjectDropdownOpen] = useState(false);
   const [isMobileOptionsOpen, setMobileOptionsOpen] = useState(false);
@@ -102,8 +96,7 @@ export function AIChatHeader({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [isMobileMoreOpen, isMobileOptionsOpen]);
 
-  const activeExportDisabled = activeTimelineLength === 0;
-  const hasMobileMoreActions = Boolean(returnProject) || !activeExportDisabled;
+  const hasMobileMoreActions = Boolean(returnProject);
   const projectIcon = useMemo(() => (selectedProjectId ? "folder" : "public"), [selectedProjectId]);
   const selectedModelInfo = useMemo(
     () => USER_SELECTABLE_MODELS.find((model) => model.id === selectedModel),
@@ -228,28 +221,7 @@ export function AIChatHeader({
                       <span>Back to {returnProject.name}</span>
                     </Link>
                   ) : null}
-                  <button
-                    type="button"
-                    className={styles.mobileMoreItem}
-                    onClick={() => {
-                      onExportMarkdown();
-                      setMobileMoreOpen(false);
-                    }}
-                  >
-                    <span className="material-icons-round" aria-hidden="true">download</span>
-                    Export Markdown
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.mobileMoreItem}
-                    onClick={() => {
-                      onExportPdf();
-                      setMobileMoreOpen(false);
-                    }}
-                  >
-                    <span className="material-icons-round" aria-hidden="true">picture_as_pdf</span>
-                    Export PDF
-                  </button>
+
                 </div>
               ) : null}
             </div>
@@ -333,32 +305,13 @@ export function AIChatHeader({
               title={`Reasoning visibility: ${reasoningMode}`}
             >
               <span className="material-icons-round">psychology</span>
-              <span className={styles.reasoningModeLabel}>
-                {reasoningMode === "off" ? "Off" : reasoningMode === "summary" ? "Summary" : "Full"}
-              </span>
+              <span className={styles.reasoningModeLabel}>Reasoning</span>
               <span className="material-icons-round">expand_more</span>
             </button>
           </AIChatReasoningModeDropdown>
         ) : null}
 
-        <button
-          type="button"
-          className={styles.exportBtn}
-          onClick={onExportMarkdown}
-          disabled={activeExportDisabled}
-        >
-          <span className="material-icons-round">download</span>
-          Export MD
-        </button>
-        <button
-          type="button"
-          className={styles.exportBtn}
-          onClick={onExportPdf}
-          disabled={activeExportDisabled}
-        >
-          <span className="material-icons-round">picture_as_pdf</span>
-          Export PDF
-        </button>
+
       </div>
     </div>
   );

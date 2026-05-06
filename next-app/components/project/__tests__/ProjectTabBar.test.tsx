@@ -65,11 +65,24 @@ describe("ProjectTabBar intent boost", () => {
         expect(mockWarmDomain).not.toHaveBeenCalled();
     });
 
-    it("does not call warmDomain on tab hover for memory", () => {
+    it("moves memory into project settings instead of the main tab row", () => {
         render(<ProjectTabBar {...defaultProps} />);
-        const memoryTab = screen.getByRole("tab", { name: /Memory/i });
-        fireEvent.mouseEnter(memoryTab);
+        expect(screen.queryByRole("tab", { name: /Memory/i })).toBeNull();
+
+        fireEvent.click(screen.getByRole("button", { name: "Project settings" }));
+        const memoryAction = screen.getByRole("menuitem", { name: /Memory/i });
+        fireEvent.mouseEnter(memoryAction);
         expect(mockWarmDomain).not.toHaveBeenCalled();
+    });
+
+    it("opens memory from the project settings menu", () => {
+        const onTabClick = vi.fn();
+        render(<ProjectTabBar {...defaultProps} onTabClick={onTabClick} />);
+
+        fireEvent.click(screen.getByRole("button", { name: "Project settings" }));
+        fireEvent.click(screen.getByRole("menuitem", { name: /Memory/i }));
+
+        expect(onTabClick).toHaveBeenCalledWith("memory");
     });
 
     it("does not call warmDomain on tab hover for notes", () => {

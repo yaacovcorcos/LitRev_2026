@@ -23,14 +23,11 @@ const defaultProps = {
   showReasoningControls: true,
   reasoningMode: "summary" as const,
   reasoningSupport: "explicit" as const,
-  activeTimelineLength: 0,
   onHistoryToggle: vi.fn(),
   onNewChat: vi.fn(),
   onSelectProject: vi.fn(),
   onModelChange: vi.fn(),
   onReasoningModeChange: vi.fn(),
-  onExportMarkdown: vi.fn(),
-  onExportPdf: vi.fn(),
 };
 
 describe("AIChatHeader mobile shell", () => {
@@ -49,7 +46,6 @@ describe("AIChatHeader mobile shell", () => {
     expect(screen.getByRole("button", { name: "New chat" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "More chat actions" })).toBeNull();
     expect(screen.queryByRole("button", { name: /reasoning/i })).toBeNull();
-    expect(screen.queryByText("Export MD")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Open AI options" }));
 
@@ -60,21 +56,6 @@ describe("AIChatHeader mobile shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open AI options" }));
     fireEvent.click(screen.getByRole("button", { name: "Grok 4.1 Fast" }));
     expect(onModelChange).toHaveBeenCalledWith("grok-4-1-fast");
-  });
-
-  it("keeps export actions contextual behind the mobile more menu", () => {
-    const onExportMarkdown = vi.fn();
-    render(
-      <AIChatHeader
-        {...defaultProps}
-        activeTimelineLength={2}
-        onExportMarkdown={onExportMarkdown}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "More chat actions" }));
-    fireEvent.click(screen.getByRole("button", { name: "Export Markdown" }));
-    expect(onExportMarkdown).toHaveBeenCalledTimes(1);
   });
 
   it("shows a compact return-to-project action when a previous project is available", () => {

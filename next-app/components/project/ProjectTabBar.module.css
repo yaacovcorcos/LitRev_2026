@@ -115,7 +115,13 @@
 }
 
 
-.deleteBtn {
+.settingsAnchor {
+    position: relative;
+    flex-shrink: 0;
+    margin-left: 4px;
+}
+
+.settingsBtn {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -126,42 +132,113 @@
     background: transparent;
     color: var(--text-muted);
     cursor: pointer;
-    flex-shrink: 0;
-    margin-left: 4px;
+    transition: background 0.2s ease, color 0.2s ease;
 }
 
-.deleteBtn:hover {
-    background: rgba(var(--rgb-color-danger), 0.08);
-    color: var(--color-danger);
+.settingsBtn:hover {
+    background: rgba(var(--rgb-ui-contrast), 0.06);
+    color: var(--text-primary);
 }
 
-.deleteBtn:focus-visible {
+.settingsBtn:focus-visible {
     outline: none;
     box-shadow: var(--shadow-focus-ring);
 }
 
-.deleteBtn .material-icons-round {
+.settingsBtn .material-icons-round {
     font-size: 18px;
 }
 
-/* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
-@media (max-width: 767px) {
-    .tabBar {
-        min-height: 56px;
-        padding: 4px 12px;
-    }
+.settingsBtnActive {
+    color: var(--accent-primary);
+}
 
-    .modeBtn,
-    .tab,
-    .deleteBtn {
-        min-height: var(--touch-target-min);
-    }
+.settingsBtnActive:hover {
+    color: var(--accent-primary);
+}
 
-    .deleteBtn {
-        width: var(--touch-target-min);
-        height: var(--touch-target-min);
-    }
+.settingsDropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    min-width: 200px;
+    padding: 6px;
+    background: var(--bg-surface);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md, 12px);
+    box-shadow: var(--shadow-lg);
+    z-index: var(--z-overlay);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
 
+.settingsItem {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.settingsItem:hover:not(:disabled) {
+    background: rgba(var(--rgb-ui-contrast), 0.05);
+}
+
+.settingsItem:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-ring);
+}
+
+.settingsItem:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.settingsItem .material-icons-round {
+    font-size: 17px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.settingsItemActive {
+    background: rgba(var(--rgb-accent-primary), 0.08);
+    color: var(--accent-primary);
+}
+
+.settingsItemActive .material-icons-round {
+    color: var(--accent-primary);
+}
+
+.settingsItemDanger {
+    color: var(--color-danger);
+}
+
+.settingsItemDanger .material-icons-round {
+    color: var(--color-danger);
+}
+
+.settingsItemDanger:hover {
+    background: rgba(var(--rgb-color-danger), 0.08);
+}
+
+.settingsDivider {
+    height: 1px;
+    background: var(--glass-border);
+    margin: 4px 0;
+}
+
+/* Icon-only mode: mirrors MOBILE_VIEWPORT_MAX_WIDTH in lib/mobile/breakpoints.ts. */
+@media (max-width: 900px) {
     .tabLabel,
     .btnLabel {
         display: none;
@@ -173,5 +250,24 @@
 
     .modeBtn {
         padding: 5px 8px;
+    }
+}
+
+/* Phone mode: mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
+@media (max-width: 767px) {
+    .tabBar {
+        min-height: 56px;
+        padding: 4px 12px;
+    }
+
+    .modeBtn,
+    .tab,
+    .settingsBtn {
+        min-height: var(--touch-target-min);
+    }
+
+    .settingsBtn {
+        width: var(--touch-target-min);
+        height: var(--touch-target-min);
     }
 }
