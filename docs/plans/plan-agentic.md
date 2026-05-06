@@ -76,8 +76,18 @@ The agent should not merely "feel smart." It should be:
 - The known `FIX-011b` shared-runtime code delta is now closed on `main`:
   - stale replaced/cancelled workers fail closed on ownership loss
   - cancelled terminal truth converges across live stream, durable cancellation, recovery, and blocked-card dismissal
+  - artifact-aware streams receive the HTTP request abort signal and also watch durable run status, so same-process and cross-instance cancellation both reach the active worker
+  - final stream reconciliation emits `run_end` from persisted terminal truth when a stale worker loses the finalization race
   - clarification hydration uses the newest relevant lineage window
   - useful completed runs are not retro-failed by optional post-answer work
+- Run event append is now safer under load:
+  - per-run sequence allocation is serialized by a transaction-scoped advisory lock before reading the latest event sequence
+  - event writability checks are read-only and no longer update the `AgentRun` row before every event append
+  - transient serialization/deadlock conflicts retry through the event append loop instead of bubbling as unknown runtime failures
+- Run phase truth is centralized:
+  - `verify -> plan` is an intentional legal transition for continuation runs that need to re-plan
+  - plan, tool, artifact, and user-input events map through one shared state-machine module instead of scattered switch statements
+  - phase-drifted pending decision requests can still be paused by the conversation admission guard before new work starts
 - `U1.6` is now the runtime sign-off gate, not a bug-discovery substitute: it still needs a fresh deployment-level burn-in window, scoped cohort evidence, and the manual abnormal-end spot checks from `docs/runbooks/chat-runtime-burn-in.md`.
 - Durable continuation is materially stronger than before:
   - strict continue remains strict
@@ -94,7 +104,7 @@ The agent should not merely "feel smart." It should be:
   - typed tool payload parsing
   - structured tool-boundary failures
   - no fake `{}` coercion for invalid payloads
-  - mutating-tool idempotency receipts now settle on returned executor failures and use stale running leases instead of permanent in-flight locks after abort/crash
+  - mutating-tool idempotency receipts now settle on returned, thrown, and aborted executor failures; stale running leases remain the crash/process-death fallback instead of a normal cancellation path
 - Search transparency is materially better:
   - semantic receipts for the main search tools
   - shared query/count/source semantics

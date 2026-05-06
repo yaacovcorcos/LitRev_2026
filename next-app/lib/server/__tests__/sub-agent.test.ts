@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   startRun: vi.fn(),
   endRun: vi.fn(),
   startRunHeartbeat: vi.fn(() => ({ stop: vi.fn() })),
-  emitEvent: vi.fn(),
+  recordRunEvent: vi.fn(),
   protocolFindUnique: vi.fn(),
 }));
 
@@ -49,8 +49,8 @@ vi.mock("@/lib/server/agent/run", () => ({
   startRunHeartbeat: mocks.startRunHeartbeat,
 }));
 
-vi.mock("@/lib/server/agent/events", () => ({
-  emitEvent: mocks.emitEvent,
+vi.mock("@/lib/server/agent/run-event-recorder", () => ({
+  recordRunEvent: mocks.recordRunEvent,
 }));
 
 const { executeSubAgent } = await import("@/lib/server/ai/sub-agent");
@@ -66,7 +66,7 @@ describe("executeSubAgent", () => {
     mocks.evaluateToolPrerequisites.mockResolvedValue({ allowed: true });
     mocks.startRun.mockResolvedValue({ id: "sub-run-1" });
     mocks.endRun.mockResolvedValue({ id: "sub-run-1" });
-    mocks.emitEvent.mockResolvedValue({ id: "evt-1" });
+    mocks.recordRunEvent.mockResolvedValue({ persisted: true, degraded: false });
   });
 
   it("keeps delegated proposal artifacts proposed instead of auto-applying them", async () => {
@@ -127,6 +127,12 @@ describe("executeSubAgent", () => {
         artifactRunId: "run-1",
         levelOneBehavior: "block",
         cachedAutonomyConfig: { preset: "assisted", toolOverrides: {} },
+      }),
+    );
+    expect(mocks.startRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conv-1",
+        parentRunId: "run-1",
       }),
     );
     expect(mocks.endRun).toHaveBeenCalledWith("sub-run-1", "completed");

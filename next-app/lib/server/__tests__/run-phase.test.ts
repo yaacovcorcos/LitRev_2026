@@ -42,10 +42,11 @@ describe("run-phase transitions", () => {
       plan: ["ask", "act", "finalize"],
       ask: ["plan", "act", "finalize"],
       act: ["ask", "verify", "finalize"],
-      verify: ["ask", "act", "finalize"],
+      verify: ["plan", "ask", "act", "finalize"],
       finalize: [],
     });
     expect(isRunPhaseTransitionAllowed("act", "verify")).toBe(true);
+    expect(isRunPhaseTransitionAllowed("verify", "plan")).toBe(true);
     expect(isRunPhaseTransitionAllowed("finalize", "act")).toBe(false);
   });
 

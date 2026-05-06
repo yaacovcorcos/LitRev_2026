@@ -145,6 +145,20 @@ function replayResult(cached: ToolResult, callId: string, markReplay = true): To
   return result;
 }
 
+function errorResultFromThrownError(
+  request: ToolExecutionRequest,
+  prefix: string,
+  error: unknown,
+): ToolResult {
+  return {
+    callId: request.callId,
+    result: null,
+    error: error instanceof Error
+      ? `${prefix}: ${error.message}`
+      : prefix,
+  };
+}
+
 export function isIdempotencyReplayResult(result: ToolResult): boolean {
   return Boolean((result as ToolResult & { [TOOL_IDEMPOTENCY_REPLAY]?: true })[TOOL_IDEMPOTENCY_REPLAY]);
 }
@@ -343,15 +357,26 @@ export async function executeWithToolMiddleware(
       appliedBeforeMiddlewares.push(middleware);
     } catch (error) {
       if (resolvedRequest.context?.signal?.aborted || isAbortLikeError(error)) {
+        await runAfterHooks(
+          resolvedRequest,
+          appliedBeforeMiddlewares,
+          errorResultFromThrownError(
+            resolvedRequest,
+            "Tool middleware before hook aborted",
+            error,
+          ),
+        );
         throw error;
       }
-      return runAfterHooks(resolvedRequest, appliedBeforeMiddlewares, {
-        callId: resolvedRequest.callId,
-        result: null,
-        error: error instanceof Error
-          ? `Tool middleware before hook failed: ${error.message}`
-          : "Tool middleware before hook failed",
-      });
+      return runAfterHooks(
+        resolvedRequest,
+        appliedBeforeMiddlewares,
+        errorResultFromThrownError(
+          resolvedRequest,
+          "Tool middleware before hook failed",
+          error,
+        ),
+      );
     }
   }
 
@@ -360,15 +385,26 @@ export async function executeWithToolMiddleware(
     result = await executor(resolvedRequest);
   } catch (error) {
     if (resolvedRequest.context?.signal?.aborted || isAbortLikeError(error)) {
+      await runAfterHooks(
+        resolvedRequest,
+        appliedBeforeMiddlewares,
+        errorResultFromThrownError(
+          resolvedRequest,
+          "Tool execution aborted",
+          error,
+        ),
+      );
       throw error;
     }
-    return runAfterHooks(resolvedRequest, appliedBeforeMiddlewares, {
-      callId: resolvedRequest.callId,
-      result: null,
-      error: error instanceof Error
-        ? `Tool execution failed: ${error.message}`
-        : "Tool execution failed",
-    });
+    return runAfterHooks(
+      resolvedRequest,
+      appliedBeforeMiddlewares,
+      errorResultFromThrownError(
+        resolvedRequest,
+        "Tool execution failed",
+        error,
+      ),
+    );
   }
 
   return runAfterHooks(resolvedRequest, middlewares, result);

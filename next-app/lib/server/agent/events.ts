@@ -6,13 +6,14 @@
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import type { Prisma } from "@prisma/client";
-import type { RunEventType, RunPhase } from "@/types/agent";
+import type { RunEventType } from "@/types/agent";
 import {
     assertRunWritableInTransaction,
     noteObservedRunActivity,
 } from "@/lib/server/agent/run";
 import { isDurableProgressRunEventType } from "@/lib/server/agent/run-event-authority";
 import { transitionRunPhaseInTransaction } from "@/lib/server/agent/run-phase";
+import { getRunPhaseForEventType } from "@/lib/server/agent/run-state-machine";
 
 export interface EmitEventExtras {
     toolName?: string;
@@ -38,21 +39,6 @@ function getAllowedStatusesForEventType(type: RunEventType) {
         : ["running"] as const;
 }
 
-function getRunPhaseForEventType(type: RunEventType): RunPhase | null {
-    switch (type) {
-        case "tool_call":
-            return "act";
-        case "tool_result":
-        case "artifact_proposed":
-        case "artifact_reviewed":
-            return "verify";
-        case "user_input_required":
-            return "ask";
-        default:
-            return null;
-    }
-}
-
 function isRunSequenceConflict(error: unknown): boolean {
     if (!error || typeof error !== "object") return false;
     const candidate = error as { code?: unknown; meta?: { target?: unknown } };
@@ -61,6 +47,19 @@ function isRunSequenceConflict(error: unknown): boolean {
     if (!Array.isArray(target)) return false;
     const cols = target.map((value) => String(value));
     return cols.includes("runId") && cols.includes("sequence");
+}
+
+function isRetryableRunEventTransactionError(error: unknown): boolean {
+    if (isRunSequenceConflict(error)) return true;
+    if (!error || typeof error !== "object") return false;
+    return (error as { code?: unknown }).code === "P2034";
+}
+
+async function lockRunEventSequenceInTransaction(
+    tx: RunEventTransactionClient,
+    runId: string,
+): Promise<void> {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`run-event:${runId}`}))`;
 }
 
 /**
@@ -74,11 +73,12 @@ export async function emitEventWithinTransaction(
     payload: unknown,
     extras?: EmitEventExtras,
 ) {
-    await assertRunWritableInTransaction(tx, {
+    const runSnapshot = await assertRunWritableInTransaction(tx, {
         runId,
         allowedStatuses: [...getAllowedStatusesForEventType(type)],
         requireIncomplete: type !== "user_input_resolved",
     });
+    await lockRunEventSequenceInTransaction(tx, runId);
     const lastEvent = await tx.runEvent.findFirst({
         where: { runId },
         orderBy: { sequence: "desc" },
@@ -102,12 +102,17 @@ export async function emitEventWithinTransaction(
         },
     });
 
-    const nextPhase = getRunPhaseForEventType(type);
+    const nextPhase = getRunPhaseForEventType(type, {
+        status: runSnapshot.status,
+        runPhase: runSnapshot.runPhase,
+        finalizationState: runSnapshot.finalizationState,
+        completedAt: runSnapshot.completedAt,
+    });
     if (nextPhase) {
         await transitionRunPhaseInTransaction(tx, runId, nextPhase, event.createdAt);
     }
 
-    await tx.agentRun.updateMany({
+    const activityUpdate = await tx.agentRun.updateMany({
         where: {
             id: runId,
             status: { in: [...getAllowedStatusesForEventType(type)] },
@@ -120,6 +125,14 @@ export async function emitEventWithinTransaction(
                 : {}),
         },
     });
+    if (activityUpdate.count !== 1) {
+        await assertRunWritableInTransaction(tx, {
+            runId,
+            allowedStatuses: [...getAllowedStatusesForEventType(type)],
+            requireIncomplete: type !== "user_input_resolved",
+        });
+        throw new Error(`Failed to update run activity after event append: ${runId}`);
+    }
 
     return event;
 }
@@ -151,7 +164,10 @@ export async function emitEvent(
             noteObservedRunActivity(runId, created.createdAt);
             return created;
         } catch (error) {
-            if (isRunSequenceConflict(error) && attempt < MAX_SEQUENCE_RETRY_ATTEMPTS - 1) {
+            if (
+                isRetryableRunEventTransactionError(error)
+                && attempt < MAX_SEQUENCE_RETRY_ATTEMPTS - 1
+            ) {
                 continue;
             }
             throw error;

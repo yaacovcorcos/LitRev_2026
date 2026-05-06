@@ -199,10 +199,10 @@ describe("/api/ai/stream route", () => {
       "user_input_required",
       "run_end",
     ]);
-    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]?.signal).toBeUndefined();
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]?.signal).toBe(request.signal);
   });
 
-  it("does not wire the HTTP request abort signal into durable agent execution", async () => {
+  it("wires the HTTP request abort signal into durable agent execution", async () => {
     const controller = new AbortController();
     mocks.streamChatWithArtifacts.mockImplementation(async function* () {
       yield { type: "run_start", runId: "run-1", conversationId: "conv-1" };
@@ -229,7 +229,7 @@ describe("/api/ai/stream route", () => {
     await response.text();
 
     expect(mocks.streamChatWithArtifacts).toHaveBeenCalledTimes(1);
-    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]?.signal).toBeUndefined();
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]?.signal).toBe(request.signal);
   });
 
   it("emits an error chunk when the stream fails after run_start", async () => {

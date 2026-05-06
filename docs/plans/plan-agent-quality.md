@@ -128,7 +128,7 @@ The lesson to keep:
   - blocked clarification
   - retry/continue/recover
   - malformed provider/tool payloads
-  - current regression coverage already includes cancelled terminal truth, no-answer failure truth, pending decision requests, delegated search traces, OpenAlex receipt traces, idempotency failure/stale-lease recovery, bounded Crossref enrichment, and interrupted-tool continuation policy coverage
+  - current regression coverage already includes cancelled terminal truth, terminal `run_end` reconciliation after ownership loss, no-answer failure truth, pending decision requests, phase-drifted pending-decision admission, delegated search traces, OpenAlex receipt traces, idempotency failure/abort release and stale-lease recovery, bounded Crossref enrichment, and interrupted-tool continuation policy coverage
 
 - [ ] `Q1-003` Add adversarial regression coverage for agent-specific trust boundaries.
   - examples:

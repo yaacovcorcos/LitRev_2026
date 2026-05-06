@@ -56,6 +56,7 @@ type RunWritableStatus = Extract<RunStatus, "running" | "paused">;
 type RunWriteSnapshot = {
     id: string;
     status: RunStatus;
+    runPhase: RunPhase;
     completedAt: Date | null;
     finalizationState: RunFinalizationState;
 };
@@ -99,6 +100,7 @@ async function getRunWriteSnapshot(
         select: {
             id: true,
             status: true,
+            runPhase: true,
             completedAt: true,
             finalizationState: true,
         },
@@ -107,6 +109,7 @@ async function getRunWriteSnapshot(
     return {
         id: run.id,
         status: run.status as RunStatus,
+        runPhase: run.runPhase as RunPhase,
         completedAt: run.completedAt,
         finalizationState: run.finalizationState as RunFinalizationState,
     };
@@ -134,23 +137,22 @@ export async function assertRunWritableInTransaction(
         allowedFinalizationStates?: RunFinalizationState[];
         at?: Date;
     },
-): Promise<void> {
-    const at = params.at ?? new Date();
-    const result = await tx.agentRun.updateMany({
-        where: {
-            id: params.runId,
-            status: { in: params.allowedStatuses },
-            ...(params.requireIncomplete ? { completedAt: null } : {}),
-            ...(params.allowedFinalizationStates
-                ? { finalizationState: { in: params.allowedFinalizationStates } }
-                : {}),
-        },
-        data: {
-            lastActivityAt: at,
-        },
-    });
-    if (result.count === 1) return;
-    await throwRunOwnershipError(tx, params.runId);
+): Promise<RunWriteSnapshot> {
+    const snapshot = await getRunWriteSnapshot(tx, params.runId);
+    const allowedStatus = snapshot
+        ? params.allowedStatuses.includes(snapshot.status as RunWritableStatus)
+        : false;
+    const incomplete = !params.requireIncomplete || snapshot?.completedAt === null;
+    const allowedFinalization = !params.allowedFinalizationStates
+        || (
+            snapshot
+            && params.allowedFinalizationStates.includes(snapshot.finalizationState)
+        );
+
+    if (snapshot && allowedStatus && incomplete && allowedFinalization) {
+        return snapshot;
+    }
+    return throwRunOwnershipError(tx, params.runId);
 }
 
 type RunActivityListener = (at: Date) => void;
