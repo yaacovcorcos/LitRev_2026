@@ -7,23 +7,10 @@ import { magicLink } from "better-auth/plugins/magic-link";
 import { Resend } from "resend";
 import { prisma } from "@/lib/server/prisma";
 import { getBetterAuthSecret } from "@/lib/server/auth/auth-secret";
+import { getAuthBaseURL, getAuthTrustedOrigins } from "@/lib/server/auth/auth-origins";
 
-const baseURL =
-  process.env.BETTER_AUTH_URL ||
-  process.env.NEXT_PUBLIC_BETTER_AUTH_URL ||
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) ||
-  "http://localhost:3000";
-
-const trustedOrigins = Array.from(
-  new Set(
-    [
-      baseURL,
-      process.env.BETTER_AUTH_URL,
-      process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
-      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
-    ].filter((origin): origin is string => Boolean(origin && origin.trim())),
-  ),
-);
+const baseURL = getAuthBaseURL() || undefined;
+const trustedOrigins = getAuthTrustedOrigins();
 
 const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
