@@ -12,8 +12,15 @@ installAiViewTestLifecycle();
 
 const {
   mockGetGlobalWorkspaceContextAction,
+  mockGetConversation,
   mockListConversations,
+  mockSummarizeConversationAction,
 } = getAiViewMocks();
+
+const COMPRESSION_ACTION_FAILED_MESSAGE =
+  "LitRev could not compress this conversation. Your original chat is still here; try again.";
+const COMPRESSION_LOAD_FAILED_MESSAGE =
+  "LitRev compressed this conversation, but could not load the new summary. Your original chat is still here; open chat history or try again.";
 
 describe("/ai page history and hydration", () => {
   it("does not load conversations until the history sidebar is opened", async () => {
@@ -128,5 +135,91 @@ describe("/ai page history and hydration", () => {
 
     expect(screen.getByText("Beta chat")).toBeTruthy();
     expect(screen.queryByText("Global chat")).toBeNull();
+  });
+
+  it("keeps the source conversation visible when compressed summary loading fails", async () => {
+    mockGetConversation
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          id: "conv-1",
+          title: "First chat",
+          messages: [{
+            id: "msg-1",
+            role: "user",
+            content: "Original question",
+            createdAt: "2026-03-02T00:00:00.000Z",
+          }],
+          artifacts: [],
+        },
+      })
+      .mockResolvedValueOnce({
+        success: false,
+        error: "summary conversation unavailable",
+      });
+
+    renderAiView();
+
+    fireEvent.click(screen.getByLabelText("Open chat history"));
+    await waitFor(() => {
+      expect(screen.getByText("First chat")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText("First chat"));
+    await waitFor(() => {
+      expect(screen.getByText("Original question")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "compress history" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Original question")).toBeTruthy();
+      expect(screen.getByText(COMPRESSION_LOAD_FAILED_MESSAGE)).toBeTruthy();
+    });
+
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("keeps the source conversation visible with accurate messaging when compression fails to start", async () => {
+    mockGetConversation.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: "conv-1",
+        title: "First chat",
+        messages: [{
+          id: "msg-1",
+          role: "user",
+          content: "Original question",
+          createdAt: "2026-03-02T00:00:00.000Z",
+        }],
+        artifacts: [],
+      },
+    });
+    mockSummarizeConversationAction.mockResolvedValueOnce({
+      success: false,
+      error: "compression service unavailable",
+    });
+
+    renderAiView();
+
+    fireEvent.click(screen.getByLabelText("Open chat history"));
+    await waitFor(() => {
+      expect(screen.getByText("First chat")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText("First chat"));
+    await waitFor(() => {
+      expect(screen.getByText("Original question")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "compress history" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Original question")).toBeTruthy();
+      expect(screen.getByText(COMPRESSION_ACTION_FAILED_MESSAGE)).toBeTruthy();
+    });
+
+    expect(screen.queryByText(COMPRESSION_LOAD_FAILED_MESSAGE)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });

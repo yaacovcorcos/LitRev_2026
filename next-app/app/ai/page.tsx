@@ -114,9 +114,18 @@ const AI_COMPOSER_MEASURE = "litrev-ai-composer-ready";
 const AI_TIMELINE_MEASURE = "litrev-ai-timeline-ready";
 const AI_VISIBLE_TIMELINE_INITIAL_COUNT = 80;
 const AI_VISIBLE_TIMELINE_STEP = 80;
+const AI_COMPRESS_HISTORY_MIN_ITEMS = 20;
+const AI_EMPTY_STATE_TITLE = "How can I help with your research?";
+const AI_COMPRESSION_ACTION_FAILED_MESSAGE =
+  "LitRev could not compress this conversation. Your original chat is still here; try again.";
+const AI_COMPRESSION_LOAD_FAILED_MESSAGE =
+  "LitRev compressed this conversation, but could not load the new summary. Your original chat is still here; open chat history or try again.";
 const AI_EMPTY_CONVERSATION_KEY = "__empty__";
 const GLOBAL_HISTORY_SCOPE_KEY = "__global__";
 const LAST_PROJECT_STORAGE_KEY = "litrev:lastProjectId";
+type AICompressionErrorCode =
+  | "CONVERSATION_COMPRESSION_FAILED"
+  | "CONVERSATION_COMPRESSION_LOAD_FAILED";
 
 const loadConversationActions = () => import("@/app/actions/conversations");
 const loadAgentActions = () => import("@/app/actions/agent");
@@ -670,6 +679,38 @@ export default function AIView() {
     });
   }, [updateConversationTimeline]);
 
+  const appendCompressionTimelineError = useCallback((
+    conversationId: string,
+    params: {
+      code: AICompressionErrorCode;
+      message: string;
+    },
+  ) => {
+    const { code, message } = params;
+    updateConversationTimeline(conversationId, (items) => {
+      if (items.some((item) => item.type === "error" && item.errorMeta?.code === code)) {
+        return items;
+      }
+      return [
+        ...items,
+        {
+          type: "error",
+          id: makeId("compression-error"),
+          message,
+          retryable: false,
+          errorMeta: {
+            kind: "runtime",
+            code,
+            retryable: false,
+            source: "runtime",
+            message,
+          },
+          createdAt: new Date().toISOString(),
+        },
+      ];
+    });
+  }, [updateConversationTimeline]);
+
   const buildAiRecoverySeed = useCallback((items: TimelineItem[], conversationId: string, runId: string) => {
     const latestAssistant = [...items].reverse().find((item) => item.type === "assistant_message") ?? null;
     const runningToolCallIds = items.reduce<string[]>((acc, item) => {
@@ -1080,26 +1121,32 @@ export default function AIView() {
     setIsCompressing(true);
     try {
       const { summarizeConversationAction } = await loadSummarizeConversationActions();
-      const { getConversation } = await loadConversationActions();
       const result = await summarizeConversationAction(sourceId);
       if (!result.success) throw new Error(result.error);
 
-      // Remove the archived source conversation from the sidebar even if loading
-      // the replacement conversation later fails, so the archived entry disappears.
-      setConversations((prev) =>
-        sortConversationsByUpdatedAt(prev.filter((c) => c.id !== sourceId))
-      );
-      setTimelineByConversation((prev) => {
-        const next = { ...prev };
-        delete next[sourceId];
-        return next;
-      });
-      timelineLruRef.current = timelineLruRef.current.filter((lruId) => lruId !== sourceId);
-
-      const fullResult = await getConversation(result.data.newConversationId);
-      const full = fullResult.success ? fullResult.data : null;
+      const loadCompressedConversation = async (conversationId: string) => {
+        const { getConversation } = await loadConversationActions();
+        const fullResult = await getConversation(conversationId);
+        if (!fullResult.success) throw new Error(fullResult.error);
+        return fullResult.data;
+      };
+      let full: Awaited<ReturnType<typeof loadCompressedConversation>> | null = null;
+      try {
+        full = await loadCompressedConversation(result.data.newConversationId);
+      } catch (err) {
+        console.error("Failed to load compressed conversation summary", err);
+        appendCompressionTimelineError(sourceId, {
+          code: "CONVERSATION_COMPRESSION_LOAD_FAILED",
+          message: AI_COMPRESSION_LOAD_FAILED_MESSAGE,
+        });
+        return;
+      }
       if (!full) {
-        activateConversation(null);
+        console.error("Failed to load compressed conversation summary", new Error("Missing compressed conversation data"));
+        appendCompressionTimelineError(sourceId, {
+          code: "CONVERSATION_COMPRESSION_LOAD_FAILED",
+          message: AI_COMPRESSION_LOAD_FAILED_MESSAGE,
+        });
         return;
       }
 
@@ -1114,9 +1161,15 @@ export default function AIView() {
 
       setConversations((prev) =>
         sortConversationsByUpdatedAt(
-          [newConv, ...prev.filter((c) => c.id !== newConv.id)]
+          [newConv, ...prev.filter((c) => c.id !== newConv.id && c.id !== sourceId)]
         )
       );
+      setTimelineByConversation((prev) => {
+        const next = { ...prev };
+        delete next[sourceId];
+        return next;
+      });
+      timelineLruRef.current = timelineLruRef.current.filter((lruId) => lruId !== sourceId);
       updateConversationTimeline(full.id, () => mappedItems);
       activateConversation(full.id);
       setPendingChoices([]);
@@ -1124,12 +1177,17 @@ export default function AIView() {
       setPrefillCommand(null);
     } catch (err) {
       console.error("Failed to compress conversation history", err);
+      appendCompressionTimelineError(sourceId, {
+        code: "CONVERSATION_COMPRESSION_FAILED",
+        message: AI_COMPRESSION_ACTION_FAILED_MESSAGE,
+      });
     } finally {
       setIsCompressing(false);
     }
   }, [
     activeConversationId,
     activateConversation,
+    appendCompressionTimelineError,
     cancelStream,
     isCompressing,
     isPhoneViewport,
@@ -2615,14 +2673,14 @@ export default function AIView() {
               emptyState={isPhoneViewport
                 ? {
                     icon: "",
-                    title: "How can I help with your research?",
+                    title: AI_EMPTY_STATE_TITLE,
                     description: "",
                     suggestions: [],
                     layout: "minimal",
                   }
                 : {
                     icon: "auto_awesome",
-                    title: "How can I help with your research?",
+                    title: AI_EMPTY_STATE_TITLE,
                     description: "Ask me anything about your literature review, or try one of these:",
                     suggestions: desktopQuickActions.map((action) => ({
                       label: action.label,
@@ -2685,7 +2743,7 @@ export default function AIView() {
                   showAttachments={false}
                   showVoice
                   onCompress={isPhoneViewport ? undefined : handleCompressHistory}
-                  canCompress={!isPhoneViewport && activeTimeline.length >= 20}
+                  canCompress={!isPhoneViewport && activeTimeline.length >= AI_COMPRESS_HISTORY_MIN_ITEMS}
                   isCompressing={!isPhoneViewport && isCompressing}
                   onReady={markComposerReady}
                 />

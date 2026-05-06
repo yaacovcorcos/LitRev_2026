@@ -57,11 +57,14 @@ describe("Reasoning support tiers", () => {
             }
         });
 
-        it("all selectable models currently support best_effort reasoning", () => {
-            const allBestEffort = USER_SELECTABLE_MODELS.every(
-                (m) => m.reasoningSupport === "best_effort"
-            );
-            expect(allBestEffort).toBe(true);
+        it("keeps selectable model reasoning metadata aligned with the capability registry", () => {
+            for (const model of USER_SELECTABLE_MODELS) {
+                const capabilityRecord = getModelCapabilityRecord(model.id);
+                const reasoningSupport = model.reasoningSupport as ReasoningSupportTier;
+                expect(capabilityRecord).toBeDefined();
+                expect(reasoningSupport).toBe(capabilityRecord?.reasoningSupport);
+                expect(modelSupportsReasoning(model.id)).toBe(reasoningSupport !== "none");
+            }
         });
 
         it("includes Grok 4.3 as a selectable xAI model", () => {

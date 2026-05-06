@@ -1,3 +1,5 @@
+export const KEYBOARD_INSET_MINIMUM_PX = 80;
+
 export function getEffectiveViewportHeight(win: Window): number {
   const visualViewportHeight = win.visualViewport?.height;
   if (typeof visualViewportHeight === "number" && visualViewportHeight > 0) {
@@ -16,7 +18,9 @@ export function getKeyboardInset(win: Window): number {
   const offsetTop = typeof visualViewport.offsetTop === "number" ? visualViewport.offsetTop : 0;
   const rawInset = win.innerHeight - visualViewport.height - offsetTop;
 
-  if (!Number.isFinite(rawInset) || rawInset < 80) {
+  // Browser chrome changes can look like small viewport insets; only larger
+  // deltas are treated as keyboard overlap.
+  if (!Number.isFinite(rawInset) || rawInset < KEYBOARD_INSET_MINIMUM_PX) {
     return 0;
   }
 

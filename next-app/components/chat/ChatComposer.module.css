@@ -242,13 +242,16 @@
     pointer-events: none;
 }
 
+.inputBox[data-mobile-chrome="minimal"] .inputBar > * {
+    pointer-events: auto;
+}
+
 .inputBox[data-mobile-chrome="minimal"] .inputBarLeft {
     position: absolute;
     top: 50%;
     left: 10px;
     min-height: 34px;
     transform: translateY(-50%);
-    pointer-events: auto;
 }
 
 .inputBox[data-mobile-chrome="minimal"] .inputBarRight {
@@ -258,7 +261,6 @@
     gap: 6px;
     margin-left: 0;
     transform: translateY(-50%);
-    pointer-events: auto;
 }
 
 .inputBox[data-mobile-chrome="minimal"] .inputBarRecording {
@@ -267,7 +269,6 @@
     display: flex;
     min-height: 42px;
     padding: 0 12px 12px;
-    pointer-events: auto;
     transform: none;
 }
 

@@ -2,7 +2,12 @@
  * @vitest-environment jsdom
  */
 import { describe, expect, it } from "vitest";
-import { getEffectiveViewportHeight, getKeyboardInset, setMobileViewportVars } from "@/lib/mobile/viewport";
+import {
+  getEffectiveViewportHeight,
+  getKeyboardInset,
+  KEYBOARD_INSET_MINIMUM_PX,
+  setMobileViewportVars,
+} from "@/lib/mobile/viewport";
 
 describe("mobile viewport utilities", () => {
   it("prefers visualViewport height when available", () => {
@@ -43,7 +48,7 @@ describe("mobile viewport utilities", () => {
   it("ignores small browser chrome viewport differences", () => {
     const win = {
       innerHeight: 900,
-      visualViewport: { height: 860, offsetTop: 0 },
+      visualViewport: { height: 900 - (KEYBOARD_INSET_MINIMUM_PX - 1), offsetTop: 0 },
     } as unknown as Window;
 
     expect(getKeyboardInset(win)).toBe(0);
