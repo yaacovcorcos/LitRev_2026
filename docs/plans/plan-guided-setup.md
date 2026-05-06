@@ -7,9 +7,9 @@ Ship a complete, premium guided setup that helps novice users understand the ful
 - Guided setup route is `app/project/[id]/onboarding/page.tsx` with 3 lightweight manual steps.
 - Protocol persistence is already available via `saveProtocolAction` and `saveProtocol` service.
 - Onboarding completion/skip is persisted in `Project.progress.onboarding` via `markProjectOnboardingCompletedAction`.
-- Guided setup default preference is persisted at user level in `UserMemory` (`guided_setup_new_projects`).
+- Guided setup is opt-in by default: Home and first-login paths must never auto-route to onboarding. User-level `UserMemory` (`guided_setup_new_projects`) can explicitly re-enable launch behavior, and project-level `enabledOverride` can still override the user default.
 - There is no strict per-step onboarding status model, no deterministic launch gate checks, and no structured AI assists dedicated to onboarding.
-- Guided setup entry is temporarily held behind a shared availability gate: the home project-creation modal disables the guided launcher, reveals the hold copy on hover, and direct `/project/[id]/onboarding` visits show a hold state with a workspace fallback until the flow is resumed.
+- Guided setup entry is temporarily held behind a shared availability gate: the home project-creation modal disables the guided launcher, reveals the hold copy on hover, and direct `/project/[id]/onboarding` visits show a hold state with a workspace fallback until the flow is resumed. When the gate is reopened, Home may expose explicit guided setup launchers for first-time users, but those launchers must require a deliberate user action.
 
 ## Final Product Decisions (Locked)
 - **No central agent-loop mode for onboarding.** Onboarding AI runs as dedicated typed server actions.
@@ -18,6 +18,7 @@ Ship a complete, premium guided setup that helps novice users understand the ful
 - **Clarification is ask_user-style UI, not tool invocation.** Use structured question cards in onboarding UI.
 - **Quick Setup behavior:** rapid auto-advance with review (AI-prefilled steps, reversible edits).
 - **Personalization profile:** derived-only signals (`strictness`, `timelinePressure`, `recallVsPrecision`, `evidenceDepth`).
+- **No first-login/Home auto-launch.** Guided setup is a contextual opt-in helper, not a forced Home or dashboard gate.
 
 ## Step Model (Single Complete Flow)
 1. **Topic & Draft Question**
@@ -74,6 +75,7 @@ Minimum pass checks:
 - [ ] `GSU-010` Test gate: `npx tsc --noEmit`, `npx vitest run`, mobile pass, keyboard/a11y pass, and AI-timeout fallback pass.
 
 ## Recently Completed
+- [x] Home and first-login onboarding launch behavior is now opt-in by default: the backend default is disabled, Home remains stable, and guided setup access is explicit when the availability gate is reopened.
 - [x] Canonical guided setup plan created and linked from `docs/plans/README.md`.
 
 ## Deferred / Parking Lot

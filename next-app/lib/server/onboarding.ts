@@ -9,7 +9,7 @@ import type { OnboardingDerivedProfile } from "@/lib/server/onboarding-ai";
 import type { OnboardingStepId, OnboardingStepStatus } from "@/lib/schemas/onboarding";
 
 const GUIDED_SETUP_USER_KEY = "guided_setup_new_projects";
-const DEFAULT_GUIDED_SETUP = true;
+const DEFAULT_GUIDED_SETUP = false;
 
 export type ProjectOnboardingState = {
   enabledOverride: boolean | null;
