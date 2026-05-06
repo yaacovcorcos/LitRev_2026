@@ -30,6 +30,7 @@ Current repo/runtime note:
 - `workspaceIds` / `userIds` remain the evidence scope filters for validation and sign-off, not a live rollout gate.
 - The protected CI `check` gate now runs `npm run check:agent-quality`, which guards the deterministic eval catalog, runtime-signal fixture coverage, and strict burn-in metric/threshold contract before a runtime PR can merge.
 - Abrupt stream endings without concrete transport evidence now classify as `failed_interrupted` rather than `failed_network`; burn-in spot checks should preserve that distinction and only treat `failed_network` as a true transport failure.
+- HTTP observer disconnect is not semantic run cancellation for durable artifact-aware runs. User stop/cancel must flow through the run cancellation API; browser/tab disconnect spot checks should verify recovery or eventual persisted terminal truth rather than a forced cancelled run.
 - As of the May 2026 runtime closeout, the known `A-001` / `FIX-011b` code delta is covered by deterministic tests for semantic cancellation, cancelled terminal truth, newest-window clarification hydration, post-answer degrade-only success, truthful loop outcomes, durable mutating-tool receipts, persisted decision requests/resolutions, and the protected `check:agent-quality` gate.
 - `U1.6` is now the live sign-off gate for that code truth. It must use a fresh deployment/cohort window; do not reuse the stale historical scoped report as pass/fail evidence.
 

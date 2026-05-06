@@ -418,6 +418,11 @@ export type ChatOptions = {
      */
     userInputResolution?: UserInputResolution;
     stream?: boolean;
+    /**
+     * Execution cancellation signal. Durable agent streams must not pass the
+     * HTTP request observer signal here; user-visible cancellation should flow
+     * through the run cancellation API and persisted run status.
+     */
     signal?: AbortSignal;
 };
 

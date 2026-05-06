@@ -614,12 +614,15 @@ export async function POST(request: NextRequest) {
                         }
                         // If using conversation memory — use artifact-aware streaming
                         else if ((effectiveUserMessage || planId || runtimeOptions.userInputResolution) && context) {
+                            // Durable agent execution must not be cancelled merely because the
+                            // HTTP observer disconnects. Semantic cancellation flows through
+                            // /api/ai/runs/[runId]/cancel and the run-status monitor in
+                            // streamChatWithArtifacts.
                             for await (const chunk of service.streamChatWithArtifacts(
                                 effectiveUserMessage || "", context, {
                                     ...runtimeOptions,
                                     planId: mergedPlanId,
                                     selectedSteps,
-                                    signal: request.signal,
                                 }
                             )) {
                                 const normalized = normalizeStreamChunk(chunk);

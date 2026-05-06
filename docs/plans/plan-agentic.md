@@ -76,7 +76,7 @@ The agent should not merely "feel smart." It should be:
 - The known `FIX-011b` shared-runtime code delta is now closed on `main`:
   - stale replaced/cancelled workers fail closed on ownership loss
   - cancelled terminal truth converges across live stream, durable cancellation, recovery, and blocked-card dismissal
-  - artifact-aware streams receive the HTTP request abort signal and also watch durable run status, so same-process and cross-instance cancellation both reach the active worker
+  - artifact-aware durable runs do not treat an HTTP observer disconnect as semantic cancellation; user-visible cancellation flows through the run cancellation API, the in-process fast path, and durable run-status monitoring
   - final stream reconciliation emits `run_end` from persisted terminal truth when a stale worker loses the finalization race
   - clarification hydration uses the newest relevant lineage window
   - useful completed runs are not retro-failed by optional post-answer work
