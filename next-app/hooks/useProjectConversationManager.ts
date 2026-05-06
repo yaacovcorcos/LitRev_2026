@@ -248,6 +248,10 @@ export function useProjectConversationManager(deps: ProjectConversationManagerDe
     }, []);
 
     const selectConversation = useCallback(async (conversationId: string): Promise<boolean> => {
+        if (currentConversationIdRef.current === conversationId) {
+            return true;
+        }
+
         // Each call claims a generation slot. State writes after the await are
         // guarded so only the last caller (newest selection) applies results.
         const gen = ++selectGenRef.current;

@@ -51,7 +51,7 @@ describe("run events", () => {
     vi.clearAllMocks();
     mocks.transaction.mockImplementation(async (callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock));
     mocks.agentRunUpdateMany.mockResolvedValue({ count: 1 });
-    mocks.queryRaw.mockResolvedValue([{ pg_advisory_xact_lock: "" }]);
+    mocks.queryRaw.mockResolvedValue([{ locked: 1 }]);
     mocks.assertRunWritableInTransaction.mockResolvedValue({
       id: "run-1",
       status: "running",
@@ -101,6 +101,22 @@ describe("run events", () => {
       },
     });
     expect(mocks.noteObservedRunActivity).toHaveBeenCalledWith("run-1", expect.any(Date));
+  });
+
+  it("does not project the advisory lock void return value", async () => {
+    mocks.runEventFindFirst.mockResolvedValue({ sequence: 2 });
+    mocks.runEventCreate.mockResolvedValue({
+      id: "evt-3",
+      sequence: 3,
+      createdAt: new Date("2026-03-11T11:35:00.000Z"),
+    });
+
+    await emitEvent("run-1", "message", { hello: "world" });
+
+    const rawTemplate = mocks.queryRaw.mock.calls[0]?.[0] as TemplateStringsArray | undefined;
+    expect(Array.from(rawTemplate ?? []).join("?")).toContain(
+      "SELECT 1 AS locked",
+    );
   });
 
   it("fails closed when the shared run-write guard rejects the event", async () => {

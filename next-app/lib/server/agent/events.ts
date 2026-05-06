@@ -63,7 +63,12 @@ async function lockRunEventSequenceInTransaction(
     // allocation per run without taking the hot AgentRun row lock on every event.
     // hashtext is deterministic; a rare collision would only serialize unrelated
     // runs for this short transaction, not mix their run-scoped sequence values.
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`run-event:${runId}`}))`;
+    // Project a scalar instead of the lock function's PostgreSQL void result;
+    // Prisma cannot deserialize void columns on recent clients.
+    await tx.$queryRaw<{ locked: number }[]>`
+        SELECT 1 AS locked
+        FROM pg_advisory_xact_lock(hashtext(${`run-event:${runId}`}))
+    `;
 }
 
 /**
