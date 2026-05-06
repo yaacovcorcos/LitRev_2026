@@ -83,7 +83,10 @@ The agent should not merely "feel smart." It should be:
   - `verify -> plan` is an intentional legal transition for continuation runs that need to re-plan
   - plan, tool, artifact, and user-input events map through one shared state-machine module instead of scattered switch statements
   - phase-drifted pending decision requests can still be paused by the conversation admission guard before new work starts
-- `U1.6` is now the runtime sign-off gate, not a bug-discovery substitute: it still needs a fresh deployment-level burn-in window, scoped cohort evidence, and the manual abnormal-end spot checks from `docs/runbooks/chat-runtime-burn-in.md`.
+- `U1.6` is now a recurring production-confidence and certification loop, not a global development blocker:
+  - it still needs a fresh deployment-level burn-in window, scoped cohort evidence, and the manual abnormal-end spot checks from `docs/runbooks/chat-runtime-burn-in.md`
+  - it gates formal runtime sign-off and destructive post-sign-off cleanup such as deleting fallback/legacy paths
+  - it must not block additive agent improvements, bug fixes, eval expansion, security hardening, tool/autonomy hardening, decision-system work, research-quality work, or non-destructive runtime hardening that preserves existing contracts
 - Durable continuation is materially stronger than before:
   - strict continue remains strict
   - retry/replace can now prefer checkpoint-backed or durable continuation over restart-from-zero when the source is proven
@@ -149,12 +152,16 @@ Active work:
   - outcome:
     - no duplicate state machines
     - no legacy branches left as drift magnets
+  - sequencing:
+    - wait for U1.6 sign-off evidence before deleting fallback or legacy runtime paths
 
 - [ ] `A-003` Ship `CAG-020` crash-safe long-loop continuation and no-forward-progress detection.
   - outcome:
     - long-running work can pause, recover, or stop honestly without losing the next valid safe step
     - the current foundation already advances durable-progress timestamps only at replayable forward-progress boundaries, and budget/repeat/no-answer exits already fail truthfully unless a real answer or durable output exists
     - remaining work should focus on broader crash-safe pause/recover behavior for long research loops, not re-solving the shipped outcome semantics
+  - sequencing:
+    - additive, well-tested continuation hardening may proceed while U1.6 evidence is being collected
 
 ### Track B — Tool System and Autonomy Boundaries
 
@@ -228,10 +235,12 @@ Active work:
 
 ## Execution Order
 
-1. Finish Track A enough that the runtime is closed, honest, and sign-offable.
-2. Tighten Track B so autonomy and tool boundaries are explicit before widening capability.
-3. Upgrade Track C so high-impact human decisions are clearer and more durable.
-4. Deepen Track D so LitRev becomes meaningfully better at scientific work, not just more agentic.
+1. Keep U1.6 running as the production-confidence loop and use it to challenge the runtime continuously.
+2. Continue additive Track A hardening and agent feature work while U1.6 evidence is being collected.
+3. Do not perform destructive `A-002` / `U4` cleanup or formal runtime sign-off until U1.6 evidence supports it.
+4. Tighten Track B so autonomy and tool boundaries are explicit before widening capability.
+5. Upgrade Track C so high-impact human decisions are clearer and more durable.
+6. Deepen Track D so LitRev becomes meaningfully better at scientific work, not just more agentic.
 
 ## Dependencies and Boundaries
 
