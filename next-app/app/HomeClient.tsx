@@ -46,6 +46,8 @@ type HomeClientProps = {
   shouldOpenFromQuery: boolean;
 };
 
+type CreateIntent = "blank" | "guided";
+
 function generateProjectId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return `p-${crypto.randomUUID()}`;
@@ -100,6 +102,7 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
   const [lastProjectId, setLastProjectId] = useState<string | null>(null);
   const [hasEnteredWorkspace, setHasEnteredWorkspace] = useState(false);
   const [isModalOpen, setModalOpen] = useState(() => shouldOpenFromQuery);
+  const [preferredCreateIntent, setPreferredCreateIntent] = useState<CreateIntent>("blank");
   const [loadingStep, setLoadingStep] = useState(0);
   const [isSlow, setIsSlow] = useState(false);
   const [isGuidedSetupNoticeVisible, setGuidedSetupNoticeVisible] = useState(false);
@@ -180,14 +183,24 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
     saveViewPreference(mode);
   };
 
-  const openModal = useCallback(() => {
+  const openModal = useCallback((intent: CreateIntent = "blank") => {
     setCreateError(null);
+    setPreferredCreateIntent(intent === "guided" && guidedSetupAvailable ? "guided" : "blank");
     setGuidedSetupNoticeVisible(false);
     setModalOpen(true);
-  }, []);
+  }, [guidedSetupAvailable]);
+
+  const openBlankModal = useCallback(() => {
+    openModal("blank");
+  }, [openModal]);
+
+  const openGuidedModal = useCallback(() => {
+    openModal("guided");
+  }, [openModal]);
 
   const closeModal = useCallback(() => {
     setGuidedSetupNoticeVisible(false);
+    setPreferredCreateIntent("blank");
     setModalOpen(false);
     if (formRef.current) {
       formRef.current.reset();
@@ -437,7 +450,7 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
           <button
             type="button"
             className={layoutStyles.heroCard}
-            onClick={openModal}
+            onClick={openBlankModal}
           >
             <div className={layoutStyles.heroCardBody}>
               <span className={layoutStyles.heroCardTitle}>Start a new review</span>
@@ -470,19 +483,35 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
               </span>
             </button>
 
-            <button
-              type="button"
-              className={layoutStyles.secondaryCard}
-              onClick={openModal}
-            >
-              <span className={`material-icons-round ${layoutStyles.secondaryCardIcon}`} aria-hidden="true">
-                upload_file
-              </span>
-              <span className={layoutStyles.secondaryCardTitle}>Import papers</span>
-              <span className={layoutStyles.secondaryCardDesc}>
-                Upload PDFs or import from Zotero
-              </span>
-            </button>
+            {guidedSetupAvailable ? (
+              <button
+                type="button"
+                className={layoutStyles.secondaryCard}
+                onClick={openGuidedModal}
+              >
+                <span className={`material-icons-round ${layoutStyles.secondaryCardIcon}`} aria-hidden="true">
+                  route
+                </span>
+                <span className={layoutStyles.secondaryCardTitle}>Start with guided setup</span>
+                <span className={layoutStyles.secondaryCardDesc}>
+                  Create a review with setup help
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={layoutStyles.secondaryCard}
+                onClick={openBlankModal}
+              >
+                <span className={`material-icons-round ${layoutStyles.secondaryCardIcon}`} aria-hidden="true">
+                  upload_file
+                </span>
+                <span className={layoutStyles.secondaryCardTitle}>Import papers</span>
+                <span className={layoutStyles.secondaryCardDesc}>
+                  Upload PDFs or import from Zotero
+                </span>
+              </button>
+            )}
           </div>
 
           <button
@@ -499,7 +528,7 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
       </div>
     </div>
   ) : (
-    <AppShell activeNav="projects" onNewProject={openModal} mainClassName={layoutStyles.noSidePadding}>
+    <AppShell activeNav="projects" onNewProject={openBlankModal} mainClassName={layoutStyles.noSidePadding}>
       <div className={`surface-root ${layoutStyles.page}`} data-surface-height="shell">
         <div className={layoutStyles.headerArea}>
           {showMigrationAlert ? (
@@ -574,7 +603,7 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
           <ProjectGrid
             projects={sortedProjects}
             viewMode={viewMode}
-            onNewProject={openModal}
+            onNewProject={openBlankModal}
             showSampleCard={isHydrated}
           />
         </div>
@@ -603,7 +632,11 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
             const desc = (formData.get("projectDesc") as string).trim();
             if (!name) return;
             const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
-            const intent = submitter?.value === "guided" ? "guided" : "blank";
+            const intent = submitter?.value === "guided"
+              ? "guided"
+              : submitter?.value === "blank"
+                ? "blank"
+                : preferredCreateIntent;
             await handleCreateProject(name, desc, intent === "guided");
             if (form.isConnected) {
               form.reset();

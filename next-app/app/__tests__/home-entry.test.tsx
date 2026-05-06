@@ -12,6 +12,7 @@ const {
   mockUseProjects,
   mockUseSession,
   mockProjectGrid,
+  mockGuidedSetupAvailable,
 } = vi.hoisted(() => ({
   mockPush: vi.fn(),
   mockReplace: vi.fn(),
@@ -21,6 +22,7 @@ const {
   mockProjectGrid: vi.fn(({ showSampleCard }: { showSampleCard?: boolean }) => (
     <div data-testid="project-grid">{showSampleCard !== false ? "sample:on" : "sample:off"}</div>
   )),
+  mockGuidedSetupAvailable: vi.fn(() => false),
 }));
 
 vi.mock("next/link", async () => {
@@ -48,6 +50,18 @@ vi.mock("@/lib/auth-client", () => ({
 
 vi.mock("@/app/actions/demo", () => ({
   openOrCreateDemoProjectAction: vi.fn(async () => ({ success: true, data: { id: "demo-project" } })),
+}));
+
+vi.mock("@/lib/guided-setup-availability", () => ({
+  GUIDED_SETUP_HOLD_COPY: {
+    launcherDescription: "Guided setup is on hold. Coming soon. Create a blank project for now.",
+    routeTitle: "Guided setup is on hold",
+    routeDescription:
+      "This setup flow is temporarily unavailable while it is being reworked. You can continue in the project workspace for now.",
+    workspaceActionLabel: "Open workspace",
+    dashboardActionLabel: "Back to dashboard",
+  },
+  isGuidedSetupAvailable: () => mockGuidedSetupAvailable(),
 }));
 
 vi.mock("@/components/AppShell", () => ({
@@ -86,6 +100,7 @@ describe("Home entry UX", () => {
     vi.clearAllMocks();
     window.localStorage.clear();
     window.sessionStorage.clear();
+    mockGuidedSetupAvailable.mockReturnValue(false);
 
     mockUseSession.mockReturnValue({
       data: { user: { name: "Alex Doe" } },
@@ -134,6 +149,7 @@ describe("Home entry UX", () => {
     expect(screen.getByTestId("project-grid").textContent).toContain("sample:on");
     expect(container.querySelector('.surface-root[data-surface-height="shell"]')).toBeTruthy();
     expect(container.querySelector('.surface-scroll-body[data-surface-padding="responsive"]')).toBeTruthy();
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it("shows a continue card for returning users with a valid last project", () => {
@@ -296,5 +312,47 @@ describe("Home entry UX", () => {
       expect(mockPush).toHaveBeenCalledWith("/project/proj-new");
     });
     expect(mockPush).not.toHaveBeenCalledWith("/project/proj-new/onboarding");
+  });
+
+  it("offers guided setup as an explicit home action when available", async () => {
+    mockGuidedSetupAvailable.mockReturnValue(true);
+    const addProject = vi.fn(async (project: { name: string; description?: string }) => ({
+      ...project,
+      id: "proj-guided",
+      status: "ready",
+      statusText: "Status: Review Ready",
+      modified: "2026-03-29T00:00:00.000Z",
+      created: "2026-03-29T00:00:00.000Z",
+      papers: 0,
+    }));
+
+    mockUseProjects.mockReturnValue({
+      projects: [],
+      authState: "authenticated",
+      homeBootstrapState: "loaded_empty",
+      usedSeededBootstrap: true,
+      addProject,
+      isInitialized: true,
+      isLoadingProjects: false,
+      projectsError: null,
+      refresh: vi.fn(async () => {}),
+      migrationStatus: "done",
+      migrationError: null,
+      retryMigration: vi.fn(async () => {}),
+    });
+
+    render(<HomeClient bootstrap={makeBootstrap()} shouldOpenFromQuery={false} />);
+
+    expect(mockPush).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /Start with guided setup/ }));
+    expect(screen.getByRole("button", { name: "Guided setup" }).hasAttribute("disabled")).toBe(false);
+
+    fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Guided project" } });
+    fireEvent.submit(screen.getByLabelText("Project name").closest("form") as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(addProject).toHaveBeenCalled();
+      expect(mockPush).toHaveBeenCalledWith("/project/proj-guided/onboarding");
+    });
   });
 });

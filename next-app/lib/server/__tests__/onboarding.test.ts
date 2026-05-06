@@ -41,12 +41,12 @@ describe("onboarding service", () => {
     mockProjectFindUnique.mockResolvedValue({ progress: null });
   });
 
-  it("defaults guided setup to enabled when no preference exists", async () => {
+  it("defaults guided setup to disabled when no preference exists", async () => {
     mockUserMemoryFindUnique.mockResolvedValue(null);
 
     const enabled = await getGuidedSetupDefault(SCOPE);
 
-    expect(enabled).toBe(true);
+    expect(enabled).toBe(false);
     expect(mockUserMemoryFindUnique).toHaveBeenCalledWith({
       where: {
         userId_key: {
@@ -56,6 +56,14 @@ describe("onboarding service", () => {
       },
       select: { value: true },
     });
+  });
+
+  it("returns enabled guided setup when preference is 1", async () => {
+    mockUserMemoryFindUnique.mockResolvedValue({ value: "1" });
+
+    const enabled = await getGuidedSetupDefault(SCOPE);
+
+    expect(enabled).toBe(true);
   });
 
   it("returns disabled guided setup when preference is 0", async () => {
@@ -202,6 +210,24 @@ describe("onboarding service", () => {
     const shouldLaunch = await shouldLaunchGuidedSetupForProject(SCOPE, PROJECT_ID);
 
     expect(shouldLaunch).toBe(false);
+  });
+
+  it("does not launch guided setup by default for incomplete projects", async () => {
+    mockUserMemoryFindUnique.mockResolvedValue(null);
+    mockProjectFindUnique.mockResolvedValue({ progress: null });
+
+    const shouldLaunch = await shouldLaunchGuidedSetupForProject(SCOPE, PROJECT_ID);
+
+    expect(shouldLaunch).toBe(false);
+  });
+
+  it("launches guided setup only when explicitly enabled and incomplete", async () => {
+    mockUserMemoryFindUnique.mockResolvedValue({ value: "1" });
+    mockProjectFindUnique.mockResolvedValue({ progress: null });
+
+    const shouldLaunch = await shouldLaunchGuidedSetupForProject(SCOPE, PROJECT_ID);
+
+    expect(shouldLaunch).toBe(true);
   });
 
   it("uses project override before global default when deciding launch behavior", async () => {
