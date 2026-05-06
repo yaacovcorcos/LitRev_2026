@@ -17,6 +17,7 @@ const aiViewMocks = vi.hoisted(() => ({
   mockFetch: vi.fn(),
   mockIsProgressiveAnswerStreamingEnabled: vi.fn(() => false),
   mockReviewArtifactAction: vi.fn(),
+  mockSummarizeConversationAction: vi.fn(),
 }));
 
 const {
@@ -31,6 +32,7 @@ const {
   mockFetch,
   mockIsProgressiveAnswerStreamingEnabled,
   mockReviewArtifactAction,
+  mockSummarizeConversationAction,
 } = aiViewMocks;
 
 let matchMediaMatches = false;
@@ -67,6 +69,7 @@ vi.mock("next/dynamic", () => ({
         message?: string;
         label?: string;
         question?: string;
+        retryable?: boolean;
         errorMeta?: { recoveryRecommendation?: string; activeRunId?: string; runId?: string };
       }>;
       suppressedProgressId?: string | null;
@@ -209,7 +212,8 @@ vi.mock("next/dynamic", () => ({
                           Continue
                         </button>
                       ) : null}
-                    {item.errorMeta?.recoveryRecommendation === "retry" ? (
+                    {(!item.errorMeta?.recoveryRecommendation && item.retryable)
+                      || item.errorMeta?.recoveryRecommendation === "retry" ? (
                       <button type="button" onClick={() => props.onRetryLastMessage?.()}>
                         Retry
                       </button>
@@ -312,7 +316,7 @@ vi.mock("@/app/actions/agent", () => ({
 }));
 
 vi.mock("@/app/actions/summarize-conversation", () => ({
-  summarizeConversationAction: vi.fn(),
+  summarizeConversationAction: (...args: unknown[]) => mockSummarizeConversationAction(...args),
 }));
 
 vi.mock("@/lib/mobile/feature-flags", () => ({
@@ -396,6 +400,10 @@ export function installAiViewTestLifecycle() {
         title: "First chat",
         messages: [],
       },
+    });
+    mockSummarizeConversationAction.mockResolvedValue({
+      success: true,
+      data: { newConversationId: "conv-summary" },
     });
     mockFetch.mockResolvedValue({
       ok: true,

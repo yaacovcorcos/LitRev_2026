@@ -119,7 +119,7 @@ jobs:
         run: cd next-app && node scripts/check-chat-stream-architecture.mjs --mode=${CHAT_STREAM_ARCH_GUARD_MODE:-enforce}
 
       - name: Agent quality gate
-        run: cd next-app && npm run check:agent-quality -- --json=1
+        run: cd next-app && npm run check:agent-quality -- --json
 
       - name: Run tests
         run: cd next-app && npx vitest run

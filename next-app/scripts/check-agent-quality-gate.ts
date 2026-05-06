@@ -1,22 +1,35 @@
+import path from "path";
+import { fileURLToPath } from "url";
 import {
   evaluateAgentQualityGate,
   formatAgentQualityGateReport,
 } from "../lib/server/evals/agent-quality-gate";
 
-function parseArg(name: string): string | undefined {
-  const prefix = `--${name}=`;
-  const arg = process.argv.find((value) => value.startsWith(prefix));
-  return arg ? arg.slice(prefix.length).trim() : undefined;
+export function shouldOutputJson(argv: readonly string[]): boolean {
+  return argv.some((value) => {
+    if (value === "--json") return true;
+    const prefix = "--json=";
+    if (!value.startsWith(prefix)) return false;
+    const raw = value.slice(prefix.length).trim().toLowerCase();
+    return raw === "1" || raw === "true";
+  });
 }
 
-const report = evaluateAgentQualityGate();
+export function runAgentQualityGate(
+  argv = process.argv.slice(2),
+  write: (message: string) => void = console.log,
+): number {
+  const report = evaluateAgentQualityGate();
+  if (shouldOutputJson(argv)) {
+    write(JSON.stringify(report, null, 2));
+  } else {
+    write(formatAgentQualityGateReport(report));
+  }
 
-if (parseArg("json") === "1") {
-  console.log(JSON.stringify(report, null, 2));
-} else {
-  console.log(formatAgentQualityGateReport(report));
+  return report.passed ? 0 : 1;
 }
 
-if (!report.passed) {
-  process.exitCode = 1;
+const entrypoint = process.argv[1] ? path.resolve(process.argv[1]) : null;
+if (entrypoint === fileURLToPath(import.meta.url)) {
+  process.exitCode = runAgentQualityGate();
 }
