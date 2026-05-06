@@ -11,12 +11,17 @@ import {
   isDevQuickLoginAllowed,
 } from "@/lib/server/auth/dev-quick-login";
 
-type HomeState = "zero_state" | "workspace";
+type HomeState = "empty_workspace" | "workspace" | "zero_state";
+type CanonicalHomeState = "empty_workspace" | "workspace";
 const DEFAULT_WORKSPACE_PROJECT_COUNT = 1;
 const MAX_WORKSPACE_PROJECT_COUNT = 24;
 
 function isHomeState(value: string | undefined): value is HomeState {
-  return value === "zero_state" || value === "workspace";
+  return value === "empty_workspace" || value === "workspace" || value === "zero_state";
+}
+
+function normalizeHomeState(state: HomeState): CanonicalHomeState {
+  return state === "zero_state" ? "empty_workspace" : state;
 }
 
 function buildFixtureWhere(seedKey: string): Prisma.ProjectWhereInput {
@@ -51,8 +56,10 @@ export async function POST(request: NextRequest) {
   }
 
   if (!isHomeState(body.state)) {
-    return NextResponse.json({ error: "state must be zero_state or workspace" }, { status: 400 });
+    return NextResponse.json({ error: "state must be empty_workspace or workspace" }, { status: 400 });
   }
+
+  const state = normalizeHomeState(body.state);
 
   const requestedProjectCount =
     typeof body.projectCount === "undefined" ? DEFAULT_WORKSPACE_PROJECT_COUNT : body.projectCount;
@@ -70,14 +77,14 @@ export async function POST(request: NextRequest) {
   const identity = await ensureDevQuickLoginIdentity(seedKey);
   const fixtureWhere = buildFixtureWhere(seedKey);
 
-  if (body.state === "zero_state") {
+  if (state === "empty_workspace") {
     const deleted = await prisma.project.deleteMany({
       where: fixtureWhere,
     });
 
     return NextResponse.json({
       ok: true,
-      state: body.state,
+      state,
       deletedCount: deleted.count,
     });
   }
@@ -91,7 +98,7 @@ export async function POST(request: NextRequest) {
   if (existingProjects.length === requestedProjectCount) {
     return NextResponse.json({
       ok: true,
-      state: body.state,
+      state,
       projectId: existingProjects[0].id,
       projectCount: existingProjects.length,
     });
@@ -138,7 +145,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    state: body.state,
+    state,
     projectId: projects[0].id,
     projectCount: projects.length,
   });

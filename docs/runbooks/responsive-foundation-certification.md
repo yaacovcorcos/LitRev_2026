@@ -56,9 +56,9 @@ Required route templates:
 ## Required route evidence
 ### Home
 - `reliability.v1.route.ready`
-  - `routeTemplate = "/"` with `state = "zero_state"` or `state = "workspace"`
+  - `routeTemplate = "/"` with `state = "loading"` or `state = "workspace"`
 - `reliability.v1.route.flow_completed`
-  - `flow = "enter_workspace"` and/or `flow = "create_project"` and/or `flow = "open_sample_review"`
+  - `flow = "create_project"` and/or `flow = "open_sample_review"`
 
 ### Auth
 - `reliability.v1.route.ready`
@@ -123,7 +123,7 @@ Certification rule:
 
 Required responsive behavior coverage:
 - home:
-  - zero-state or workspace usable on phone
+  - empty workspace usable on phone
   - workspace usable on compact
 - auth:
   - login usable on phone

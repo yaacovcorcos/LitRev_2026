@@ -30,12 +30,12 @@ This plan is the long-term implementation contract for how LitRev adapts across 
 - Required foundation certification hardening is now shipped:
   - `test:e2e:mobile:foundation` is the required blocking route-certification gate
   - broader mobile smoke runs separately as `test:e2e:mobile:smoke`
-  - foundation Playwright setup uses seeded dev fixture routes for auth, home zero-state/workspace, sample/demo setup, blank project setup, and protocol-ready flows
+  - foundation Playwright setup uses seeded dev fixture routes for auth, home empty-workspace/workspace, sample/demo setup, blank project setup, and protocol-ready flows
   - Playwright runs with explicit E2E telemetry mode so operational reliability/performance telemetry does not ship during certification runs, with ingest logging quieted as a backstop
 - Broader mobile smoke remains intentionally conservative and shallower than route-certification; the main remaining harness work is optimization and deeper coverage, not missing foundation infrastructure.
 - Core route adoption of a long-term responsive contract is still incomplete:
   - app shell and sidebar now split `phone` vs `compact` behavior behind `NEXT_PUBLIC_MOBILE_SHELL_V2`, consume the shared viewport-height contract, and confine legacy `900px` shell/sidebar behavior to non-v2 consumers only
-  - home now adopts the shared route/shell responsive contract across loading, zero-state, and workspace states, but shared `TopBar` / `ControlsBar` primitives remain explicitly transitional because their remaining `900px` behavior is not yet broadly correct across current consumers
+  - home now adopts the shared route/shell responsive contract across loading and workspace states, including empty authenticated workspaces, but shared `TopBar` / `ControlsBar` primitives remain explicitly transitional because their remaining `900px` behavior is not yet broadly correct across current consumers
   - login and signup now share a standalone `AuthShellFrame` that owns route height once, keeps decorative layers fixed, and gives the auth panel one inner scroll owner on phone when the keyboard shrinks the viewport
   - protocol now consumes shell height/offset once in both embedded and standalone paths; standalone `ProjectPageLayout` can switch to phone-only copilot collapse and child-owned scroll without changing the generic wrapper contract for other project pages
   - telemetry now classifies viewport as `phone` / `compact` / `desktop`, but many live surfaces still consume the transitional `900px` query until later foundation waves retire it
@@ -220,7 +220,7 @@ Primary KPI lenses:
   - Narrowed shared Playwright helper stubbing to non-operational telemetry routes that remain outside the certification contract.
 - [x] `MOB-FND-011` Seeded responsive fixture + route-state contract completed:
   - Added seeded auth, sample/demo project, blank project, and home-state setup through `next-app/e2e/helpers/foundation.ts` and dev fixture routes under `next-app/app/api/dev/`.
-  - Replaced ambient UI-state discovery as test setup with deterministic seeded route-state control for zero-state, workspace, project shell, and protocol-ready flows.
+  - Replaced ambient UI-state discovery as test setup with deterministic seeded route-state control for empty workspace, populated workspace, project shell, and protocol-ready flows.
   - Proved foundation setup isolation well enough to allow `test:e2e:mobile:foundation` to run with `--workers=2`.
 - [x] `MOB-FND-010` Mobile certification harness hardening completed:
   - Split required route-certification from broader smoke in `next-app/package.json`, `.github/workflows/ci.yml`, and `.github/workflows/mobile-smoke.yml`.
@@ -247,7 +247,7 @@ Primary KPI lenses:
   - Replaced route-local `100vh` auth ownership with shared viewport-safe height handling and a single inner scroll owner on phone.
   - Preserved auth-specific visual composition while hardening keyboard and safe-area behavior.
 - [x] `MOB-FND-004` Home responsive entry experience completed:
-  - Moved loading and zero-state to direct route-level surface ownership while keeping workspace offset ownership with the shell contract.
+  - Moved loading to direct route-level surface ownership while keeping empty and populated workspace offset ownership with the shell contract.
   - Reworked home workspace entry behavior for `phone` vs `compact`, including tier-specific grid/list treatment and a structurally decoupled sample review card.
   - Added isolated extension hooks to `ControlsBar` so home-specific responsive behavior does not force a global primitive rewrite.
 

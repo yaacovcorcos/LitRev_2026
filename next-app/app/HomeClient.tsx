@@ -27,7 +27,6 @@ import layoutStyles from "./home.module.css";
 const VALID_SORTS: SortMode[] = ["name", "created", "modified"];
 const VALID_VIEWS: ViewMode[] = ["grid", "list"];
 const LAST_PROJECT_STORAGE_KEY = "litrev:lastProjectId";
-const HOME_ENTERED_WORKSPACE_KEY = "litrev:enteredWorkspaceFromWelcome";
 
 declare global {
   interface Window {
@@ -100,7 +99,6 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
   const [sampleError, setSampleError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [lastProjectId, setLastProjectId] = useState<string | null>(null);
-  const [hasEnteredWorkspace, setHasEnteredWorkspace] = useState(false);
   const [isModalOpen, setModalOpen] = useState(() => shouldOpenFromQuery);
   const [preferredCreateIntent, setPreferredCreateIntent] = useState<CreateIntent>("blank");
   const [loadingStep, setLoadingStep] = useState(0);
@@ -152,8 +150,6 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
     if (typeof window === "undefined") return;
     const storedId = window.localStorage.getItem(LAST_PROJECT_STORAGE_KEY);
     setLastProjectId(storedId && storedId.trim() ? storedId : null);
-    const entered = window.sessionStorage.getItem(HOME_ENTERED_WORKSPACE_KEY) === "1";
-    setHasEnteredWorkspace(entered);
   }, []);
 
   const sortedProjects = useMemo(() => {
@@ -267,24 +263,17 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
 
   const firstName = session?.user?.name?.split(/\s+/)[0] ?? bootstrap.userName?.split(/\s+/)[0] ?? null;
   const showMigrationAlert = migrationStatus === "failed" && Boolean(migrationError);
-  const isLoadedEmpty = displayBootstrapState === "loaded_empty";
-  const isZeroState = isLoadedEmpty && !hasEnteredWorkspace;
+  const hasAuthenticatedIdentity =
+    displayAuthState === "authenticated" ||
+    bootstrap.authState === "authenticated" ||
+    Boolean(session) ||
+    Boolean(bootstrap.userName);
+  const showUnauthenticatedWelcome =
+    displayBootstrapState === "unauthenticated" && !hasAuthenticatedIdentity;
   const continueProject = useMemo(
     () => (lastProjectId ? sortedProjects.find((project) => project.id === lastProjectId) ?? null : null),
     [lastProjectId, sortedProjects],
   );
-
-  const handleEnterWorkspace = useCallback(() => {
-    recordFoundationRouteFlowCompleted({
-      routeTemplate: "/",
-      surface: "home",
-      flow: "enter_workspace",
-    });
-    setHasEnteredWorkspace(true);
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem(HOME_ENTERED_WORKSPACE_KEY, "1");
-    }
-  }, []);
 
   const loadingSteps = [
     "Syncing your workspace...",
@@ -303,9 +292,7 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
 
   const homeState = shouldShowLoading
     ? "loading"
-    : isZeroState
-      ? "zero_state"
-      : "workspace";
+    : "workspace";
 
   useFoundationRouteReady({
     routeTemplate: "/",
@@ -330,7 +317,7 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
     const isReady =
       showWorkspaceError ||
       displayBootstrapState === "loaded_nonempty" ||
-      isZeroState ||
+      displayBootstrapState === "loaded_empty" ||
       displayBootstrapState === "unauthenticated";
     if (!isReady) return;
 
@@ -343,7 +330,7 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
         state: showWorkspaceError ? "error" : displayBootstrapState,
       };
     }
-  }, [displayBootstrapState, isHydrated, isZeroState, showWorkspaceError]);
+  }, [displayBootstrapState, isHydrated, showWorkspaceError]);
 
   useEffect(() => {
     if (!isHydrated || !usedSeededBootstrap || !displayIsLoadingProjects) return;
@@ -416,7 +403,7 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
         ) : null}
       </div>
     </div>
-  ) : isZeroState || displayBootstrapState === "unauthenticated" ? (
+  ) : showUnauthenticatedWelcome ? (
     <div
       className={`surface-root ${layoutStyles.zeroShell}`}
       data-surface-height="phone-min"
@@ -513,15 +500,6 @@ export function HomeClient({ bootstrap, shouldOpenFromQuery }: HomeClientProps) 
               </button>
             )}
           </div>
-
-          <button
-            type="button"
-            className={layoutStyles.zeroEnter}
-            onClick={handleEnterWorkspace}
-            aria-label="Enter workspace without creating a project"
-          >
-            Enter workspace
-          </button>
 
           {sampleError ? <p className={layoutStyles.sampleError} role="alert">{sampleError}</p> : null}
         </div>

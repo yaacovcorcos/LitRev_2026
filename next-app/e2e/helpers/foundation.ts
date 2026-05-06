@@ -99,21 +99,16 @@ export async function quickLogin(page: Page, callbackUrl = "/"): Promise<void> {
   await quickLoginWithSeed(page, { callbackUrl });
 }
 
-export async function waitForHomeReady(page: Page): Promise<"loading" | "zero_state" | "workspace"> {
+export async function waitForHomeReady(page: Page): Promise<"loading" | "workspace"> {
   const loadingText = page.getByText(/syncing your workspace|loading your projects|warming up ai tools|preparing your reviews/i);
-  const zeroPrimary = page.getByRole("button", { name: /start a new review/i });
   const workspacePrimary = page.getByRole("button", { name: /create new project/i });
-  const enterWorkspace = page.getByRole("button", { name: /enter workspace/i });
 
   await expect.poll(async () => {
     if (await loadingText.isVisible().catch(() => false)) return "loading";
-    if (await zeroPrimary.isVisible().catch(() => false)) return "zero_state";
     if (await workspacePrimary.isVisible().catch(() => false)) return "workspace";
-    if (await enterWorkspace.isVisible().catch(() => false)) return "zero_state";
     return "pending";
-  }).toMatch(/loading|zero_state|workspace/);
+  }).toMatch(/loading|workspace/);
 
-  if (await zeroPrimary.isVisible().catch(() => false)) return "zero_state";
   if (await workspacePrimary.isVisible().catch(() => false)) return "workspace";
   return "loading";
 }
@@ -133,20 +128,11 @@ export async function enterHomeWorkspace(page: Page): Promise<void> {
     await expect.poll(async () => {
       const nextState = await waitForHomeReady(page);
       return nextState === "loading" ? "pending" : nextState;
-    }).toMatch(/zero_state|workspace/);
+    }).toBe("workspace");
     state = await waitForHomeReady(page);
   }
-  if (state === "zero_state") {
+  if (state === "workspace") {
     await waitForHomeHydration(page);
-    const enterWorkspace = page.getByRole("button", { name: /enter workspace/i });
-    const createProject = page.getByRole("button", { name: /create new project/i });
-    if (await createProject.isVisible().catch(() => false)) {
-      return;
-    }
-
-    await expect(enterWorkspace).toBeVisible({ timeout: 10_000 });
-    await enterWorkspace.click();
-    await expect(createProject).toBeVisible({ timeout: 30_000 });
   }
 }
 
@@ -158,7 +144,7 @@ export async function setHomeState(
     projectCount,
   }: {
     seedKey: string;
-    state: "zero_state" | "workspace";
+    state: "empty_workspace" | "workspace";
     projectCount?: number;
   },
 ): Promise<void> {
@@ -169,11 +155,9 @@ export async function setHomeState(
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded", timeout: 30_000 });
-  if (state === "workspace") {
-    await enterHomeWorkspace(page);
-  }
+  await enterHomeWorkspace(page);
 
-  await expect.poll(async () => waitForHomeReady(page), { timeout: 30_000 }).toBe(state);
+  await expect.poll(async () => waitForHomeReady(page), { timeout: 30_000 }).toBe("workspace");
 }
 
 export async function createProjectFromHome(

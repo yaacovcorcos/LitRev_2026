@@ -19,9 +19,14 @@ const {
   mockRefreshRouter: vi.fn(),
   mockUseProjects: vi.fn(),
   mockUseSession: vi.fn(),
-  mockProjectGrid: vi.fn(({ showSampleCard }: { showSampleCard?: boolean }) => (
-    <div data-testid="project-grid">{showSampleCard !== false ? "sample:on" : "sample:off"}</div>
-  )),
+  mockProjectGrid: vi.fn(
+    ({ onNewProject, showSampleCard }: { onNewProject: () => void; showSampleCard?: boolean }) => (
+      <div data-testid="project-grid">
+        <button type="button" onClick={onNewProject}>Create New Project</button>
+        {showSampleCard !== false ? "sample:on" : "sample:off"}
+      </div>
+    ),
+  ),
   mockGuidedSetupAvailable: vi.fn(() => false),
 }));
 
@@ -86,7 +91,7 @@ vi.mock("@/components/ControlsBar", () => ({
 }));
 
 vi.mock("@/components/ProjectGrid", () => ({
-  ProjectGrid: (props: { showSampleCard?: boolean }) => mockProjectGrid(props),
+  ProjectGrid: (props: { onNewProject: () => void; showSampleCard?: boolean }) => mockProjectGrid(props),
 }));
 
 vi.mock("@/components/Modal", () => ({
@@ -134,22 +139,93 @@ describe("Home entry UX", () => {
     ...overrides,
   });
 
-  it("shows a dedicated new-user welcome screen and can enter workspace", async () => {
+  it("opens the workspace shell immediately for new authenticated users", async () => {
     const { container } = render(<HomeClient bootstrap={makeBootstrap()} shouldOpenFromQuery={false} />);
-
-    expect(screen.queryByTestId("app-shell")).toBeNull();
-    expect(screen.getByText("Start a new review")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Enter workspace without creating a project" })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Enter workspace without creating a project" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("app-shell")).toBeTruthy();
     });
+    expect(screen.queryByText("Start a new review")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Enter workspace without creating a project" })).toBeNull();
     expect(screen.getByTestId("project-grid").textContent).toContain("sample:on");
     expect(container.querySelector('.surface-root[data-surface-height="shell"]')).toBeTruthy();
     expect(container.querySelector('.surface-scroll-body[data-surface-padding="responsive"]')).toBeTruthy();
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("keeps Home in the workspace shell when client auth is ahead of stale bootstrap auth", async () => {
+    mockUseProjects.mockReturnValue({
+      projects: [],
+      authState: "unauthenticated",
+      homeBootstrapState: "unauthenticated",
+      usedSeededBootstrap: true,
+      addProject: vi.fn(async () => null),
+      isInitialized: true,
+      isLoadingProjects: false,
+      projectsError: null,
+      refresh: vi.fn(async () => {}),
+      migrationStatus: "pending",
+      migrationError: null,
+      retryMigration: vi.fn(async () => {}),
+    });
+
+    render(
+      <HomeClient
+        bootstrap={makeBootstrap({
+          authState: "unauthenticated",
+          homeBootstrapState: "unauthenticated",
+          userName: null,
+        })}
+        shouldOpenFromQuery={false}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("app-shell")).toBeTruthy();
+    });
+    expect(screen.queryByText("Start a new review")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Enter workspace without creating a project" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Create New Project" })).toBeTruthy();
+  });
+
+  it("keeps Home in the workspace shell when bootstrap auth is ahead of stale client auth", async () => {
+    mockUseSession.mockReturnValue({
+      data: null,
+      isPending: false,
+    });
+    mockUseProjects.mockReturnValue({
+      projects: [],
+      authState: "unauthenticated",
+      homeBootstrapState: "unauthenticated",
+      usedSeededBootstrap: true,
+      addProject: vi.fn(async () => null),
+      isInitialized: true,
+      isLoadingProjects: false,
+      projectsError: null,
+      refresh: vi.fn(async () => {}),
+      migrationStatus: "pending",
+      migrationError: null,
+      retryMigration: vi.fn(async () => {}),
+    });
+
+    render(
+      <HomeClient
+        bootstrap={makeBootstrap({
+          authState: "authenticated",
+          homeBootstrapState: "loaded_empty",
+          userName: "Preview User",
+        })}
+        shouldOpenFromQuery={false}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("app-shell")).toBeTruthy();
+    });
+    expect(screen.queryByText("Start a new review")).toBeNull();
+    expect(screen.queryByText("Welcome, Preview")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Enter workspace without creating a project" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Create New Project" })).toBeTruthy();
   });
 
   it("shows a continue card for returning users with a valid last project", () => {
@@ -314,7 +390,7 @@ describe("Home entry UX", () => {
     expect(mockPush).not.toHaveBeenCalledWith("/project/proj-new/onboarding");
   });
 
-  it("offers guided setup as an explicit home action when available", async () => {
+  it("offers guided setup as an explicit create-modal action when available", async () => {
     mockGuidedSetupAvailable.mockReturnValue(true);
     const addProject = vi.fn(async (project: { name: string; description?: string }) => ({
       ...project,
@@ -344,11 +420,11 @@ describe("Home entry UX", () => {
     render(<HomeClient bootstrap={makeBootstrap()} shouldOpenFromQuery={false} />);
 
     expect(mockPush).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: /Start with guided setup/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Create New Project" }));
     expect(screen.getByRole("button", { name: "Guided setup" }).hasAttribute("disabled")).toBe(false);
 
     fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Guided project" } });
-    fireEvent.submit(screen.getByLabelText("Project name").closest("form") as HTMLFormElement);
+    fireEvent.click(screen.getByRole("button", { name: "Guided setup" }));
 
     await waitFor(() => {
       expect(addProject).toHaveBeenCalled();

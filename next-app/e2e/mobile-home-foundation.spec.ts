@@ -1,28 +1,21 @@
 import { expect, test } from "@playwright/test";
 import {
   buildFoundationSeedKey,
-  enterHomeWorkspace,
   quickLoginWithSeed,
   setHomeState,
   waitForHomeReady,
 } from "./helpers/foundation";
 
-test("mobile home foundation: zero-state and workspace flows remain usable on phone", async ({ page }, testInfo) => {
+test("mobile home foundation: empty workspace opens directly on phone", async ({ page }, testInfo) => {
   const seedKey = buildFoundationSeedKey(testInfo);
   await quickLoginWithSeed(page, { callbackUrl: "/", seedKey });
-  await setHomeState(page, { seedKey, state: "zero_state" });
+  await setHomeState(page, { seedKey, state: "empty_workspace" });
   const state = await waitForHomeReady(page);
-  expect(state).toBe("zero_state");
-
-  if (state === "zero_state") {
-    await expect(page.getByRole("button", { name: /start a new review/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /explore sample/i })).toBeVisible();
-  }
-
-  await enterHomeWorkspace(page);
+  expect(state).toBe("workspace");
 
   await expect(page.getByRole("button", { name: /create new project/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /sort by/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /enter workspace/i })).toHaveCount(0);
 });
 
 test.describe("compact home foundation", () => {
