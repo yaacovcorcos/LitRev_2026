@@ -92,6 +92,10 @@ LitRev should learn aggressively from the best external systems without drifting
   - performance certification in [`plan-speed-performance.md`](./plan-speed-performance.md)
   - burn-in runbook for shared chat/runtime canaries
 - The protected `check` CI gate now includes `npm run check:agent-quality`, a deterministic agent-quality gate that validates the core eval scenario catalog, runtime-signal fixture coverage, and strict U1.6 burn-in metric/threshold contract.
+- U1.6 is a recurring production-confidence and certification loop:
+  - it should continuously challenge runtime truth, recovery, retry, and cross-surface consistency
+  - it gates formal runtime sign-off and destructive cleanup of fallback/legacy runtime paths
+  - it does not block additive agent improvements, bug fixes, eval expansion, security hardening, tool/autonomy hardening, decision-system work, research-quality work, or non-destructive runtime hardening that preserves existing contracts
 - The remaining agent-quality debt is to broaden this spine into adversarial security packs, richer live eval artifacts, SLO dashboards, incident playbooks, and explicit efficiency budgets.
 
 ## Open-Source Position
@@ -145,9 +149,11 @@ The lesson to keep:
     - the rollback lever
     - the evidence required to promote
 
-- [ ] `Q2-002` Finish `U1.6` burn-in as the runtime sign-off gate on current production truth.
+- [ ] `Q2-002` Operate `U1.6` as the runtime production-confidence and certification loop on current production truth.
   - outcome:
     - `FIX-011b` closes with evidence, not optimism
+    - production confidence is challenged continuously instead of becoming a one-time blocker
+    - formal runtime sign-off and destructive cleanup wait for evidence, while additive agent work continues with appropriate tests/evals
   - current support:
     - `npm run check:agent-quality` prevents accidental weakening of the burn-in metric set, surface set, and strict threshold floor before runtime changes merge
 
@@ -211,7 +217,7 @@ The lesson to keep:
 ## Execution Order
 
 1. Build the eval spine.
-2. Close rollout and burn-in discipline.
+2. Keep rollout and burn-in discipline active without letting certification freeze normal additive work.
 3. Harden security and trust boundaries.
 4. Add speed and efficiency budgets.
 5. Keep the benchmark loop alive so the plan does not fossilize.

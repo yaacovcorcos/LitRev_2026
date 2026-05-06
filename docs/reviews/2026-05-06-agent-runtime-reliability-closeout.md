@@ -21,7 +21,8 @@ The agent runtime is no longer blocked by the known `FIX-011b` code delta.
 The core failure classes that made interruption, retry, and paused input unreliable now have server-owned runtime contracts and deterministic regression coverage.
 
 This does not mean the agent is fully signed off for production-scale confidence.
-The next gate is live evidence: `U1.6` must run from a fresh deployment/cohort window, with manual abnormal-end spot checks and preserved validator JSON.
+The next certification gate is live evidence: `U1.6` must run from a fresh deployment/cohort window, with manual abnormal-end spot checks and preserved validator JSON.
+That gate should not freeze normal additive agent work. It blocks formal runtime sign-off and destructive cleanup of fallback/legacy runtime paths, not bug fixes, eval expansion, security hardening, tool/autonomy hardening, decision-system work, research-quality work, or non-destructive runtime hardening that preserves existing contracts.
 
 ## What Changed
 
@@ -95,14 +96,14 @@ This is the right adoption shape for LitRev: local runtime contracts, local test
 
 ### Must Happen Next
 
-Run `U1.6` as a fresh deployment-level burn-in:
+Run `U1.6` as a fresh deployment-level burn-in and keep using it as a recurring production-confidence loop:
 - capture a new deploy SHA and `CANARY_SINCE_UTC`
 - refresh scoped `workspaceIds` / `userIds`
 - run Phase 0 from `docs/runbooks/chat-runtime-burn-in.md`
 - record the Day-0 manual baseline scenario pack
 - preserve raw validator JSON through final strict gate
 
-Do not open `A-002` / `U4` cleanup until the burn-in sign-off evidence exists.
+Do not open destructive `A-002` / `U4` cleanup until the burn-in sign-off evidence exists. Additive agent improvements should continue in parallel when they preserve existing runtime contracts and add the appropriate tests/evals.
 
 ### Still Important, Not Part Of This Closeout
 

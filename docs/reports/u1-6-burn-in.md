@@ -6,13 +6,16 @@ Last reviewed: `2026-05-06`
 This file is the single live status and eventual sign-off record for U1.6.
 It is intentionally short until a new deployment-level burn-in window is opened.
 
+U1.6 is a recurring production-confidence and certification loop, not a global development blocker.
+
 ## Current Truth
 
 - No U1.6 burn-in window is currently sign-offable.
 - The old March and April windows are historical only.
 - The known `A-001` / `FIX-011b` code delta is closed on `main` and covered by deterministic tests.
 - A fresh deployment/cohort window is still required before runtime sign-off.
-- `A-002` / `U4` cleanup remains blocked until U1.6 sign-off evidence exists.
+- `A-002` / `U4` destructive runtime cleanup remains blocked until U1.6 sign-off evidence exists.
+- Additive agent improvements, bug fixes, eval expansion, security hardening, tool/autonomy hardening, decision-system work, research-quality work, and non-destructive runtime hardening that preserves existing contracts may continue while U1.6 evidence is missing or being collected.
 
 ## Required Inputs For The Next Window
 
@@ -45,7 +48,8 @@ It is intentionally short until a new deployment-level burn-in window is opened.
 - Day-0 gate passed: `no`
 - Burn-in pass: `no`
 - `A-002` / `U4` cleanup unlocked: `no`
+- Additive agent work blocked by U1.6: `no`
 
 ## Next Required Step
 
-Open a fresh deployment-level U1.6 window from current production truth, then run Phase 0 from `docs/runbooks/chat-runtime-burn-in.md` and preserve the validator output.
+Open a fresh deployment-level U1.6 window from current production truth, then run Phase 0 from `docs/runbooks/chat-runtime-burn-in.md` and preserve the validator output. Continue non-destructive agent work that preserves existing contracts in parallel, with tests/evals updated whenever runtime behavior changes.

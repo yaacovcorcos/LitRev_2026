@@ -4,11 +4,15 @@ This runbook operationalizes `U1.6` from `docs/plans/plan-agent-quality.md`, seq
 It is the only active U1.6 burn-in operational source.
 Use it before opening post-sign-off runtime cleanup such as `A-002` / `U4`.
 
+U1.6 is a recurring production-confidence and certification loop, not a global development blocker. It gates formal runtime sign-off and destructive cleanup of fallback/legacy runtime paths. It should not block additive agent improvements, bug fixes, eval expansion, security hardening, tool/autonomy hardening, decision-system work, research-quality work, or non-destructive runtime hardening that preserves existing contracts.
+
 Do not use this runbook as a substitute for baseline product rescue. If ordinary manual agent use exposes visible prompt/runtime leakage, obviously broken reconnect/recovery behavior, or generally unusable long-running runs, stop the burn-in attempt and open a targeted remediation from the current owner plans before continuing the evidence window.
 
 ## Purpose
 
 Provide a deterministic, auditable process for chat-runtime canary validation across the `ai` and `project` surfaces.
+
+The process should continuously challenge runtime behavior under real conditions while letting ordinary additive product and reliability work continue in parallel.
 
 ## Preconditions
 
@@ -32,7 +36,8 @@ Current repo/runtime note:
 - Abrupt stream endings without concrete transport evidence now classify as `failed_interrupted` rather than `failed_network`; burn-in spot checks should preserve that distinction and only treat `failed_network` as a true transport failure.
 - HTTP observer disconnect is not semantic run cancellation for durable artifact-aware runs. User stop/cancel must flow through the run cancellation API; browser/tab disconnect spot checks should verify recovery or eventual persisted terminal truth rather than a forced cancelled run.
 - As of the May 2026 runtime closeout, the known `A-001` / `FIX-011b` code delta is covered by deterministic tests for semantic cancellation, cancelled terminal truth, newest-window clarification hydration, post-answer degrade-only success, truthful loop outcomes, durable mutating-tool receipts, persisted decision requests/resolutions, and the protected `check:agent-quality` gate.
-- `U1.6` is now the live sign-off gate for that code truth. It must use a fresh deployment/cohort window; do not reuse the stale historical scoped report as pass/fail evidence.
+- `U1.6` is now the live certification loop for that code truth. It must use a fresh deployment/cohort window for formal sign-off; do not reuse the stale historical scoped report as pass/fail evidence.
+- Additive agent work can continue while U1.6 evidence is missing or being collected. Only formal runtime sign-off and destructive post-sign-off cleanup should wait for U1.6 evidence.
 
 ## Required Inputs
 
@@ -240,7 +245,7 @@ Pass criteria:
 
 If strict gate fails:
 
-1. Keep `U3` blocked.
+1. Keep formal runtime sign-off and destructive runtime cleanup blocked.
 2. Export JSON for diagnostics (`--json=1`) and attach to run report.
 3. If the active window is being tracked in a docs-only evidence PR, finalize and merge that PR as the failed-window record before opening remediation.
 4. Open a remediation PR scoped to the failing metric.
@@ -257,5 +262,6 @@ If strict gate fails:
 1. Owner signs the final report as pass/fail.
 2. Backup reviewer independently validates thresholds and cohort scope.
 3. `docs/plans/plan-agent-quality.md` is updated with the factual sign-off outcome, and `docs/plans/plan-agentic.md` is updated if runtime sequencing changes.
-4. `A-002` / `U4` becomes the next runtime-cleanup task only within `docs/plans/plan-agentic.md` unless broader roadmap ordering changes there explicitly.
-5. Only after sign-off, start the next runtime-cleanup wave that `plan-agentic.md` currently sequences after `U1.6`.
+4. `A-002` / `U4` becomes eligible as the next destructive runtime-cleanup task only within `docs/plans/plan-agentic.md` unless broader roadmap ordering changes there explicitly.
+5. Only after sign-off, start the destructive runtime-cleanup wave that `plan-agentic.md` currently sequences after `U1.6`.
+6. Continue using U1.6-style burn-in and validator evidence as an ongoing confidence loop after sign-off, especially when later runtime work changes telemetry meaning, recovery behavior, or cross-surface stream truth.
