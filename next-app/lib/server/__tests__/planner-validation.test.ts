@@ -190,6 +190,16 @@ describe("generatePlan", () => {
         expect(plan!.steps[0]?.toolName).toBe("search_openalex");
     });
 
+    it("does not infer OpenAlex from broad search wording alone", async () => {
+        const plan = await generatePlan("run a broad cross-disciplinary search for sepsis biomarkers", {
+            projectId: "test",
+            hasProtocol: true,
+            studyCount: 0,
+        });
+        expect(plan).not.toBeNull();
+        expect(plan!.steps[0]?.toolName).toBe("search_pubmed");
+    });
+
     it("does not create a plan for read-only PDF QA prompts", async () => {
         const prompt = "Read the methods section from this study PDF and tell me the intervention and comparator.";
         expect(

@@ -1,8 +1,8 @@
 /**
  * Query Planner (CAG-008)
  * Decomposes a natural language search intent into structured search queries
- * for PubMed (Boolean + field tags) and, when warranted, Semantic Scholar
- * (keywords + year range).
+ * for PubMed (Boolean + field tags) and, only when explicitly requested,
+ * Semantic Scholar (keywords + year range).
  *
  * Pure module — no server-only, no DB imports. Used by delegate_search
  * to produce a structured search plan before the sub-agent executes.
@@ -17,6 +17,8 @@
  * 3. [tiab] field-tag queries are more predictable and debuggable.
  * If MeSH support is added back, it should use NLM's MeSH API for validation.
  */
+
+import { deriveSearchSourcePolicy } from "@/lib/agent/search-source-policy";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -188,8 +190,7 @@ function buildYearRange(range?: { start?: number; end?: number }): string | unde
 /**
  * Build a structured search plan from a search intent.
  * Returns PubMed queries (with Boolean/field tags) and optionally Semantic Scholar
- * queries (with keywords and year filtering) when the task explicitly asks for it
- * or signals cross-disciplinary/non-biomedical intent.
+ * queries (with keywords and year filtering) when the task explicitly asks for it.
  */
 export function buildSearchPlan(intent: SearchIntent): SearchPlan {
     const { rawTask, pico, criteria, yearRange } = intent;
@@ -274,9 +275,8 @@ export function buildSearchPlan(intent: SearchIntent): SearchPlan {
     }
 
     // ── Build Semantic Scholar queries (gated) ────────────────────────────
-    // Default strategy is PubMed-first. Only pre-plan Semantic Scholar when:
-    // - the task explicitly asks for it, or
-    // - wording indicates cross-disciplinary / non-biomedical intent.
+    // Default strategy is PubMed-only. Only pre-plan Semantic Scholar when the
+    // user explicitly names that source.
     const shouldUseSemanticScholar = shouldPlanSemanticScholar(intent, concepts);
     if (shouldUseSemanticScholar) {
         const ssYearRange = buildYearRange(yearRange);
@@ -325,10 +325,10 @@ export function buildSearchPlan(intent: SearchIntent): SearchPlan {
     // ── Strategy recommendations ─────────────────────────────────────────
 
     if (pubmedQueries.length > 0 && semanticScholarQueries.length > 0) {
-        strategyNotes.push("Run PubMed queries first (biomedical focus), then Semantic Scholar for broader coverage.");
+        strategyNotes.push("Run PubMed queries first, then Semantic Scholar because the user explicitly requested that source.");
     } else if (pubmedQueries.length > 0) {
         strategyNotes.push(
-            "Default to PubMed-only first pass. Use Semantic Scholar only if explicitly requested or PubMed recall remains low after refinement."
+            "Default to PubMed-only. Use Semantic Scholar only if the user explicitly requests that source by name."
         );
     }
 
@@ -348,22 +348,9 @@ export function buildSearchPlan(intent: SearchIntent): SearchPlan {
     };
 }
 
-const SEMANTIC_SCHOLAR_TRIGGER_REGEX =
-    /\b(semantic scholar|semanticscholar|interdisciplinary|cross-disciplinary|cross disciplinary|multidisciplinary|computer science|machine learning|deep learning|artificial intelligence|nlp|engineering|social science|sociology|economics|policy research|behavioral science)\b/i;
-
 function shouldPlanSemanticScholar(intent: SearchIntent, concepts: string[]): boolean {
     if (concepts.length === 0) return false;
-
-    const task = intent.rawTask;
-    if (SEMANTIC_SCHOLAR_TRIGGER_REGEX.test(task)) return true;
-
-    // PICO-driven and clinical/protocol searches should stay PubMed-first unless
-    // the user explicitly requests Semantic Scholar.
-    if (intent.pico?.population || intent.pico?.intervention || intent.pico?.comparison || intent.pico?.outcome) {
-        return false;
-    }
-
-    return false;
+    return deriveSearchSourcePolicy(intent.rawTask).allowSemanticScholar;
 }
 
 /**

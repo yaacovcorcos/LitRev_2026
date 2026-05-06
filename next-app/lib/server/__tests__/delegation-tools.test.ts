@@ -86,7 +86,22 @@ describe("delegation tools", () => {
     });
     expect(call.task).toEqual(expect.stringContaining("Exclusion criteria"));
     expect(call.task).toEqual(expect.stringContaining("2019:2024[dp]"));
+    expect(call.task).not.toEqual(expect.stringContaining("Semantic Scholar Queries"));
+    expect(call.sourcePolicyText).toBe("find relevant evidence");
     expect((result.result as { searchPlanUsed: boolean }).searchPlanUsed).toBe(true);
+  });
+
+  it("delegate_search includes Semantic Scholar planning only when the parent task names it", async () => {
+    process.env.ENABLE_DELEGATION = "1";
+
+    await delegateSearchTool.execute(
+      { task: "find machine learning diagnosis papers using Semantic Scholar" },
+      { projectId: "p1", userId: "u1", runId: "run-1" },
+    );
+
+    const call = mocks.executeSubAgent.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.task).toEqual(expect.stringContaining("Semantic Scholar Queries"));
+    expect(call.sourcePolicyText).toBe("find machine learning diagnosis papers using Semantic Scholar");
   });
 
   it("delegate_search tolerates protocol data with missing methodology", async () => {

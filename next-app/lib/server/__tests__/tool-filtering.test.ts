@@ -189,6 +189,51 @@ describe("getContextualAllowedTools", () => {
 });
 
 describe("getContextualToolDefinitions", () => {
+    it("uses PubMed-only search tools by default in contextual runtime filtering", () => {
+        const defs = getContextualToolDefinitions({
+            agentMode: "search",
+            scope: "project",
+            studyLedger: null,
+            userMessage: "find RCTs about metformin",
+        });
+        const names = defs.map((d) => d.name);
+
+        expect(names).toContain("search_pubmed");
+        expect(names).not.toContain("recommend_studies");
+        expect(names).not.toContain("search_openalex");
+        expect(names).not.toContain("search_semantic_scholar");
+    });
+
+    it("exposes OpenAlex only when the request names OpenAlex", () => {
+        const defs = getContextualToolDefinitions({
+            agentMode: "search",
+            scope: "project",
+            studyLedger: null,
+            userMessage: "search OpenAlex for AI triage studies",
+        });
+        const names = defs.map((d) => d.name);
+
+        expect(names).toContain("search_pubmed");
+        expect(names).toContain("search_openalex");
+        expect(names).not.toContain("recommend_studies");
+        expect(names).not.toContain("search_semantic_scholar");
+    });
+
+    it("exposes Semantic Scholar only when the request names Semantic Scholar", () => {
+        const defs = getContextualToolDefinitions({
+            agentMode: "search",
+            scope: "project",
+            studyLedger: null,
+            userMessage: "use Semantic Scholar for citation-network discovery",
+        });
+        const names = defs.map((d) => d.name);
+
+        expect(names).toContain("search_pubmed");
+        expect(names).toContain("recommend_studies");
+        expect(names).not.toContain("search_openalex");
+        expect(names).toContain("search_semantic_scholar");
+    });
+
     it("hides study-context-only tools when no studyId is available", () => {
         const defs = getContextualToolDefinitions({
             agentMode: "screening",

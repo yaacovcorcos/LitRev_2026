@@ -75,7 +75,7 @@ export function detectMultiStepWorkflow(
     // Check if message references 2+ tool capabilities
     const toolKeywords: Record<string, string[]> = {
         search_pubmed: ["search", "pubmed", "find studies", "look up", "look for"],
-        search_openalex: ["openalex", "open alex", "cross-disciplinary", "broad search"],
+        search_openalex: ["openalex", "open alex"],
         exclude_study: ["exclude", "reject", "triage out"],
         delete_study: ["delete study", "delete from ledger", "purge study", "remove from ledger", "hard delete"],
         bulk_screening: ["screen", "batch", "screening"],

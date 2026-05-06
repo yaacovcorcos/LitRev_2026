@@ -57,12 +57,12 @@ describe("buildExecutablePlanPayload", () => {
             originAgentMode: "scoping",
             conversationId: "conv-scope",
             projectId: "proj-scope",
-            allowedToolNames: ["search_pubmed", "search_openalex", "recommend_studies", "ask_user"],
+            allowedToolNames: ["search_pubmed", "recommend_studies", "ask_user"],
         });
 
         expect(payload.execution).toEqual({
             originAgentMode: "scoping",
-            allowedToolNames: ["search_pubmed", "search_openalex", "recommend_studies", "ask_user"],
+            allowedToolNames: ["search_pubmed", "recommend_studies", "ask_user"],
             createdFromConversationId: "conv-scope",
             createdFromProjectId: "proj-scope",
             enforceOrder: true,

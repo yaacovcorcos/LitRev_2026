@@ -25,6 +25,7 @@ import { createAutonomyBlockedErrorEnvelope } from "@/lib/ai/error-envelope";
 import type { AIService, ToolRuntimeContext } from "./ai-service";
 import { logServerError } from "@/lib/server/logging";
 import { isIdempotencyReplayResult } from "./tool-middleware";
+import { createToolUnavailableInRequestResult } from "./tool-availability-policy";
 
 export type DelegatedAutonomyBlockedReason = "disabled_by_autonomy" | "approval_required";
 export type AutonomyLevelOneBehavior = "suggest" | "block";
@@ -223,12 +224,17 @@ export async function executeToolWithAutonomyCore(
     }
 
     if (agentMode) {
-        const allowed = getEffectiveAllowedTools(agentMode);
+        const allowed = runtimeContext?.allowedToolNames ?? getEffectiveAllowedTools(agentMode);
         if (allowed && allowed.length > 0 && !allowed.includes(toolCall.name)) {
-            const result = createScopeOrModeBlockedResult(
-                toolCall.id,
-                `Tool "${toolCall.name}" is not available in ${agentMode} mode.`,
-            );
+            const result = runtimeContext?.allowedToolNames
+                ? createToolUnavailableInRequestResult({
+                    callId: toolCall.id,
+                    toolName: toolCall.name,
+                })
+                : createScopeOrModeBlockedResult(
+                    toolCall.id,
+                    `Tool "${toolCall.name}" is not available in ${agentMode} mode.`,
+                );
             await recordRunEvent({
                 runId,
                 type: "tool_result",
@@ -317,6 +323,7 @@ export async function executeToolWithAutonomyCore(
             protocolData: runtimeContext?.protocolData ?? null,
             signal: runtimeContext?.signal,
             autonomyLevel: level,
+            allowedToolNames: runtimeContext?.allowedToolNames,
         },
     });
     const durationMs = Date.now() - startTime;

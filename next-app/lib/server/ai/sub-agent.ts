@@ -33,6 +33,10 @@ import { dropShadowedInvalidToolCalls, getToolCallRepeatKey } from "./tool-helpe
 import { evaluateToolPrerequisites } from "./tool-prerequisites";
 import { executeToolWithAutonomyCore } from "./tool-autonomy";
 import { logServerError, logServerWarn } from "@/lib/server/logging";
+import {
+    deriveSearchSourcePolicy,
+    filterToolDefinitionsBySearchSourcePolicy,
+} from "@/lib/agent/search-source-policy";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,6 +76,14 @@ export interface SubAgentParams {
     signal?: AbortSignal;
     /** Optional model ID used for run metadata. */
     model?: string;
+    /**
+     * Original parent request text used for source-gating search tools.
+     * This keeps delegated search PubMed-only unless the parent user explicitly
+     * named another source.
+     */
+    sourcePolicyText?: string;
+    /** Explicit source tools already approved by a parent plan or caller. */
+    explicitSearchSourceToolNames?: string[];
 }
 
 export interface SubAgentResult {
@@ -197,7 +209,15 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
 
     // 2. Get mode-scoped tool definitions
     const scope = projectId ? "project" as const : "global" as const;
-    const toolDefs = getToolDefinitions(mode, scope);
+    const sourcePolicy = deriveSearchSourcePolicy({
+        text: params.sourcePolicyText ?? task,
+        explicitToolNames: params.explicitSearchSourceToolNames,
+    });
+    const toolDefs = filterToolDefinitionsBySearchSourcePolicy(
+        getToolDefinitions(mode, scope),
+        sourcePolicy,
+    );
+    const allowedToolNames = toolDefs.map((tool) => tool.name);
 
     if (toolDefs.length === 0) {
         return {
@@ -389,6 +409,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                         protocolData: null,
                         autonomyConfig: params.autonomyConfig,
                         systemContexts,
+                        allowedToolNames,
                     },
                     levelOneBehavior: "block",
                     artifactRunId: params.parentRunId ?? childRunId ?? undefined,
