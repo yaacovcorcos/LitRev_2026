@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { DEFAULT_POST_LOGIN_PATH } from "@/lib/auth-redirects";
+import { getAuth } from "@/lib/auth";
 
 const PUBLIC_PATHS = ["/login", "/signup"];
 const SESSION_COOKIES = [
@@ -25,36 +26,25 @@ function getUnauthenticatedCallbackUrl(pathname: string, search: string): string
   return `${pathname}${search}`;
 }
 
-async function hasValidSession(request: NextRequest): Promise<boolean> {
+type ProxySessionState = "missing" | "valid" | "invalid" | "unavailable";
+
+async function getProxySessionState(request: NextRequest): Promise<ProxySessionState> {
   if (!hasSessionCookie(request)) {
-    return false;
+    return "missing";
   }
 
-  const cookie = request.headers.get("cookie");
-  if (!cookie) {
-    return false;
+  try {
+    const session = await getAuth().api.getSession({
+      headers: request.headers,
+      query: {
+        disableCookieCache: true,
+        disableRefresh: true,
+      },
+    });
+    return session?.session && session.user ? "valid" : "invalid";
+  } catch {
+    return "unavailable";
   }
-
-  const sessionUrl = new URL("/api/auth/get-session", request.url);
-  sessionUrl.searchParams.set("disableCookieCache", "true");
-  sessionUrl.searchParams.set("disableRefresh", "true");
-  const response = await fetch(sessionUrl, {
-    method: "GET",
-    headers: { cookie },
-    cache: "no-store",
-  }).catch(() => null);
-
-  if (!response?.ok) {
-    return false;
-  }
-
-  const payload = (await response.json().catch(() => null)) as unknown;
-  if (!payload || typeof payload !== "object") {
-    return false;
-  }
-
-  const sessionPayload = payload as { session?: unknown; user?: unknown };
-  return Boolean(sessionPayload.session && sessionPayload.user);
 }
 
 export async function proxy(request: NextRequest) {
@@ -64,8 +54,13 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const hasCookie = hasSessionCookie(request);
-  if (await hasValidSession(request)) {
+  const sessionState = await getProxySessionState(request);
+  if (sessionState === "valid") {
+    return NextResponse.next();
+  }
+  if (sessionState === "unavailable") {
+    // Avoid turning transient auth-store outages into misleading global logouts.
+    // Data access still goes through server-side auth/authorization boundaries.
     return NextResponse.next();
   }
 
@@ -73,7 +68,7 @@ export async function proxy(request: NextRequest) {
   const callbackUrl = getUnauthenticatedCallbackUrl(pathname, search);
   loginUrl.searchParams.set("callbackUrl", callbackUrl);
   const response = NextResponse.redirect(loginUrl);
-  if (hasCookie) {
+  if (sessionState === "invalid") {
     clearSessionCookies(response);
   }
   return response;

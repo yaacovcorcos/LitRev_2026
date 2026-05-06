@@ -8,6 +8,7 @@ import { useAsyncAction } from "@/hooks/useAsyncAction";
 import { AuthShellFrame } from "@/app/auth/AuthShellFrame";
 import { recordFoundationRouteFlowCompleted } from "@/lib/mobile/foundation-reliability";
 import { normalizePostLoginCallbackUrl } from "@/lib/auth-redirects";
+import { formatMagicLinkCallbackError } from "@/lib/auth-errors";
 import styles from "@/app/login/login.module.css";
 
 type AuthMode = "signin" | "signup";
@@ -15,21 +16,6 @@ type AuthMode = "signin" | "signup";
 type AuthScreenProps = {
   mode: AuthMode;
 };
-
-function formatMagicLinkCallbackError(errorCode: string | null): string | null {
-  switch (errorCode) {
-    case "EXPIRED_TOKEN":
-      return "That sign-in link expired. Send yourself a new magic link.";
-    case "INVALID_TOKEN":
-      return "That sign-in link is no longer valid. Send yourself a new magic link.";
-    case "failed_to_create_session":
-      return "We could not start your session. Please send a new magic link.";
-    case "failed_to_create_user":
-      return "We could not create your account. Please try again.";
-    default:
-      return null;
-  }
-}
 
 export function AuthScreen({ mode }: AuthScreenProps) {
   const router = useRouter();

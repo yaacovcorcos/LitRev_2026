@@ -22,6 +22,18 @@ describe("auth redirect helpers", () => {
     expect(normalizePostLoginCallbackUrl("//example.com/project/p-1")).toBe("/ai");
   });
 
+  it("rejects encoded protocol-relative and backslash callbacks", () => {
+    expect(normalizePostLoginCallbackUrl("/%2F%2Fevil.example")).toBe("/ai");
+    expect(normalizePostLoginCallbackUrl("/%252F%252Fevil.example")).toBe("/ai");
+    expect(normalizePostLoginCallbackUrl("/%5Cevil.example")).toBe("/ai");
+    expect(normalizePostLoginCallbackUrl("/\\evil.example")).toBe("/ai");
+  });
+
+  it("rejects malformed or control-character callbacks", () => {
+    expect(normalizePostLoginCallbackUrl("/project/%E0%A4%A")).toBe("/ai");
+    expect(normalizePostLoginCallbackUrl("/project/%00secret")).toBe("/ai");
+  });
+
   it("builds a login URL with the current location as callback", () => {
     const callbackUrl = getCurrentLocationCallbackUrl({
       pathname: "/project/p-1/draft",

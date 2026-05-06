@@ -1,5 +1,18 @@
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  getSession: vi.fn(),
+}));
+
+vi.mock("@/lib/auth", () => ({
+  getAuth: () => ({
+    api: {
+      getSession: mocks.getSession,
+    },
+  }),
+}));
+
 import { proxy } from "../proxy";
 
 function makeRequest(path: string, sessionToken?: string) {
@@ -15,7 +28,6 @@ function makeRequest(path: string, sessionToken?: string) {
 describe("auth proxy", () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.unstubAllGlobals();
   });
 
   it("sends unauthenticated root entry to AI after login", async () => {
@@ -26,6 +38,7 @@ describe("auth proxy", () => {
 
     expect(response.headers.get("location")).toBe("http://localhost/login?callbackUrl=%2Fai");
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.getSession).not.toHaveBeenCalled();
   });
 
   it("preserves explicit deep links as login callbacks", async () => {
@@ -37,34 +50,39 @@ describe("auth proxy", () => {
   });
 
   it("does not redirect when Better Auth validates the session", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      Response.json({
-        session: { id: "session-1" },
-        user: { id: "user-1" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    mocks.getSession.mockResolvedValue({
+      session: { id: "session-1" },
+      user: { id: "user-1" },
+    });
+    const request = makeRequest("/", "session-token");
 
-    const response = await proxy(makeRequest("/", "session-token"));
+    const response = await proxy(request);
 
     expect(response.headers.get("location")).toBeNull();
-    expect(fetchMock).toHaveBeenCalledWith(
-      new URL("http://localhost/api/auth/get-session?disableCookieCache=true&disableRefresh=true"),
-      expect.objectContaining({
-        method: "GET",
-        headers: { cookie: "better-auth.session_token=session-token" },
-        cache: "no-store",
-      }),
-    );
+    expect(mocks.getSession).toHaveBeenCalledWith({
+      headers: request.headers,
+      query: {
+        disableCookieCache: true,
+        disableRefresh: true,
+      },
+    });
   });
 
   it("redirects and clears stale Better Auth cookies", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(Response.json(null));
-    vi.stubGlobal("fetch", fetchMock);
+    mocks.getSession.mockResolvedValue(null);
 
     const response = await proxy(makeRequest("/ai", "stale-session-token"));
 
     expect(response.headers.get("location")).toBe("http://localhost/login?callbackUrl=%2Fai");
     expect(response.headers.getSetCookie().join("\n")).toContain("better-auth.session_token=");
+  });
+
+  it("does not clear cookies or force login when session validation is temporarily unavailable", async () => {
+    mocks.getSession.mockRejectedValue(new Error("database unavailable"));
+
+    const response = await proxy(makeRequest("/ai", "session-token"));
+
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.getSetCookie()).toHaveLength(0);
   });
 });

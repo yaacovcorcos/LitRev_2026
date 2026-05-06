@@ -84,4 +84,16 @@ describe("AuthScreen", () => {
       "That sign-in link expired. Send yourself a new magic link.",
     );
   });
+
+  it("shows a safe fallback for unknown magic-link callback errors", () => {
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams("callbackUrl=/ai&error=new_provider_error"),
+    );
+
+    render(<AuthScreen mode="signin" />);
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "We could not complete sign-in. Please send a new magic link.",
+    );
+  });
 });
