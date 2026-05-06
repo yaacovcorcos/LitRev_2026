@@ -88,17 +88,17 @@ describe("POST /api/dev/test-home-state", () => {
     expect(mocks.ensureDevQuickLoginIdentity).not.toHaveBeenCalled();
   });
 
-  it("deletes only seeded fixtures for zero-state setup", async () => {
+  it("deletes only seeded fixtures for empty-workspace setup", async () => {
     const response = await POST(new Request("http://localhost/api/dev/test-home-state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ seedKey: "home-seed", state: "zero_state" }),
+      body: JSON.stringify({ seedKey: "home-seed", state: "empty_workspace" }),
     }) as never);
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       ok: true,
-      state: "zero_state",
+      state: "empty_workspace",
       deletedCount: 2,
     });
     expect(mocks.prisma.project.deleteMany).toHaveBeenCalledWith({
@@ -110,6 +110,21 @@ describe("POST /api/dev/test-home-state", () => {
           { description: { startsWith: "[e2e-fixture:seed]" } },
         ],
       },
+    });
+  });
+
+  it("accepts zero_state as a legacy alias for empty-workspace setup", async () => {
+    const response = await POST(new Request("http://localhost/api/dev/test-home-state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seedKey: "home-seed", state: "zero_state" }),
+    }) as never);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      state: "empty_workspace",
+      deletedCount: 2,
     });
   });
 

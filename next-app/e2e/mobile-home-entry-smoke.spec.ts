@@ -10,15 +10,13 @@ test("mobile home entry smoke: home presents a usable entry surface", async ({ p
     return;
   }
 
-  const zeroStatePrimary = page.getByRole("button", { name: /start a new review/i });
+  const unauthenticatedEntry = page.getByRole("button", { name: /start a new review/i });
   const workspacePrimary = page.getByRole("button", { name: /create new project/i });
-  const enterWorkspace = page.getByRole("button", { name: /enter workspace without creating a project/i });
-
-  const homeIsVisible = await zeroStatePrimary.isVisible().catch(() => false);
-  if (homeIsVisible) {
-    await expect(enterWorkspace).toBeVisible();
+  if (await unauthenticatedEntry.isVisible().catch(() => false)) {
+    await expect(page.getByRole("button", { name: /enter workspace/i })).toHaveCount(0);
     return;
   }
 
   await expect(workspacePrimary).toBeVisible();
+  await expect(page.getByRole("button", { name: /enter workspace/i })).toHaveCount(0);
 });

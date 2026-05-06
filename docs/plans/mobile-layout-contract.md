@@ -151,7 +151,7 @@ Only use this when the local surface truly needs to account for route-level navi
 
 ## Adoption Guidance By Wave
 - `MOB-FND-003`: app shell and sidebar now adopt shared shell-height and phone-only offset rules behind `NEXT_PUBLIC_MOBILE_SHELL_V2`; full shell scroll-owner normalization remains conservative until later route waves prove compatibility
-- `MOB-FND-004`: home now uses direct route-level `surface root` ownership for loading/zero-state and shell-owned offset consumption for workspace content; sample review entry is structurally decoupled from the create-new card scaffold
+- `MOB-FND-004`: home now uses direct route-level `surface root` ownership for loading and shell-owned offset consumption for workspace content; empty authenticated accounts enter the workspace shell directly, and sample review entry is structurally decoupled from the create-new card scaffold
 - `MOB-FND-005`: login/auth now uses a shared standalone `AuthShellFrame` with route-level height ownership, fixed decorative layers, and one inner auth scroll owner on phone while preserving auth-specific composition
 - `MOB-FND-006`: protocol now consumes shell/wrapper height once across embedded and standalone paths; standalone project-wrapper collapse can be switched to phone-only while the route keeps child-owned scroll
 - chat/mobile follow-up waves should use sticky footer roles for composer/action regions where applicable
