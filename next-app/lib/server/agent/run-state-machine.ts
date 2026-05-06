@@ -26,6 +26,19 @@ export const TERMINAL_RUN_STATUSES: readonly TerminalRunStatus[] = [
     "paused",
 ];
 
+/**
+ * Legal phase transitions for a running AgentRun:
+ *
+ * plan     -> ask | act | finalize
+ * ask      -> plan | act | finalize
+ * act      -> ask | verify | finalize
+ * verify   -> plan | ask | act | finalize
+ * finalize -> terminal only
+ *
+ * The verify -> plan edge is intentional: a continuation run can resume from a
+ * durable boundary, discover that it needs a revised plan, and re-enter planning
+ * without being treated as a corrupted phase machine.
+ */
 export const RUN_PHASE_TRANSITIONS: Record<RunPhase, readonly RunPhase[]> = {
     plan: ["ask", "act", "finalize"],
     ask: ["plan", "act", "finalize"],

@@ -28,6 +28,7 @@ import { assembleSystemPrompt } from "@/lib/ai/prompts/assistant-prompts";
 import { getAIService } from "./ai-service";
 import { startRun, endRun, startRunHeartbeat, type RunHeartbeatController } from "@/lib/server/agent/run";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
+import { deriveRunOutcome, type RunFacts } from "@/lib/ai/run-outcome";
 import { dropShadowedInvalidToolCalls, getToolCallRepeatKey } from "./tool-helpers";
 import { evaluateToolPrerequisites } from "./tool-prerequisites";
 import { executeToolWithAutonomyCore } from "./tool-autonomy";
@@ -132,21 +133,6 @@ const SUB_AGENT_DEFAULT_BUDGET: LoopBudget = {
     maxWallTimeMs: 60_000,
 };
 
-function mapStopReasonToRunStatus(reason: StopReason | null): Extract<RunStatus, "completed" | "failed" | "cancelled" | "paused"> {
-    if (reason === "error") return "failed";
-    if (reason === "cancelled") return "cancelled";
-    if (reason === "paused_for_input") return "paused";
-    if (
-        reason === "max_iterations"
-        || reason === "max_tool_calls"
-        || reason === "wall_time"
-        || reason === "repeat_detected"
-    ) {
-        return "failed";
-    }
-    return "completed";
-}
-
 function logEventEmissionFailure(eventType: string, runId: string, error: unknown): void {
     const reason = error instanceof Error ? error.message : "unknown error";
     logServerWarn("sub-agent", "failed to emit delegated run event", {
@@ -197,6 +183,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
     let childRunStatus: Extract<RunStatus, "completed" | "failed" | "cancelled" | "paused"> = "completed";
     let pendingUserInputRequest: UserInputRequest | undefined;
     let blockedReason: ToolBlockedReason | undefined;
+    let childHadFinalAssistantAnswer = false;
 
     // 1. Build system prompt for this mode
     const systemPrompt = assembleSystemPrompt({
@@ -323,6 +310,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             // No tool calls = AI is done, natural end
             if (collectedToolCalls.length === 0) {
                 lastContent = contentSoFar;
+                childHadFinalAssistantAnswer = contentSoFar.trim().length > 0;
                 if (childRunId) {
                     await recordSubAgentAssistantMessage(childRunId, contentSoFar);
                 }
@@ -345,6 +333,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
 
             if (collectedToolCalls.length === 0) {
                 lastContent = contentSoFar;
+                childHadFinalAssistantAnswer = contentSoFar.trim().length > 0;
                 loop.markStopped("natural");
                 break;
             }
@@ -507,8 +496,18 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
         if (childRunId) {
             try {
                 const stopReason = loop.stopReason;
+                const runFacts: RunFacts = {
+                    hadFinalAssistantAnswer: childHadFinalAssistantAnswer,
+                    hadSuccessfulToolOrArtifact: false,
+                    hadDeterministicNonRetryableFailure: false,
+                    pausedForUserInput: false,
+                    cancelledByUser: false,
+                };
                 const resolvedStatus = childRunStatus === "completed"
-                    ? mapStopReasonToRunStatus(stopReason)
+                    ? deriveRunOutcome({
+                        facts: runFacts,
+                        stopReason: stopReason ?? "natural",
+                    }).runStatus
                     : childRunStatus;
                 await endRun(childRunId, resolvedStatus);
             } catch (error) {

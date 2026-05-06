@@ -59,6 +59,10 @@ async function lockRunEventSequenceInTransaction(
     tx: RunEventTransactionClient,
     runId: string,
 ): Promise<void> {
+    // PostgreSQL-specific transaction advisory lock. It serializes max(sequence)+1
+    // allocation per run without taking the hot AgentRun row lock on every event.
+    // hashtext is deterministic; a rare collision would only serialize unrelated
+    // runs for this short transaction, not mix their run-scoped sequence values.
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`run-event:${runId}`}))`;
 }
 
@@ -148,6 +152,9 @@ export async function emitEvent(
     extras?: EmitEventExtras,
     afterCreateInTransaction?: EmitEventAfterCreate,
 ) {
+    // Retry bounded transaction conflicts only. P2002 covers sequence unique
+    // conflicts from older/unlocked writers; P2034 covers Prisma-reported
+    // serialization/deadlock conflicts under concurrent Postgres writes.
     for (let attempt = 0; attempt < MAX_SEQUENCE_RETRY_ATTEMPTS; attempt++) {
         try {
             const created = await prisma.$transaction(async (tx) => {
