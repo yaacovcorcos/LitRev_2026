@@ -108,6 +108,11 @@ The agent should not merely "feel smart." It should be:
   - shared query/count/source semantics
   - continuation tokens hidden behind server-owned contracts
   - OpenAlex Crossref enrichment is bounded, abort-aware, and non-critical-path, so optional metadata lookup cannot hold the base search result hostage
+- Search source selection is runtime-owned:
+  - PubMed is the default and only exposed search source unless the user explicitly names OpenAlex, Semantic Scholar, or S2 API/search as a source
+  - `recommend_studies` is gated with the Semantic Scholar policy because it calls the Semantic Scholar recommendations API
+  - the same request-scoped tool envelope is passed through parent runs, executable plans, and delegated search sub-agents
+  - a pre-execution tool-availability middleware blocks hidden non-PubMed search calls before any OpenAlex or Semantic Scholar network request can start
 - Popup is now a truthful reduced subset of the shared runtime rather than a separate runtime model.
 - Study-scoped stream entry now canonicalizes owned `projectId` before runtime start, popup/context validation, and tool-scope selection, so `studyId`-only requests no longer degrade into accidental global-scope runs.
 - The remaining major platform debt is no longer "invent the architecture." It is:

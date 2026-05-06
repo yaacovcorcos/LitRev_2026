@@ -115,6 +115,11 @@ export interface ToolExecutionContext {
     /** Parent stream cancellation signal (if available). */
     signal?: AbortSignal;
     autonomyLevel?: AutonomyLevel;
+    /**
+     * Request-scoped tool envelope sent to the model.
+     * Middleware uses this as a final guard before any tool executor can run.
+     */
+    allowedToolNames?: string[];
 }
 
 /**

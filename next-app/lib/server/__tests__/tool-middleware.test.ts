@@ -6,6 +6,7 @@ import {
   type ToolExecutionRequest,
   type ToolMiddleware,
 } from "@/lib/server/ai/tool-middleware";
+import { createToolAvailabilityPolicyMiddleware } from "@/lib/server/ai/tool-availability-policy";
 import type {
   ToolIdempotencyReservationInput,
   ToolIdempotencyStore,
@@ -112,6 +113,31 @@ describe("tool middleware pipeline", () => {
     expect(executor).not.toHaveBeenCalled();
     expect(result.result).toBeNull();
     expect(result.error).toContain("blocked");
+  });
+
+  it("short-circuits tools outside the request envelope before the executor runs", async () => {
+    const executor = vi.fn(async () => ({ callId: "c1", result: "should not run" }));
+
+    const result = await executeWithToolMiddleware(
+      {
+        name: "search_openalex",
+        args: { query: "diabetes" },
+        callId: "c1",
+        context: { allowedToolNames: ["search_pubmed"] },
+      },
+      [createToolAvailabilityPolicyMiddleware()],
+      executor,
+    );
+
+    expect(executor).not.toHaveBeenCalled();
+    expect(result.result).toBeNull();
+    expect(result.error).toContain("did not explicitly ask for OpenAlex");
+    expect(result.errorMeta).toMatchObject({
+      kind: "request_policy",
+      code: "TOOL_NOT_AVAILABLE_IN_REQUEST",
+      retryable: false,
+      source: "request_policy",
+    });
   });
 
   it("runs after hooks and allows result transformation", async () => {

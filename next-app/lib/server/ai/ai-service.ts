@@ -104,6 +104,7 @@ import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
 import { normalizeUserInputRequestWithDecisionRequest } from "@/lib/ai/decision-requests";
 import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
 import { createToolPrerequisiteMiddleware, evaluateToolPrerequisites } from "./tool-prerequisites";
+import { createToolAvailabilityPolicyMiddleware } from "./tool-availability-policy";
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
 import { computeLedgerCounts, computeStudyLedger } from "@/lib/server/ledger-utils";
 import { logServerError, logServerInfo, logServerWarn } from "@/lib/server/logging";
@@ -148,6 +149,7 @@ import {
     type ActiveRunExecutionCancellation,
     type DurableRunCancellationMonitor,
 } from "@/lib/server/agent/run-cancellation";
+import { deriveSearchSourcePolicy } from "@/lib/agent/search-source-policy";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
@@ -392,7 +394,16 @@ export type ToolRuntimeContext = {
         preset: string;
         toolOverrides: Record<string, unknown>;
     };
+    allowedToolNames?: string[];
 };
+
+function latestUserMessageContent(messages: AIMessage[]): string {
+    for (let index = messages.length - 1; index >= 0; index--) {
+        const message = messages[index];
+        if (message?.role === "user") return message.content;
+    }
+    return "";
+}
 
 class AIService {
     private providers = new Map<string, BaseAIProvider>();
@@ -701,12 +712,15 @@ class AIService {
         const scope = hasProjectScope ? "project" as const : "global" as const;
         const requestedMode: AgentMode = options?.agentMode || "general";
         const agentMode = normalizeAgentMode(requestedMode);
+        const latestUserMessage = latestUserMessageContent(messages);
         const toolDefs = options?.tools ?? getContextualToolDefinitions({
             agentMode,
             scope,
             studyLedger: null,
             studyId: options?.studyId ?? null,
+            userMessage: latestUserMessage,
         });
+        const allowedToolNames = toolDefs.map((tool) => tool.name);
         if (toolDefs.length === 0) {
             yield* this.streamChat(messages, options);
             return;
@@ -900,6 +914,7 @@ class AIService {
                         projectId: options?.projectId,
                         studyId: options?.studyId,
                         userId: identity.userId,
+                        allowedToolNames,
                     },
                 });
                 yield { type: "tool_result", toolName: tc.name, toolResult: result };
@@ -1594,11 +1609,22 @@ class AIService {
             ];
 
             const toolScope = projectId && projectId !== null ? "project" as const : "global" as const;
+            const explicitSearchSourceToolNames = executionMode && planData
+                ? planData.selectedSteps
+                    .map((step) => step.toolName)
+                    .filter((toolName): toolName is string => typeof toolName === "string")
+                : undefined;
+            const searchSourcePolicy = deriveSearchSourcePolicy({
+                text: runtimeQueryText,
+                explicitToolNames: explicitSearchSourceToolNames,
+            });
             const modeToolDefs = getContextualToolDefinitions({
                 agentMode,
                 scope: toolScope,
                 studyLedger,
                 studyId: studyId ?? null,
+                userMessage: runtimeQueryText,
+                explicitSearchSourceToolNames,
             });
             const modeToolNames = modeToolDefs.map((t) => t.name);
             let executionToolDefs = modeToolDefs;
@@ -1624,6 +1650,7 @@ class AIService {
             })) {
                 const planPayload = buildExecutablePlanPayload(buildScopingSearchPackPlan({
                     includeRecommendations: modeToolNames.includes("recommend_studies"),
+                    sourcePolicy: searchSourcePolicy,
                 }), {
                     originAgentMode: agentMode,
                     conversationId: conversation.id,
@@ -1838,6 +1865,7 @@ class AIService {
                             ? deriveScopingIterationToolDefs(modeToolDefs, scopingWorkflow)
                             : modeToolDefs
                     );
+                const iterationToolNames = iterationToolDefs.map((tool) => tool.name);
                 const iterationChatOptions: ChatOptions = {
                     ...baseChatOptions,
                     signal: executionSignal,
@@ -2044,6 +2072,7 @@ class AIService {
                         userId,
                         runId: activeRun.id,
                         protocolData: (protocolRow?.data as ProtocolData | null) ?? null,
+                        allowedToolNames: iterationToolNames,
                     }),
                 })));
 
@@ -2063,6 +2092,7 @@ class AIService {
 
                 // Execute all tool calls with autonomy
                 for (const tc of collectedToolCalls) {
+                    const allowedInThisIteration = iterationToolNames.includes(tc.name);
                     if (agentMode === "scoping" && scopingWorkflow) {
                         const searchDecision = evaluateScopingSearchExecution(scopingWorkflow, tc.name);
                         if (!searchDecision.allow) {
@@ -2077,29 +2107,31 @@ class AIService {
                         }
                     }
 
-                    if (
+                    if (allowedInThisIteration && (
                         tc.name === "search_pubmed" ||
                         tc.name === "search_semantic_scholar" ||
                         tc.name === "search_openalex" ||
                         tc.name === "recommend_studies"
-                    ) {
+                    )) {
                         scopingSearchCallsThisRun += 1;
                     }
 
                     // Plan step tracking: match tool call to next unconsumed step
                     let matchedStep: PlanExecutionStepState | undefined;
-                    if (executionMode) {
+                    if (executionMode && allowedInThisIteration) {
                         matchedStep = assertNextPlanToolCall(stepQueue, tc.name);
                         matchedStep.consumed = true;
                         matchedStep.finalStatus = "running";
                         yield { type: "plan_step_update", planId: options!.planId!, stepIndex: matchedStep.originalIndex, stepStatus: "running", conversationId: conversation.id };
                     }
 
-                    yield {
-                        type: "progress",
-                        progressMessage: mapToolToProgressMessage(tc.name),
-                        conversationId: conversation.id,
-                    };
+                    if (allowedInThisIteration) {
+                        yield {
+                            type: "progress",
+                            progressMessage: mapToolToProgressMessage(tc.name),
+                            conversationId: conversation.id,
+                        };
+                    }
 
                     const gen = executeToolWithAutonomy(
                         this,
@@ -2116,6 +2148,7 @@ class AIService {
                             signal: executionSignal,
                             rootRunId: activeRun.rootRunId ?? activeRun.id,
                             protocolData: (protocolRow?.data as ProtocolData | null) ?? null,
+                            allowedToolNames: iterationToolNames,
                             systemContexts: {
                                 projectContext,
                                 protocolContext,
@@ -2998,6 +3031,7 @@ let aiServiceInstance: AIService | null = null;
 export function createAIService(config?: { toolMiddlewares?: ToolMiddleware[] }): AIService {
     return new AIService({
         toolMiddlewares: [
+            createToolAvailabilityPolicyMiddleware(),
             createToolPrerequisiteMiddleware(),
             createIdempotencyMiddleware(),
             ...(config?.toolMiddlewares ?? []),

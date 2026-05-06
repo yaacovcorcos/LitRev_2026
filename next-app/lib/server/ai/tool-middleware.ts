@@ -20,7 +20,7 @@ export type ToolExecutionRequest = {
    * When present, executeWithToolMiddleware returns this result without invoking executor.
    */
   shortCircuitResult?: ToolResult;
-  shortCircuitReason?: "idempotency_replay" | "idempotency_in_flight";
+  shortCircuitReason?: "idempotency_replay" | "idempotency_in_flight" | "policy_blocked";
   /**
    * Internal per-request idempotency receipt set by idempotency middleware.
    */

@@ -55,6 +55,7 @@ That means:
   - clarification guidance
   - visible-answer hygiene
   - DOI/PMID anti-fabrication guidance
+  - PubMed-only default search-source guidance, with OpenAlex, Semantic Scholar/S2 search, and Semantic Scholar recommendations reserved for explicit user requests and enforced by runtime tool filtering
 - The main remaining issue is not missing primitives. It is fragmentation:
   - prompt work, extraction work, grounding rules, and memory quality are split across too many docs
 

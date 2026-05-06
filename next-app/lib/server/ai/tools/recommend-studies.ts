@@ -26,7 +26,7 @@ export const recommendStudiesTool: AITool = {
     definition: {
         name: "recommend_studies",
         description:
-            "Get paper recommendations from Semantic Scholar based on studies already in the Evidence Ledger. Uses included/kept studies as positive seeds and excluded studies as negative seeds. Requires at least 1 study with a DOI, PMID, or Semantic Scholar ID.",
+            "Get paper recommendations from Semantic Scholar based on studies already in the Evidence Ledger. This calls the Semantic Scholar recommendations API, so use it only when the user explicitly asks for Semantic Scholar or S2 recommendations. Uses included/kept studies as positive seeds and excluded studies as negative seeds. Requires at least 1 study with a DOI, PMID, or Semantic Scholar ID.",
         parameters: {
             type: "object",
             properties: {

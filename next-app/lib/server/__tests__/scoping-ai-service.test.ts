@@ -24,10 +24,27 @@ describe("scoping ai-service helpers", () => {
         expect(names).not.toContain("recommend_studies");
     });
 
-    it("keeps recommend_studies in scoping mode when recommendation seeds exist", () => {
+    it("hides recommend_studies without explicit Semantic Scholar request even when recommendation seeds exist", () => {
         const defs = getContextualToolDefinitions({
             agentMode: "scoping",
             scope: "project",
+            studyLedger: {
+                counts: { total: 5, included: 3, excluded: 1, maybe: 1, unscreened: 0 },
+                list: [],
+                truncated: false,
+                hasRecommendationSeeds: true,
+            },
+        });
+
+        const names = defs.map((d) => d.name);
+        expect(names).not.toContain("recommend_studies");
+    });
+
+    it("keeps recommend_studies in scoping mode when Semantic Scholar is explicit and recommendation seeds exist", () => {
+        const defs = getContextualToolDefinitions({
+            agentMode: "scoping",
+            scope: "project",
+            userMessage: "use Semantic Scholar recommendations for related work",
             studyLedger: {
                 counts: { total: 5, included: 3, excluded: 1, maybe: 1, unscreened: 0 },
                 list: [],
@@ -81,10 +98,48 @@ describe("scoping ai-service helpers", () => {
         const plan = buildScopingSearchPackPlan({ includeRecommendations: false });
         expect(plan.estimatedActions).toBe(4);
         expect(plan.steps.map((s) => s.toolName)).not.toContain("recommend_studies");
+        expect(plan.steps.map((s) => s.toolName)).toEqual([
+            "search_pubmed",
+            "search_pubmed",
+            "search_pubmed",
+            "search_pubmed",
+        ]);
     });
 
-    it("builds search-pack plan with recommendations when seeds are available", () => {
+    it("adds explicitly requested non-PubMed sources to the search-pack plan only when policy allows them", () => {
+        const plan = buildScopingSearchPackPlan({
+            includeRecommendations: false,
+            sourcePolicy: {
+                allowPubMed: true,
+                allowOpenAlex: true,
+                allowSemanticScholar: true,
+            },
+        });
+
+        expect(plan.steps.map((s) => s.toolName)).toEqual([
+            "search_pubmed",
+            "search_openalex",
+            "search_pubmed",
+            "search_semantic_scholar",
+        ]);
+    });
+
+    it("does not add recommendation expansion without explicit Semantic Scholar policy", () => {
         const plan = buildScopingSearchPackPlan({ includeRecommendations: true });
+        expect(plan.estimatedActions).toBe(4);
+        expect(plan.steps.map((s) => s.toolName)).not.toContain("recommend_studies");
+    });
+
+    it("builds search-pack plan with recommendations when Semantic Scholar recommendations are explicit", () => {
+        const plan = buildScopingSearchPackPlan({
+            includeRecommendations: true,
+            sourcePolicy: {
+                allowPubMed: true,
+                allowOpenAlex: false,
+                allowSemanticScholar: true,
+            },
+        });
+
         expect(plan.estimatedActions).toBe(5);
         expect(plan.steps.map((s) => s.toolName)).toContain("recommend_studies");
     });

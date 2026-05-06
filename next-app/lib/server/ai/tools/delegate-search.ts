@@ -1,13 +1,13 @@
 /**
  * delegate_search Meta-Tool
  * Delegates a literature search task to a specialized search sub-agent.
- * The sub-agent has access to search_pubmed, search_semantic_scholar,
- * add_to_ledger, recommend_studies, and the search mode system prompt.
+ * The sub-agent defaults to PubMed-only search. OpenAlex and Semantic Scholar
+ * are exposed only when the parent user explicitly names those sources.
  *
  * When PICO context is available, the query planner (CAG-008) generates
- * structured Boolean + field-tag queries for PubMed and keyword queries for
- * Semantic Scholar. The sub-agent receives a structured plan instead of
- * raw natural language.
+ * structured Boolean + field-tag queries for PubMed. Semantic Scholar query
+ * planning remains explicit-source only. The sub-agent receives a structured
+ * plan instead of raw natural language.
  *
  * (Wave 2 — CAG-011, Wave 4 — CAG-008)
  */
@@ -54,8 +54,9 @@ export const delegateSearchTool: AITool = {
         name: "delegate_search",
         description:
             "Delegate a literature search task to a specialized search agent. " +
-            "The search agent can query PubMed, Semantic Scholar, add studies to the ledger, " +
-            "and find recommended studies. Use this when the user asks to find, search for, " +
+            "The search agent uses PubMed by default, can add studies to the ledger, " +
+            "and can find recommended studies. OpenAlex and Semantic Scholar are available only " +
+            "when the user names those sources explicitly. Use this when the user asks to find, search for, " +
             "or discover studies on a topic. Provide a clear task description. " +
             "Optionally pass PICO/criteria elements to enable structured query planning with PubMed field tags.",
         parameters: {
@@ -177,6 +178,7 @@ export const delegateSearchTool: AITool = {
             autonomyConfig: context?.autonomyConfig,
             systemContexts: context?.systemContexts,
             signal: context?.signal,
+            sourcePolicyText: task,
         });
 
         return {

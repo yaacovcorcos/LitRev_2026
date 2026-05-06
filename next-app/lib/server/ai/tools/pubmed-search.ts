@@ -26,13 +26,13 @@ export const pubmedSearchTool: AITool = {
     definition: {
         name: "search_pubmed",
         description:
-            "Search PubMed for biomedical research articles. Build queries using MeSH terms, Boolean operators (AND, OR, NOT), and field tags like [MeSH], [tiab], [au], [pt]. Example: '\"statin therapy\"[MeSH] AND \"elderly\"[MeSH] AND randomized controlled trial[pt]'. Returns titles, authors, abstracts, DOIs, and PMIDs.",
+            "Search PubMed for biomedical research articles. This is the default search source for literature work. Build predictable queries with Boolean operators (AND, OR, NOT), title/abstract field tags like [tiab], author tags like [au], and validated publication-type filters like randomized controlled trial[pt]. Use MeSH terms only when the heading is known and appropriate. Returns titles, authors, abstracts, DOIs, and PMIDs.",
         parameters: {
             type: "object",
             properties: {
                 query: {
                     type: "string",
-                    description: "PubMed search query with MeSH terms, Boolean operators, and field tags",
+                    description: "PubMed search query with Boolean operators and field tags such as [tiab], [au], [pt], and validated MeSH when known",
                 },
                 maxResults: {
                     type: "number",

@@ -18,6 +18,12 @@ import { getEffectiveAllowedTools } from "@/lib/agent/router";
 import { hashToolCall } from "@/lib/agent/loop-controller";
 import { getToolDefinitions, getTool, resolveAutonomyLevel } from "./tools";
 import { getToolAutonomyLevel } from "@/lib/server/agent/autonomy";
+import {
+    DEFAULT_SEARCH_SOURCE_POLICY,
+    deriveSearchSourcePolicy,
+    filterToolDefinitionsBySearchSourcePolicy,
+    type SearchSourcePolicy,
+} from "@/lib/agent/search-source-policy";
 import { normalizeAndClassifyProtocolMutation } from "@/lib/protocol-fields";
 import {
     appendScopingReportComment,
@@ -261,9 +267,18 @@ export function getContextualToolDefinitions(params: {
     scope: "project" | "global";
     studyLedger: (LedgerCounts | StudyLedgerSnapshot) | null;
     studyId?: string | null;
+    userMessage?: string | null;
+    explicitSearchSourceToolNames?: readonly string[] | null;
 }): ToolDefinition[] {
     const { agentMode, scope, studyLedger, studyId } = params;
     let defs = getToolDefinitions(agentMode, scope);
+    defs = filterToolDefinitionsBySearchSourcePolicy(
+        defs,
+        deriveSearchSourcePolicy({
+            text: params.userMessage,
+            explicitToolNames: params.explicitSearchSourceToolNames,
+        }),
+    );
     if (!studyId) {
         defs = defs.filter((def) => def.name !== "update_study_direct" && def.name !== "preview_study_pdf_update");
     }
@@ -308,23 +323,30 @@ export function shouldShowScopingSearchPackPreview(params: {
         toolOverrides: (autonomyConfig.toolOverrides ?? {}) as Record<string, unknown>,
     };
 
-    const pubmedLevel = resolveAutonomyLevel(
-        "search_pubmed",
-        getToolAutonomyLevel("search_pubmed", normalizedAutonomy),
-        getTool("search_pubmed")?.autonomy
-    );
-    const semanticLevel = resolveAutonomyLevel(
-        "search_semantic_scholar",
-        getToolAutonomyLevel("search_semantic_scholar", normalizedAutonomy),
-        getTool("search_semantic_scholar")?.autonomy
-    );
-    const openAlexLevel = resolveAutonomyLevel(
-        "search_openalex",
-        getToolAutonomyLevel("search_openalex", normalizedAutonomy),
-        getTool("search_openalex")?.autonomy
-    );
+    const searchSourcePolicy = deriveSearchSourcePolicy(params.userMessage);
+    const levels = [
+        resolveAutonomyLevel(
+            "search_pubmed",
+            getToolAutonomyLevel("search_pubmed", normalizedAutonomy),
+            getTool("search_pubmed")?.autonomy,
+        ),
+        ...(searchSourcePolicy.allowSemanticScholar
+            ? [resolveAutonomyLevel(
+                "search_semantic_scholar",
+                getToolAutonomyLevel("search_semantic_scholar", normalizedAutonomy),
+                getTool("search_semantic_scholar")?.autonomy,
+            )]
+            : []),
+        ...(searchSourcePolicy.allowOpenAlex
+            ? [resolveAutonomyLevel(
+                "search_openalex",
+                getToolAutonomyLevel("search_openalex", normalizedAutonomy),
+                getTool("search_openalex")?.autonomy,
+            )]
+            : []),
+    ];
 
-    return pubmedLevel <= 1 || semanticLevel <= 1 || openAlexLevel <= 1;
+    return levels.some((level) => level <= 1);
 }
 
 /**
@@ -340,7 +362,11 @@ export function shouldUseScopingBatchPlan(params: {
     return shouldShowScopingSearchPackPreview(params);
 }
 
-export function buildScopingSearchPackPlan(params: { includeRecommendations: boolean }): PlanPayload {
+export function buildScopingSearchPackPlan(params: {
+    includeRecommendations: boolean;
+    sourcePolicy?: SearchSourcePolicy;
+}): PlanPayload {
+    const sourcePolicy = params.sourcePolicy ?? DEFAULT_SEARCH_SOURCE_POLICY;
     const steps: PlanPayload["steps"] = [
         {
             label: "Run broad landscape search in PubMed",
@@ -349,9 +375,13 @@ export function buildScopingSearchPackPlan(params: { includeRecommendations: boo
             status: "pending",
         },
         {
-            label: "Run open-index landscape search",
-            toolName: "search_openalex",
-            description: "Cross-domain query to capture non-biomedical coverage",
+            label: sourcePolicy.allowOpenAlex
+                ? "Run explicitly requested OpenAlex search"
+                : "Run focused landscape search in PubMed",
+            toolName: sourcePolicy.allowOpenAlex ? "search_openalex" : "search_pubmed",
+            description: sourcePolicy.allowOpenAlex
+                ? "Use OpenAlex because the user named that source"
+                : "Probe exposure, population, or outcome variants in PubMed",
             status: "pending",
         },
         {
@@ -361,13 +391,17 @@ export function buildScopingSearchPackPlan(params: { includeRecommendations: boo
             status: "pending",
         },
         {
-            label: "Run gap-focused follow-up search",
-            toolName: "search_openalex",
-            description: "Probe likely evidence gaps by population/outcome variants",
+            label: sourcePolicy.allowSemanticScholar
+                ? "Run explicitly requested Semantic Scholar search"
+                : "Run gap-focused follow-up search in PubMed",
+            toolName: sourcePolicy.allowSemanticScholar ? "search_semantic_scholar" : "search_pubmed",
+            description: sourcePolicy.allowSemanticScholar
+                ? "Use Semantic Scholar because the user named that source"
+                : "Probe likely evidence gaps by population/outcome variants in PubMed",
             status: "pending",
         },
     ];
-    if (params.includeRecommendations) {
+    if (params.includeRecommendations && sourcePolicy.allowSemanticScholar) {
         steps.push({
             label: "Expand with recommendation seeding",
             toolName: "recommend_studies",

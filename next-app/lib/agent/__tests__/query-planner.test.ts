@@ -42,9 +42,9 @@ describe("buildSearchPlan", () => {
         expect(plan.pubmedQueries[0].query).toContain("[tiab]");
     });
 
-    it("generates Semantic Scholar queries", () => {
+    it("generates Semantic Scholar queries only when explicitly requested", () => {
         const intent: SearchIntent = {
-            rawTask: "machine learning diagnosis cancer",
+            rawTask: "machine learning diagnosis cancer using Semantic Scholar",
         };
 
         const plan = buildSearchPlan(intent);
@@ -55,6 +55,17 @@ describe("buildSearchPlan", () => {
         // SS queries should NOT contain MeSH/Boolean syntax
         expect(ssQuery.query).not.toContain("[MeSH]");
         expect(ssQuery.query).not.toContain("[tiab]");
+    });
+
+    it("does not infer Semantic Scholar from broad or machine-learning wording alone", () => {
+        const intent: SearchIntent = {
+            rawTask: "machine learning diagnosis cancer across broad interdisciplinary literature",
+        };
+
+        const plan = buildSearchPlan(intent);
+
+        expect(plan.pubmedQueries.length).toBeGreaterThanOrEqual(1);
+        expect(plan.semanticScholarQueries).toEqual([]);
     });
 
     it("defaults to PubMed-only planning for biomedical PICO searches", () => {
@@ -117,7 +128,7 @@ describe("buildSearchPlan", () => {
 
     it("applies year range to Semantic Scholar queries", () => {
         const intent: SearchIntent = {
-            rawTask: "machine learning for diabetes treatment studies",
+            rawTask: "machine learning for diabetes treatment studies using Semantic Scholar",
             yearRange: { start: 2020, end: 2024 },
         };
 
