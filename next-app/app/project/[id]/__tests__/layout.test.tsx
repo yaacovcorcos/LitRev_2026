@@ -12,6 +12,7 @@ const {
   mockUseProjects,
   mockGetStudyAction,
   mockDeriveProjectShellBootState,
+  mockRegisterCopilotToggle,
 } = vi.hoisted(() => ({
   mockUseParams: vi.fn(),
   mockUsePathname: vi.fn(),
@@ -20,6 +21,7 @@ const {
   mockUseProjects: vi.fn(),
   mockGetStudyAction: vi.fn(),
   mockDeriveProjectShellBootState: vi.fn(),
+  mockRegisterCopilotToggle: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -38,7 +40,7 @@ vi.mock("@/contexts/ProjectShellContext", () => ({
 }));
 
 vi.mock("@/contexts/CommandPaletteContext", () => ({
-  useCommandPalette: () => ({ registerCopilotToggle: vi.fn() }),
+  useCommandPalette: () => ({ registerCopilotToggle: mockRegisterCopilotToggle }),
 }));
 
 vi.mock("@/contexts/ProjectsContext", () => ({
@@ -121,6 +123,62 @@ describe("ProjectLayout", () => {
       focusMode: "view",
       activeTab: "ledger",
     });
+  });
+
+  it("renders the overview route without the side copilot panel", () => {
+    setPathname("/project/proj-1");
+    mockDeriveProjectShellBootState.mockReturnValue({
+      bootMode: "overview",
+      focusMode: "view",
+      activeTab: "overview",
+    });
+
+    render(
+      <ProjectLayout>
+        <div>overview child</div>
+      </ProjectLayout>,
+    );
+
+    expect(screen.getByText("overview child")).toBeTruthy();
+    expect(screen.getByTestId("tab-bar").getAttribute("data-active-tab")).toBe("overview");
+    expect(screen.queryByTestId("project-copilot")).toBeNull();
+    expect(screen.queryByTestId("resizable-splitter")).toBeNull();
+    expect(mockRegisterCopilotToggle).toHaveBeenCalledWith(null);
+  });
+
+  it("keeps the side copilot panel on project workspace subroutes", () => {
+    setPathname("/project/proj-1/ledger");
+
+    render(
+      <ProjectLayout>
+        <div>ledger child</div>
+      </ProjectLayout>,
+    );
+
+    expect(screen.getByText("ledger child")).toBeTruthy();
+    expect(screen.getByTestId("project-copilot").textContent).toBe("Ledger");
+    expect(screen.getByTestId("resizable-splitter")).toBeTruthy();
+    expect(mockRegisterCopilotToggle).toHaveBeenCalledWith(expect.any(Function));
+  });
+
+  it("keeps conversation mode available from project conversation routes", () => {
+    setPathname("/project/proj-1/conversation/conv-1");
+    mockDeriveProjectShellBootState.mockReturnValue({
+      bootMode: "conversation",
+      focusMode: "conversation",
+      activeTab: "overview",
+    });
+
+    render(
+      <ProjectLayout>
+        <div>child</div>
+      </ProjectLayout>,
+    );
+
+    expect(screen.getByTestId("conversation-main-view")).toBeTruthy();
+    expect(screen.queryByTestId("project-copilot")).toBeNull();
+    expect(screen.queryByTestId("resizable-splitter")).toBeNull();
+    expect(mockRegisterCopilotToggle).toHaveBeenCalledWith(null);
   });
 
   it("drops stale study titles immediately when the study route changes", async () => {
