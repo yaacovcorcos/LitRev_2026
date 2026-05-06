@@ -90,10 +90,13 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 - Each `(studyId, phase)` uses one mutable row with the lifecycle `queued -> running -> succeeded|failed`.
 - Page-focus priority upgrades may mutate an existing queued/running background job, but they must never create a new job row by themselves.
 - `RunEvent` must remain unique on `(runId, sequence)`. Sequence repair is an operational concern documented in `docs/runbooks/db-ops.md`.
+- `RunEvent.sequence` allocation is serialized inside the event-create transaction by a per-run advisory lock. Runtime code must not return to unguarded `max(sequence) + 1` allocation without an equivalent serialization mechanism.
 - `RunCheckpoint` is continuation authority only. It must not replace `RunEvent` as the audit or replay log, and it must never become a sink for transient runtime facts.
 - `ToolIdempotencyRecord` is the durable replay receipt for mutating tools inside one root run lineage. A retry or continuation with the same `scopeKey`, tool name, and request fingerprint must replay a completed result or stop on an unresolved `running` receipt instead of executing the same side effect twice.
-- `AgentRun.lastActivityAt` is the authoritative liveness field for `running` runs. Admission/recovery logic should not fall back to `startedAt` freshness once the field exists.
+- `ToolIdempotencyRecord.status = "running"` is a reservation, not a permanent lock. Returned, thrown, and aborted executor failures should release the reservation through middleware cleanup; stale-running takeover is reserved for crash/process-death recovery.
+- `AgentRun.lastActivityAt` is the authoritative liveness field for `running` runs. Admission/recovery logic should not fall back to `startedAt` freshness once the field exists, and event writability checks must not update the run row merely to prove ownership.
 - `AgentRun.runPhase` is the coarse persisted lifecycle authority for recovery/readmission/UI consumers. It is intentionally macro-level and does not replace existing event, checkpoint, durability, or finalization truth.
+- `AgentRun.runPhase` transitions are owned by the shared runtime state machine. Continuation runs may legally move `verify -> plan` when the next safe step is to re-plan from persisted durable state.
 - `AgentRun.phaseEnteredAt` records when the current coarse lifecycle phase became authoritative and must change only on real phase transitions, not on heartbeat refreshes or same-phase writes.
 - `AgentRun.lastDurableProgressAt` is the authoritative durable-progress field for convergence decisions; a fresh heartbeat alone must not imply the run is still making forward recovery-authoritative progress.
 - `AgentRun.finalizationState` makes finalize truth explicit (`not_started`, `in_progress`, `completed`, `failed`) so readmission and recovery do not guess from `status` alone.

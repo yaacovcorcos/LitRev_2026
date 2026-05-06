@@ -55,8 +55,9 @@ describe("startRun lineage", () => {
     mocks.agentRunCreate.mockResolvedValue({ id: "run-new" });
     mocks.agentRunUpdate.mockResolvedValue({ id: "run-new", conversationId: null, projectId: null, userId: null });
     mocks.agentRunUpdateMany.mockResolvedValue({ count: 1 });
-    mocks.transaction.mockImplementation(async (callback: (tx: { agentRun: { updateMany: typeof mocks.agentRunUpdateMany } }) => Promise<unknown>) => callback({
+    mocks.transaction.mockImplementation(async (callback: (tx: { agentRun: { findUnique: typeof mocks.agentRunFindUnique; updateMany: typeof mocks.agentRunUpdateMany } }) => Promise<unknown>) => callback({
       agentRun: {
+        findUnique: mocks.agentRunFindUnique,
         updateMany: mocks.agentRunUpdateMany,
       },
     }));
@@ -206,14 +207,16 @@ describe("run freshness lifecycle", () => {
       projectId: "project-1",
       userId: "user-1",
       durabilityState: "durable",
-      status: "completed",
+      status: "running",
+      runPhase: "act",
       completedAt: null,
       finalizationState: "not_started",
     });
     mocks.aiMessageCount.mockResolvedValue(0);
     mocks.agentRunUpdateMany.mockResolvedValue({ count: 1 });
-    mocks.transaction.mockImplementation(async (callback: (tx: { agentRun: { updateMany: typeof mocks.agentRunUpdateMany } }) => Promise<unknown>) => callback({
+    mocks.transaction.mockImplementation(async (callback: (tx: { agentRun: { findUnique: typeof mocks.agentRunFindUnique; updateMany: typeof mocks.agentRunUpdateMany } }) => Promise<unknown>) => callback({
       agentRun: {
+        findUnique: mocks.agentRunFindUnique,
         updateMany: mocks.agentRunUpdateMany,
       },
     }));
@@ -274,11 +277,11 @@ describe("run freshness lifecycle", () => {
     expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(1, {
       where: {
         id: "run-1",
-        status: { in: ["running"] },
+        status: "running",
         completedAt: null,
-        finalizationState: { in: ["not_started", "in_progress"] },
       },
       data: {
+        finalizationState: "in_progress",
         lastActivityAt: expect.any(Date),
       },
     });
@@ -289,22 +292,11 @@ describe("run freshness lifecycle", () => {
         completedAt: null,
       },
       data: {
-        finalizationState: "in_progress",
-        lastActivityAt: expect.any(Date),
-      },
-    });
-    expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(3, {
-      where: {
-        id: "run-1",
-        status: "running",
-        completedAt: null,
-      },
-      data: {
         abnormalEndClassification: "unknown",
         lastActivityAt: expect.any(Date),
       },
     });
-    expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(4, {
+    expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(3, {
       where: {
         id: "run-1",
         status: "running",

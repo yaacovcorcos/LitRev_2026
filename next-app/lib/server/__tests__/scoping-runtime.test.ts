@@ -27,8 +27,15 @@ const mocks = vi.hoisted(() => {
     getConversationWithSummary: vi.fn(),
     getConversationWithSummaryById: vi.fn(),
     startRun: vi.fn(),
+    getRun: vi.fn(),
     endRun: vi.fn(),
     startRunHeartbeat: vi.fn(() => ({ stop: vi.fn() })),
+    registerActiveRunExecutionCancellation: vi.fn(() => ({
+      signal: new AbortController().signal,
+      abort: vi.fn(),
+      dispose: vi.fn(),
+    })),
+    startDurableRunCancellationMonitor: vi.fn(() => ({ stop: vi.fn() })),
     markRunFinalizationState: vi.fn(),
     markRunFinalizationFailed: vi.fn(),
     markRunAbnormalEndClassification: vi.fn(),
@@ -101,12 +108,18 @@ vi.mock("@/lib/server/ai/tools", () => ({
 
 vi.mock("@/lib/server/agent/run", () => ({
   startRun: mocks.startRun,
+  getRun: mocks.getRun,
   endRun: mocks.endRun,
   startRunHeartbeat: mocks.startRunHeartbeat,
   markRunFinalizationState: mocks.markRunFinalizationState,
   markRunFinalizationFailed: mocks.markRunFinalizationFailed,
   markRunAbnormalEndClassification: mocks.markRunAbnormalEndClassification,
   isRunOwnershipError: mocks.isRunOwnershipError,
+}));
+
+vi.mock("@/lib/server/agent/run-cancellation", () => ({
+  registerActiveRunExecutionCancellation: mocks.registerActiveRunExecutionCancellation,
+  startDurableRunCancellationMonitor: mocks.startDurableRunCancellationMonitor,
 }));
 
 vi.mock("@/lib/server/agent/run-event-recorder", () => ({

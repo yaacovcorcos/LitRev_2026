@@ -3,6 +3,10 @@ import "server-only";
 import { prisma } from "@/lib/server/prisma";
 import type { Prisma } from "@prisma/client";
 import type { RunPhase } from "@/types/agent";
+import {
+    getRunPhaseTransitionMatrix as getSharedRunPhaseTransitionMatrix,
+    isRunPhaseTransitionAllowed as isSharedRunPhaseTransitionAllowed,
+} from "@/lib/server/agent/run-state-machine";
 
 type RunPhaseTransactionClient = Prisma.TransactionClient;
 
@@ -10,14 +14,6 @@ type RunPhaseRecord = {
     id: string;
     runPhase: RunPhase;
     phaseEnteredAt: Date;
-};
-
-const RUN_PHASE_TRANSITIONS: Record<RunPhase, readonly RunPhase[]> = {
-    plan: ["ask", "act", "finalize"],
-    ask: ["plan", "act", "finalize"],
-    act: ["ask", "verify", "finalize"],
-    verify: ["ask", "act", "finalize"],
-    finalize: [],
 };
 
 async function getRunPhaseRecord(
@@ -50,7 +46,7 @@ function assertRunPhaseTransition(
     nextPhase: RunPhase,
 ) {
     if (currentPhase === nextPhase) return;
-    if (RUN_PHASE_TRANSITIONS[currentPhase].includes(nextPhase)) return;
+    if (isSharedRunPhaseTransitionAllowed(currentPhase, nextPhase)) return;
     throw new Error(
         `Invalid run phase transition for ${runId}: ${currentPhase} -> ${nextPhase}`,
     );
@@ -60,11 +56,11 @@ export function isRunPhaseTransitionAllowed(
     currentPhase: RunPhase,
     nextPhase: RunPhase,
 ): boolean {
-    return currentPhase === nextPhase || RUN_PHASE_TRANSITIONS[currentPhase].includes(nextPhase);
+    return isSharedRunPhaseTransitionAllowed(currentPhase, nextPhase);
 }
 
 export function getRunPhaseTransitionMatrix() {
-    return RUN_PHASE_TRANSITIONS;
+    return getSharedRunPhaseTransitionMatrix();
 }
 
 export async function transitionRunPhaseInTransaction(

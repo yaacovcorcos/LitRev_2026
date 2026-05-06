@@ -156,6 +156,24 @@ function logEventEmissionFailure(eventType: string, runId: string, error: unknow
     });
 }
 
+async function recordSubAgentAssistantMessage(runId: string, content: string): Promise<void> {
+    if (content.trim().length === 0) return;
+    try {
+        await recordRunEvent({
+            runId,
+            type: "message",
+            payload: { content },
+            extras: { messageRole: "assistant" },
+            failureMode: "degrade",
+            degradationReason: "sub_agent_assistant_message_persistence_failed",
+            logContext: "sub_agent_assistant_message",
+        });
+    } catch (error) {
+        // Event writes are best-effort: telemetry failures should not fail delegated work.
+        logEventEmissionFailure("message", runId, error);
+    }
+}
+
 // ── Execution ────────────────────────────────────────────────────────────────
 
 export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentResult> {
@@ -208,8 +226,10 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
     try {
         const childRun = await startRun({
             projectId: projectId ?? null,
+            conversationId: params.conversationId,
             userId,
             parentRunId: params.parentRunId,
+            rootRunId: params.rootRunId,
             trigger: "event",
             agentMode: mode,
             model: params.model,
@@ -303,6 +323,9 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             // No tool calls = AI is done, natural end
             if (collectedToolCalls.length === 0) {
                 lastContent = contentSoFar;
+                if (childRunId) {
+                    await recordSubAgentAssistantMessage(childRunId, contentSoFar);
+                }
                 loop.markStopped("natural");
                 break;
             }
@@ -354,21 +377,8 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                 createdAt: new Date().toISOString(),
             };
             currentMessages.push(assistantMsg);
-            if (childRunId && contentSoFar.trim().length > 0) {
-                try {
-                    await recordRunEvent({
-                        runId: childRunId,
-                        type: "message",
-                        payload: { content: contentSoFar },
-                        extras: { messageRole: "assistant" },
-                        failureMode: "degrade",
-                        degradationReason: "sub_agent_assistant_message_persistence_failed",
-                        logContext: "sub_agent_assistant_message",
-                    });
-                } catch (error) {
-                    // Event writes are best-effort: telemetry failures should not fail delegated work.
-                    logEventEmissionFailure("message", childRunId, error);
-                }
+            if (childRunId) {
+                await recordSubAgentAssistantMessage(childRunId, contentSoFar);
             }
 
             // Execute each tool call

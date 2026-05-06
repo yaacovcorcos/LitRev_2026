@@ -615,7 +615,12 @@ export async function POST(request: NextRequest) {
                         // If using conversation memory — use artifact-aware streaming
                         else if ((effectiveUserMessage || planId || runtimeOptions.userInputResolution) && context) {
                             for await (const chunk of service.streamChatWithArtifacts(
-                                effectiveUserMessage || "", context, { ...runtimeOptions, planId: mergedPlanId, selectedSteps }
+                                effectiveUserMessage || "", context, {
+                                    ...runtimeOptions,
+                                    planId: mergedPlanId,
+                                    selectedSteps,
+                                    signal: request.signal,
+                                }
                             )) {
                                 const normalized = normalizeStreamChunk(chunk);
                                 if (!normalized) continue;

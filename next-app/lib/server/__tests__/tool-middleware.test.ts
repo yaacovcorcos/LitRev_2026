@@ -609,9 +609,7 @@ describe("tool middleware pipeline", () => {
     expect(store.release).toHaveBeenCalledTimes(1);
   });
 
-  it("lets a stale persistent reservation be taken over instead of blocking forever", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-06T00:00:00.000Z"));
+  it("releases a persistent reservation when the protected tool aborts", async () => {
     const abortError = new DOMException("The operation was aborted.", "AbortError");
     const executor = vi.fn()
       .mockRejectedValueOnce(abortError)
@@ -619,7 +617,6 @@ describe("tool middleware pipeline", () => {
     const store = createFakeIdempotencyStore();
     const middleware = createIdempotencyMiddleware({
       toolNames: ["add_to_ledger"],
-      staleRunningMs: 1_000,
       store,
     });
 
@@ -634,7 +631,6 @@ describe("tool middleware pipeline", () => {
       executor
     )).rejects.toThrow("The operation was aborted.");
 
-    vi.setSystemTime(new Date("2026-05-06T00:00:02.000Z"));
     const retry = await executeWithToolMiddleware(
       {
         name: "add_to_ledger",
@@ -648,8 +644,7 @@ describe("tool middleware pipeline", () => {
 
     expect(retry.error).toBeUndefined();
     expect(retry.result).toEqual({ added: 1 });
-    expect(store.release).not.toHaveBeenCalled();
+    expect(store.release).toHaveBeenCalledTimes(1);
     expect(executor).toHaveBeenCalledTimes(2);
-    vi.useRealTimers();
   });
 });

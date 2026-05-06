@@ -19,6 +19,7 @@ function makeRunningRun(overrides?: Partial<{
   durabilityDegradedReason: string | null;
   finalizationState: RunFinalizationState;
   abnormalEndClassification: RunAbnormalEndClassification | null;
+  hasPendingDecisionRequest: boolean;
 }>) {
   const now = new Date("2026-02-24T00:00:00.000Z");
   return {
@@ -33,6 +34,7 @@ function makeRunningRun(overrides?: Partial<{
     durabilityDegradedReason: overrides?.durabilityDegradedReason ?? null,
     finalizationState: overrides?.finalizationState ?? "not_started",
     abnormalEndClassification: overrides?.abnormalEndClassification ?? null,
+    hasPendingDecisionRequest: overrides?.hasPendingDecisionRequest ?? false,
   };
 }
 
@@ -113,6 +115,39 @@ describe("conversation run lock guard", () => {
       })
     ).resolves.toEqual({ cancelledStaleRunCount: 0, replacedRunId: "run_live" });
     expect(store.cancelRunIfActive).toHaveBeenCalledWith("run_live", "conv_1", now);
+  });
+
+  it("uses the newest fresh run as the active replacement target", async () => {
+    const now = new Date("2026-02-24T00:00:00.000Z");
+    const store = {
+      listRunning: vi.fn()
+        .mockResolvedValueOnce([
+          makeRunningRun({
+            id: "run_older",
+            startedAt: new Date("2026-02-23T23:58:00.000Z"),
+            lastActivityAt: new Date("2026-02-23T23:59:40.000Z"),
+          }),
+          makeRunningRun({
+            id: "run_newer",
+            startedAt: new Date("2026-02-23T23:59:00.000Z"),
+            lastActivityAt: new Date("2026-02-23T23:59:50.000Z"),
+          }),
+        ])
+        .mockResolvedValueOnce([]),
+      pauseRunIfAwaitingInput: vi.fn(async () => false),
+      cancelRuns: vi.fn(async () => 0),
+      cancelRunIfActive: vi.fn(async () => true),
+    };
+
+    await expect(
+      ensureConversationRunAvailability("conv_1", {
+        store,
+        now,
+        staleMs: 60_000,
+        replaceRunId: "run_newer",
+      })
+    ).resolves.toEqual({ cancelledStaleRunCount: 0, replacedRunId: "run_newer" });
+    expect(store.cancelRunIfActive).toHaveBeenCalledWith("run_newer", "conv_1", now);
   });
 
   it("rejects mismatched replaceRunId without cancelling the active run", async () => {
@@ -248,6 +283,29 @@ describe("conversation run lock guard", () => {
       ensureConversationRunAvailability("conv_1", { store, now, staleMs: 60_000 })
     ).resolves.toEqual({ cancelledStaleRunCount: 0, replacedRunId: null });
     expect(store.pauseRunIfAwaitingInput).toHaveBeenCalledWith("run_ask", "conv_1", now);
+  });
+
+  it("terminalizes phase-drifted runs with pending decision requests to paused", async () => {
+    const now = new Date("2026-02-24T00:00:00.000Z");
+    const store = {
+      listRunning: vi.fn()
+        .mockResolvedValueOnce([makeRunningRun({
+          id: "run_pending_decision",
+          runPhase: "act",
+          hasPendingDecisionRequest: true,
+          lastActivityAt: new Date("2026-02-23T23:59:45.000Z"),
+          lastDurableProgressAt: new Date("2026-02-23T23:59:40.000Z"),
+        })])
+        .mockResolvedValueOnce([]),
+      pauseRunIfAwaitingInput: vi.fn(async () => true),
+      cancelRuns: vi.fn(async () => 0),
+      cancelRunIfActive: vi.fn(async () => false),
+    };
+
+    await expect(
+      ensureConversationRunAvailability("conv_1", { store, now, staleMs: 60_000 })
+    ).resolves.toEqual({ cancelledStaleRunCount: 0, replacedRunId: null });
+    expect(store.pauseRunIfAwaitingInput).toHaveBeenCalledWith("run_pending_decision", "conv_1", now);
   });
 
   it("treats stale finalize-phase runs as bounded conflicts instead of reconnectable ones", async () => {

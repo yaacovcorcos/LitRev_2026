@@ -35,8 +35,14 @@ const mocks = vi.hoisted(() => {
     markPlanExecutionRunning: vi.fn(),
     failPlanExecution: vi.fn(),
     startRun: vi.fn(),
+    getRun: vi.fn(),
     endRun: vi.fn(),
     startRunHeartbeat: vi.fn(() => ({ stop: vi.fn() })),
+    runCancellationAbort: vi.fn(),
+    runCancellationDispose: vi.fn(),
+    durableRunCancellationStop: vi.fn(),
+    registerActiveRunExecutionCancellation: vi.fn(),
+    startDurableRunCancellationMonitor: vi.fn(),
     markRunFinalizationState: vi.fn(),
     markRunFinalizationFailed: vi.fn(),
     markRunAbnormalEndClassification: vi.fn(),
@@ -108,12 +114,18 @@ vi.mock("@/lib/server/ai/tools", () => ({
 
 vi.mock("@/lib/server/agent/run", () => ({
   startRun: mocks.startRun,
+  getRun: mocks.getRun,
   endRun: mocks.endRun,
   startRunHeartbeat: mocks.startRunHeartbeat,
   markRunFinalizationState: mocks.markRunFinalizationState,
   markRunFinalizationFailed: mocks.markRunFinalizationFailed,
   markRunAbnormalEndClassification: mocks.markRunAbnormalEndClassification,
   isRunOwnershipError: mocks.isRunOwnershipError,
+}));
+
+vi.mock("@/lib/server/agent/run-cancellation", () => ({
+  registerActiveRunExecutionCancellation: mocks.registerActiveRunExecutionCancellation,
+  startDurableRunCancellationMonitor: mocks.startDurableRunCancellationMonitor,
 }));
 
 vi.mock("@/lib/server/agent/events", () => ({
@@ -328,6 +340,29 @@ describe("AIService run finalization", () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    mocks.startRun.mockReset();
+    mocks.getRun.mockReset();
+    mocks.endRun.mockReset();
+    mocks.markRunFinalizationState.mockReset();
+    mocks.markRunFinalizationFailed.mockReset();
+    mocks.markRunAbnormalEndClassification.mockReset();
+    mocks.isRunOwnershipError.mockReset();
+    mocks.registerActiveRunExecutionCancellation.mockReset();
+    mocks.startDurableRunCancellationMonitor.mockReset();
+    mocks.provider.chat.mockReset();
+    mocks.provider.streamChat.mockReset();
+    mocks.ensureConversationRunAvailability.mockReset();
+    mocks.getConversationWithSummary.mockReset();
+    mocks.getConversationWithSummaryById.mockReset();
+    mocks.preparePlanExecution.mockReset();
+    mocks.markPlanExecutionRunning.mockReset();
+    mocks.failPlanExecution.mockReset();
+    mocks.addAssistantMessageToConversationForRun.mockReset();
+    mocks.autoSummarizeIfNeeded.mockReset();
+    mocks.resolveAuthenticatedIdentity.mockReset();
+    mockRetrieveMemories.mockReset();
+    mockGetAutonomyConfig.mockReset();
+    mockProtocolFindFirst.mockReset();
     mocks.provider.chat.mockResolvedValue({
       id: "resp-1",
       content: "provider content",
@@ -362,10 +397,35 @@ describe("AIService run finalization", () => {
     mocks.failPlanExecution.mockResolvedValue(undefined);
     mocks.resolveAuthenticatedIdentity.mockReturnValue({ userId: "user-1", workspaceId: undefined });
     mocks.startRun.mockResolvedValue({ id: "run-1" });
+    mocks.getRun.mockResolvedValue({
+      id: "run-1",
+      status: "running",
+      completedAt: null,
+      finalizationState: "not_started",
+    });
     mocks.endRun.mockResolvedValue({ id: "run-1", status: "failed" });
+    mocks.runCancellationAbort.mockClear();
+    mocks.runCancellationDispose.mockClear();
+    mocks.durableRunCancellationStop.mockClear();
+    mocks.registerActiveRunExecutionCancellation.mockReturnValue({
+      signal: new AbortController().signal,
+      abort: mocks.runCancellationAbort,
+      dispose: mocks.runCancellationDispose,
+    });
+    mocks.startDurableRunCancellationMonitor.mockReturnValue({
+      stop: mocks.durableRunCancellationStop,
+    });
     mocks.markRunFinalizationState.mockResolvedValue(1);
     mocks.markRunFinalizationFailed.mockResolvedValue(1);
     mocks.markRunAbnormalEndClassification.mockResolvedValue(1);
+    mocks.isRunOwnershipError.mockReturnValue(false);
+    mocks.addAssistantMessageToConversationForRun.mockResolvedValue({
+      id: "msg-1",
+      role: "assistant",
+      content: "assistant content",
+      createdAt: new Date("2026-03-11T12:00:00.000Z").toISOString(),
+    });
+    mocks.autoSummarizeIfNeeded.mockResolvedValue(undefined);
     mockRetrieveMemories.mockResolvedValue([]);
     mockGetAutonomyConfig.mockResolvedValue({ preset: "assisted", toolOverrides: {} } as never);
     mockProtocolFindFirst.mockResolvedValue(null);
@@ -722,7 +782,11 @@ describe("AIService run finalization", () => {
   });
 
   it("suppresses stale assistant writes after ownership loss instead of finalizing the replaced run", async () => {
-    const ownershipError = new Error("run no longer writable");
+    const ownershipError = Object.assign(new Error("run no longer writable"), {
+      runId: "run-1",
+      status: "cancelled",
+      finalizationState: "completed",
+    });
     mocks.addAssistantMessageToConversationForRun.mockRejectedValueOnce(ownershipError);
     mocks.isRunOwnershipError.mockReturnValueOnce(true);
     mocks.markRunFinalizationState.mockResolvedValueOnce(0);
@@ -740,7 +804,9 @@ describe("AIService run finalization", () => {
       chunks.push(chunk);
     }
 
-    expect(chunks.some((chunk) => chunk.type === "run_end")).toBe(false);
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      runStatus: "cancelled",
+    });
     expect(mocks.endRun).not.toHaveBeenCalled();
     expect(mocks.markRunFinalizationFailed).not.toHaveBeenCalled();
   });

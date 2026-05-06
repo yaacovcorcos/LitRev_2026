@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   runEventFindMany: vi.fn(),
   agentRunFindUnique: vi.fn(),
   agentRunUpdateMany: vi.fn(),
+  queryRaw: vi.fn(),
   transaction: vi.fn(),
   noteObservedRunActivity: vi.fn(),
   assertRunWritableInTransaction: vi.fn(),
@@ -20,6 +21,7 @@ const txMock = {
     findUnique: (...args: unknown[]) => mocks.agentRunFindUnique(...args),
     updateMany: (...args: unknown[]) => mocks.agentRunUpdateMany(...args),
   },
+  $queryRaw: (...args: unknown[]) => mocks.queryRaw(...args),
 };
 
 vi.mock("@/lib/server/prisma", () => ({
@@ -49,7 +51,14 @@ describe("run events", () => {
     vi.clearAllMocks();
     mocks.transaction.mockImplementation(async (callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock));
     mocks.agentRunUpdateMany.mockResolvedValue({ count: 1 });
-    mocks.assertRunWritableInTransaction.mockResolvedValue(undefined);
+    mocks.queryRaw.mockResolvedValue([{ pg_advisory_xact_lock: "" }]);
+    mocks.assertRunWritableInTransaction.mockResolvedValue({
+      id: "run-1",
+      status: "running",
+      runPhase: "plan",
+      completedAt: null,
+      finalizationState: "not_started",
+    });
     mocks.agentRunFindUnique.mockResolvedValue({
       id: "run-1",
       status: "running",
@@ -79,6 +88,7 @@ describe("run events", () => {
         }),
       }),
     );
+    expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
     expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith({
       where: {
         id: "run-1",
@@ -140,6 +150,23 @@ describe("run events", () => {
 
     expect(result).toEqual({ id: "evt-6", sequence: 6 });
     expect(mocks.runEventCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries on serializable transaction conflicts", async () => {
+    mocks.transaction
+      .mockRejectedValueOnce({ code: "P2034" })
+      .mockImplementationOnce(async (callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock));
+    mocks.runEventFindFirst.mockResolvedValue({ sequence: 5 });
+    mocks.runEventCreate.mockResolvedValue({
+      id: "evt-6",
+      sequence: 6,
+      createdAt: new Date("2026-03-11T11:35:00.000Z"),
+    });
+
+    const result = await emitEvent("run-1", "message", { ok: true });
+
+    expect(result).toMatchObject({ id: "evt-6", sequence: 6 });
+    expect(mocks.transaction).toHaveBeenCalledTimes(2);
   });
 
   it("persists tool-call phase transitions inside the same transaction", async () => {
@@ -287,6 +314,80 @@ describe("run events", () => {
       data: {
         runPhase: "verify",
         phaseEnteredAt: baseCreatedAt,
+      },
+    });
+  });
+
+  it("allows continuation runs to re-plan from verify phase", async () => {
+    const createdAt = new Date("2026-03-11T11:35:30.000Z");
+    mocks.assertRunWritableInTransaction.mockResolvedValue({
+      id: "run-1",
+      status: "running",
+      runPhase: "verify",
+      completedAt: null,
+      finalizationState: "not_started",
+    });
+    mocks.runEventFindFirst.mockResolvedValue({ sequence: 4 });
+    mocks.runEventCreate.mockResolvedValue({
+      id: "evt-5",
+      sequence: 5,
+      createdAt,
+    });
+    mocks.agentRunFindUnique.mockResolvedValue({
+      id: "run-1",
+      status: "running",
+      runPhase: "verify",
+      phaseEnteredAt: new Date("2026-03-11T11:35:00.000Z"),
+    });
+
+    await emitEventWithinTransaction(
+      txMock as never,
+      "run-1",
+      "plan_proposed",
+      { steps: [] },
+    );
+
+    expect(mocks.agentRunUpdateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: "run-1", status: "running" },
+      data: {
+        runPhase: "plan",
+        phaseEnteredAt: createdAt,
+      },
+    });
+  });
+
+  it("does not move paused clarification resolution back into act phase", async () => {
+    const createdAt = new Date("2026-03-11T11:35:40.000Z");
+    mocks.assertRunWritableInTransaction.mockResolvedValue({
+      id: "run-1",
+      status: "paused",
+      runPhase: "ask",
+      completedAt: new Date("2026-03-11T11:35:39.000Z"),
+      finalizationState: "completed",
+    });
+    mocks.runEventFindFirst.mockResolvedValue({ sequence: 6 });
+    mocks.runEventCreate.mockResolvedValue({
+      id: "evt-7",
+      sequence: 7,
+      createdAt,
+    });
+
+    await emitEventWithinTransaction(
+      txMock as never,
+      "run-1",
+      "user_input_resolved",
+      { callId: "call-1", resolution: "answered" },
+    );
+
+    expect(mocks.agentRunUpdateMany).toHaveBeenCalledTimes(1);
+    expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: "run-1",
+        status: { in: ["running", "paused"] },
+      },
+      data: {
+        lastActivityAt: createdAt,
+        lastDurableProgressAt: createdAt,
       },
     });
   });

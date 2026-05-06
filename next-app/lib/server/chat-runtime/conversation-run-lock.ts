@@ -22,6 +22,7 @@ type RunningConversationRun = {
   durabilityDegradedReason: string | null;
   finalizationState: RunFinalizationState;
   abnormalEndClassification: RunAbnormalEndClassification | null;
+  hasPendingDecisionRequest: boolean;
 };
 
 export interface ConversationRunLockStore {
@@ -47,10 +48,19 @@ const prismaConversationRunLockStore: ConversationRunLockStore = {
         durabilityDegradedReason: true,
         finalizationState: true,
         abnormalEndClassification: true,
+        decisionRequests: {
+          where: { status: "pending" },
+          select: { id: true },
+          take: 1,
+        },
       },
-      orderBy: { lastActivityAt: "asc" },
+      orderBy: [
+        { lastActivityAt: "desc" },
+        { startedAt: "desc" },
+        { id: "asc" },
+      ],
     });
-    return rows.map((row) => ({
+    return rows.map(({ decisionRequests, ...row }) => ({
       ...row,
       status: "running",
       runPhase: row.runPhase as RunPhase,
@@ -58,6 +68,7 @@ const prismaConversationRunLockStore: ConversationRunLockStore = {
       durabilityDegradedReason: row.durabilityDegradedReason,
       finalizationState: row.finalizationState as RunFinalizationState,
       abnormalEndClassification: row.abnormalEndClassification as RunAbnormalEndClassification | null,
+      hasPendingDecisionRequest: decisionRequests.length > 0,
     }));
   },
   async pauseRunIfAwaitingInput(runId: string, conversationId: string, completedAt: Date): Promise<boolean> {
@@ -67,7 +78,17 @@ const prismaConversationRunLockStore: ConversationRunLockStore = {
         conversationId,
         status: "running",
         completedAt: null,
-        runPhase: "ask",
+        OR: [
+          { runPhase: "ask" },
+          {
+            decisionRequests: {
+              some: {
+                conversationId,
+                status: "pending",
+              },
+            },
+          },
+        ],
       },
       data: {
         status: "paused",
@@ -114,6 +135,24 @@ const prismaConversationRunLockStore: ConversationRunLockStore = {
   },
 };
 
+function sortRunningRunsNewestFirst(runs: RunningConversationRun[]): RunningConversationRun[] {
+  return [...runs].sort((left, right) => {
+    const lastActivityDiff = right.lastActivityAt.getTime() - left.lastActivityAt.getTime();
+    if (lastActivityDiff !== 0) return lastActivityDiff;
+    const startedDiff = right.startedAt.getTime() - left.startedAt.getTime();
+    if (startedDiff !== 0) return startedDiff;
+    return left.id.localeCompare(right.id);
+  });
+}
+
+function isFresh(run: RunningConversationRun, cutoff: Date): boolean {
+  return run.lastActivityAt >= cutoff;
+}
+
+function isAwaitingUserInput(run: RunningConversationRun): boolean {
+  return run.runPhase === "ask" || run.hasPendingDecisionRequest;
+}
+
 export async function ensureConversationRunAvailability(
   conversationId: string,
   options?: {
@@ -129,16 +168,14 @@ export async function ensureConversationRunAvailability(
   const replaceRunId = options?.replaceRunId?.trim() || undefined;
   const cutoff = new Date(now.getTime() - staleMs);
 
-  const running = await store.listRunning(conversationId);
+  const running = sortRunningRunsNewestFirst(await store.listRunning(conversationId));
   if (running.length === 0) {
     return { cancelledStaleRunCount: 0, replacedRunId: null };
   }
 
   const staleRunIds: string[] = [];
-  const freshRunIds: string[] = [];
   for (const run of running) {
-    if (run.lastActivityAt < cutoff) staleRunIds.push(run.id);
-    else freshRunIds.push(run.id);
+    if (!isFresh(run, cutoff)) staleRunIds.push(run.id);
   }
 
   let cancelledStaleRunCount = 0;
@@ -146,23 +183,21 @@ export async function ensureConversationRunAvailability(
     cancelledStaleRunCount = await store.cancelRuns(staleRunIds, now);
   }
 
-  const freshAskPhaseRuns = running.filter(
-    (run) => run.lastActivityAt >= cutoff && run.runPhase === "ask",
-  );
+  const freshAskPhaseRuns = running.filter((run) => isFresh(run, cutoff) && isAwaitingUserInput(run));
   let runningAfterPause = running;
   if (freshAskPhaseRuns.length > 0) {
     for (const run of freshAskPhaseRuns) {
       await store.pauseRunIfAwaitingInput(run.id, conversationId, now);
     }
 
-    runningAfterPause = await store.listRunning(conversationId);
-    const remainingFresh = runningAfterPause.find((run) => run.lastActivityAt >= cutoff);
+    runningAfterPause = sortRunningRunsNewestFirst(await store.listRunning(conversationId));
+    const remainingFresh = runningAfterPause.find((run) => isFresh(run, cutoff));
     if (!remainingFresh) {
       return { cancelledStaleRunCount, replacedRunId: null };
     }
   }
 
-  const freshRunning = runningAfterPause.filter((run) => run.lastActivityAt >= cutoff);
+  const freshRunning = runningAfterPause.filter((run) => isFresh(run, cutoff));
 
   if (freshRunning.length > 0) {
     const activeRunId = freshRunning[0]!.id;
@@ -195,8 +230,8 @@ export async function ensureConversationRunAvailability(
 
     const replaced = await store.cancelRunIfActive(replaceRunId, conversationId, now);
     if (!replaced) {
-      const latestRunning = await store.listRunning(conversationId);
-      const latestFresh = latestRunning.find((run) => run.lastActivityAt >= cutoff);
+      const latestRunning = sortRunningRunsNewestFirst(await store.listRunning(conversationId));
+      const latestFresh = latestRunning.find((run) => isFresh(run, cutoff));
       if (latestFresh) {
         const latestAssessment = assessRunConvergence(latestFresh, now, staleMs);
         // The replace target disappeared before we could cancel it. If the same
@@ -217,8 +252,8 @@ export async function ensureConversationRunAvailability(
       }
     }
 
-    const remainingRunning = await store.listRunning(conversationId);
-    const remainingFresh = remainingRunning.find((run) => run.lastActivityAt >= cutoff);
+    const remainingRunning = sortRunningRunsNewestFirst(await store.listRunning(conversationId));
+    const remainingFresh = remainingRunning.find((run) => isFresh(run, cutoff));
     if (remainingFresh) {
       const remainingAssessment = assessRunConvergence(remainingFresh, now, staleMs);
       throw new AIErrorWithEnvelope(

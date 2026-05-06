@@ -51,12 +51,17 @@ import {
     isRunOwnershipError,
     startRun,
     endRun,
+    getRun,
     startRunHeartbeat,
     markRunAbnormalEndClassification,
     markRunFinalizationFailed,
     markRunFinalizationState,
     type RunHeartbeatController,
 } from "@/lib/server/agent/run";
+import {
+    isTerminalRunStatus,
+    type TerminalRunStatus,
+} from "@/lib/server/agent/run-state-machine";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import { createArtifact } from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig } from "@/lib/server/agent/autonomy";
@@ -137,7 +142,12 @@ import {
     type ClarificationControllerState,
 } from "./clarification-controller";
 import { createLinkedAbortController, isAbortLikeError, type LinkedAbortController } from "@/lib/abort";
-import { registerActiveRunExecutionCancellation } from "@/lib/server/agent/run-cancellation";
+import {
+    registerActiveRunExecutionCancellation,
+    startDurableRunCancellationMonitor,
+    type ActiveRunExecutionCancellation,
+    type DurableRunCancellationMonitor,
+} from "@/lib/server/agent/run-cancellation";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
@@ -192,6 +202,16 @@ function normalizeContextFailure(error: unknown): { failureClass: ContextFailure
         return { failureClass: "semantic_timeout", errorMeta };
     }
     return { failureClass: "unknown_context_failure", errorMeta };
+}
+
+function stopReasonForTerminalStatus(
+    status: TerminalRunStatus,
+    fallback?: StopReason,
+): StopReason | undefined {
+    if (status === "cancelled") return "cancelled";
+    if (status === "paused") return "paused_for_input";
+    if (status === "failed") return "error";
+    return fallback;
 }
 
 function logContextBranch(record: ContextBranchRecord, meta: {
@@ -936,7 +956,8 @@ class AIService {
         let runFinalized = false;
         let traceEnded = false;
         let finalizedRunStatus: "completed" | "failed" | "cancelled" | "paused" | null = null;
-        let runExecutionCancellation: { signal: AbortSignal; dispose: () => void } | null = null;
+        let runExecutionCancellation: ActiveRunExecutionCancellation | null = null;
+        let durableRunCancellationMonitor: DurableRunCancellationMonitor | null = null;
         let linkedExecutionCancellation: LinkedAbortController | null = null;
         let executionSignal: AbortSignal | undefined = options?.signal;
         const identity = resolveAuthenticatedIdentity({
@@ -1084,28 +1105,79 @@ class AIService {
             pausedForUserInput: false,
             cancelledByUser: false,
         };
+        const stopRunLivenessControllers = () => {
+            durableRunCancellationMonitor?.stop();
+            durableRunCancellationMonitor = null;
+            runHeartbeat?.stop();
+            runHeartbeat = null;
+        };
+        const adoptExternalTerminalStatus = (status: TerminalRunStatus) => {
+            runFinalized = true;
+            finalizedRunStatus = status;
+            return true;
+        };
+        const inspectPersistedTerminalRunStatus = async (
+            runId: string,
+        ): Promise<TerminalRunStatus | null> => {
+            try {
+                const persistedRun = await getRun(runId);
+                return isTerminalRunStatus(persistedRun?.status) ? persistedRun.status : null;
+            } catch (error) {
+                logServerWarn("ai-service", "failed to inspect run after finalization race", {
+                    runId,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+                return null;
+            }
+        };
         const finalizeRunOnce = async (
             status: "completed" | "failed" | "cancelled" | "paused",
             costTokensIn?: number,
             costTokensOut?: number,
         ): Promise<boolean> => {
             if (!run || runFinalized) return true;
-            runHeartbeat?.stop();
-            runHeartbeat = null;
-            const startedFinalization = await markRunFinalizationState(run.id, "in_progress");
+            stopRunLivenessControllers();
+            const activeRunId = run.id;
+            let startedFinalization: number;
+            try {
+                startedFinalization = await markRunFinalizationState(activeRunId, "in_progress");
+            } catch (error) {
+                if (isRunOwnershipError(error)) {
+                    if (isTerminalRunStatus(error.status)) {
+                        return adoptExternalTerminalStatus(error.status);
+                    }
+                    const terminalStatus = await inspectPersistedTerminalRunStatus(error.runId);
+                    if (terminalStatus) {
+                        return adoptExternalTerminalStatus(terminalStatus);
+                    }
+                    runFinalized = true;
+                    return false;
+                }
+                throw error;
+            }
             if (startedFinalization === 0) {
+                const terminalStatus = await inspectPersistedTerminalRunStatus(activeRunId);
+                if (terminalStatus) {
+                    return adoptExternalTerminalStatus(terminalStatus);
+                }
                 runFinalized = true;
                 return false;
             }
             try {
-                await endRun(run.id, status, costTokensIn, costTokensOut);
+                await endRun(activeRunId, status, costTokensIn, costTokensOut);
             } catch (error) {
                 if (isRunOwnershipError(error)) {
+                    if (isTerminalRunStatus(error.status)) {
+                        return adoptExternalTerminalStatus(error.status);
+                    }
+                    const terminalStatus = await inspectPersistedTerminalRunStatus(error.runId);
+                    if (terminalStatus) {
+                        return adoptExternalTerminalStatus(terminalStatus);
+                    }
                     runFinalized = true;
                     return false;
                 }
-                const activeRunId = run.id;
-                await markRunFinalizationFailed(run.id).catch((markError) => {
+                await markRunFinalizationFailed(activeRunId).catch((markError) => {
                     logServerError("ai-service", "failed to persist finalization failure", {
                         runId: activeRunId,
                         error: markError,
@@ -1176,6 +1248,15 @@ class AIService {
             });
             const activeRun = run;
             runExecutionCancellation = registerActiveRunExecutionCancellation(activeRun.id);
+            durableRunCancellationMonitor = startDurableRunCancellationMonitor(activeRun.id, {
+                abort: runExecutionCancellation.abort,
+                onError: (error) => {
+                    logServerWarn("ai/run-cancellation-monitor", "failed", {
+                        runId: activeRun.id,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                },
+            });
             linkedExecutionCancellation = createLinkedAbortController([
                 options?.signal,
                 runExecutionCancellation.signal,
@@ -1619,10 +1700,12 @@ class AIService {
                             return;
                         }
                         const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
+                        const terminalStatus = finalizedRunStatus ?? "completed";
                         yield {
                             type: "run_end",
                             runId: activeRun.id,
-                            runStatus: "completed",
+                            runStatus: terminalStatus,
+                            stopReason: stopReasonForTerminalStatus(terminalStatus),
                             conversationId: conversation.id,
                             actualModel: runModelMeta.actualModel ?? undefined,
                             actualModelSource: runModelMeta.actualModelSource,
@@ -1913,11 +1996,12 @@ class AIService {
                             return;
                         }
                         const runModelMeta = resolveRunActualModelMeta(iterationChatOptions.model, observedRunModel, invokedModel);
+                        const terminalStatus: TerminalRunStatus = finalizedRunStatus ?? "failed";
                         yield {
                             type: "run_end",
                             runId: activeRun.id,
-                            runStatus: "failed",
-                            stopReason: "error",
+                            runStatus: terminalStatus,
+                            stopReason: stopReasonForTerminalStatus(terminalStatus, "error"),
                             conversationId: conversation.id,
                             actualModel: runModelMeta.actualModel ?? undefined,
                             actualModelSource: runModelMeta.actualModelSource,
@@ -2425,13 +2509,14 @@ class AIService {
             }
 
             const runModelMeta = resolveRunActualModelMeta(baseChatOptions.model, observedRunModel, invokedModel);
+            const terminalStatus = finalizedRunStatus ?? runStatus;
             yield {
                 type: "run_end",
                 runId: activeRun.id,
-                runStatus,
+                runStatus: terminalStatus,
                 runCostTokensIn: totalTokensIn,
                 runCostTokensOut: totalTokensOut,
-                stopReason: finalStopReason,
+                stopReason: stopReasonForTerminalStatus(terminalStatus, finalStopReason),
                 iterationCount: loop.iterations,
                 toolCallCount: loop.totalToolCalls,
                 conversationId: conversation.id,
@@ -2449,6 +2534,23 @@ class AIService {
                     status: error.status,
                     finalizationState: error.finalizationState,
                 });
+                const terminalStatus = isTerminalRunStatus(error.status)
+                    ? error.status
+                    : await inspectPersistedTerminalRunStatus(error.runId);
+                if (terminalStatus) {
+                    runFinalized = true;
+                    finalizedRunStatus = terminalStatus;
+                    const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
+                    yield {
+                        type: "run_end",
+                        runId: error.runId,
+                        runStatus: terminalStatus,
+                        stopReason: stopReasonForTerminalStatus(terminalStatus),
+                        conversationId: conversation.id,
+                        actualModel: runModelMeta.actualModel ?? undefined,
+                        actualModelSource: runModelMeta.actualModelSource,
+                    };
+                }
                 await closeTraceOnce({
                     externallyFinalized: true,
                     runId: error.runId,
@@ -2491,11 +2593,12 @@ class AIService {
                 const finalized = await finalizeRunOnce("cancelled");
                 const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
                 if (activeRunId && finalized) {
+                    const terminalStatus = finalizedRunStatus ?? "cancelled";
                     yield {
                         type: "run_end",
                         runId: activeRunId,
-                        runStatus: "cancelled",
-                        stopReason: "cancelled",
+                        runStatus: terminalStatus,
+                        stopReason: stopReasonForTerminalStatus(terminalStatus, "cancelled"),
                         conversationId: conversation.id,
                         actualModel: runModelMeta.actualModel ?? undefined,
                         actualModelSource: runModelMeta.actualModelSource,
@@ -2516,8 +2619,12 @@ class AIService {
                         return { ...s, status: queued?.finalStatus ?? s.status };
                     });
                     await failPlanExecution(options.planId, finalSteps, error instanceof Error ? error.message : "Unknown error");
-                } catch {
+                } catch (planError) {
                     // Best-effort — don't mask the original error
+                    logServerError("ai-service", "failed to persist plan execution failure", {
+                        planId: options.planId,
+                        runId: run?.id ?? null,
+                    }, planError);
                 }
             }
 
@@ -2573,22 +2680,23 @@ class AIService {
             yield terminalErrorChunk;
             const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
             if (run) {
+                const terminalStatus = finalizedRunStatus ?? "failed";
                 yield {
                     type: "run_end",
                     runId: run.id,
-                    runStatus: "failed",
+                    runStatus: terminalStatus,
+                    stopReason: stopReasonForTerminalStatus(terminalStatus, "error"),
                     conversationId: conversation.id,
                     actualModel: runModelMeta.actualModel ?? undefined,
                     actualModelSource: runModelMeta.actualModelSource,
                 };
             }
         } finally {
+            stopRunLivenessControllers();
             linkedExecutionCancellation?.dispose();
             linkedExecutionCancellation = null;
             runExecutionCancellation?.dispose();
             runExecutionCancellation = null;
-            runHeartbeat?.stop();
-            runHeartbeat = null;
             const fallbackStatus = runFacts.cancelledByUser || executionSignal?.aborted
                 ? "cancelled"
                 : runFacts.pausedForUserInput
