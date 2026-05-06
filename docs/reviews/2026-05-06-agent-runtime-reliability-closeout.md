@@ -6,7 +6,8 @@ Reviewer: Codex
 ## Scope
 
 This closeout reviews the May 2026 agent-runtime reliability series on `main`.
-It covers the current production-bound architecture after the merged runtime PRs, not the separate `YY/agent-runtime-reliability` worktree.
+It covers the current production-bound architecture after the merged runtime PRs, including the follow-up correction that keeps durable artifact-aware execution detached from the HTTP observer abort signal.
+It does not cover the separate `YY/agent-runtime-reliability` worktree.
 
 Source owners:
 - [`docs/plans/plan-agentic.md`](../plans/plan-agentic.md)
@@ -28,6 +29,7 @@ The next gate is live evidence: `U1.6` must run from a fresh deployment/cohort w
 
 The durable agent run is not cancelled merely because the HTTP stream disconnects.
 Semantic cancellation now goes through the explicit run-cancel endpoint and same-process cancellation registry, with durable cancellation as the cross-worker authority.
+The artifact-aware stream route intentionally does not pass `request.signal` into durable run execution; request disconnect is an observer concern, not a user-visible cancel action.
 
 Primary proof:
 - `next-app/app/api/ai/stream/__tests__/route.test.ts`

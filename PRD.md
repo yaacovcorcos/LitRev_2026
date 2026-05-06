@@ -190,6 +190,6 @@ Canonical implementation plans:
 - Agentic Systems and AI Orchestration: `docs/plans/plan-agentic.md`
 - Memory and Retrieval: `docs/plans/plan-memory.md`
 - UI and UX: `docs/plans/plan-ux-ui.md`
-- Prompts and Extraction Rules: `docs/plans/plan-prompts.md`
+- Prompt-library, Extraction Rules, and Grounding: `docs/plans/plan-memory.md`
 
 Index and governance: `docs/plans/README.md`.

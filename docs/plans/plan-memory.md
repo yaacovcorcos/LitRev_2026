@@ -21,7 +21,7 @@ It does not own:
 - rollout, eval, security, and performance quality programs
   - use [`plan-agent-quality.md`](./plan-agent-quality.md)
 
-`docs/plans/plan-prompts.md` is now a supporting reference only. Active status lives here.
+There is no separate active prompts plan. Prompt-library and extraction-quality work lives here, while runtime-owned interaction contracts live in [`plan-agentic.md`](./plan-agentic.md).
 
 ## North Star
 

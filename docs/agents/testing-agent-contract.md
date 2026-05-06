@@ -339,7 +339,7 @@ Use this contract together with:
 - `AGENTS.md` for route-specific required command gates
 - `docs/plans/plan-lint-governance.md` for executable governance and runtime test-policy rollout
 - `docs/architecture/frontend-quality-bar.md` and `docs/runbooks/frontend-review-loop.md` for UI verification expectations
-- `docs/plans/plan-agentic.md` and active runtime remediation plans for runtime-specific test obligations
+- `docs/plans/plan-agentic.md` and `docs/plans/plan-agent-quality.md` for runtime-specific test obligations
 - `docs/reviews/repo-health.md` for known recurring repo-wide testing risks
 
 ## External Reference Posture
