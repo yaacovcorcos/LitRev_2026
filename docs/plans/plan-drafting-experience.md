@@ -7,6 +7,7 @@ It defines the canonical drafting direction for LitRev and the sequence of work 
 
 Supporting execution detail for the next editorial-quality rebuild now lives in [plan-draft-authoring-platform.md](./plan-draft-authoring-platform.md).
 The detailed finish plan for `DAP-01` now lives in [plan-draft-vnext-core.md](./plan-draft-vnext-core.md).
+The designer-facing, non-visual product brief now lives in [draft-space-designer-brief.md](../design/draft-space-designer-brief.md).
 The completed non-visual `DAP-00` benchmark/harness baseline now lives in [2026-04-16-draft-benchmark-baseline.md](../reviews/2026-04-16-draft-benchmark-baseline.md) and the shipped corpus/harness code under `next-app/lib/draft-benchmark/**` plus `next-app/test/fixtures/draft/**`.
 The completed non-UI `DAP-03A` import/interoperability slice now lives in [2026-04-17-draft-import-interoperability.md](../reviews/2026-04-17-draft-import-interoperability.md) and the shipped import foundation under `next-app/lib/draft-import/**`, `next-app/lib/server/draft-imports.ts`, and `next-app/app/actions/draft-imports.ts`.
 
