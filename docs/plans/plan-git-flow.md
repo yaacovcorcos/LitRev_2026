@@ -18,6 +18,7 @@ The flow must answer:
 - when branches should push to remote
 - how local checks, CI, GitHub review, human review, and optional structured autoreview fit together
 - how multiple agents coordinate without treating any task branch as the baseline
+- how every review protects code quality, maintainability, and necessary simplicity
 
 ## Current Baseline
 
@@ -29,7 +30,7 @@ LitRev already has a strong Git spine:
 - protected `check` CI runs migration/drift sanity, typecheck, governance, chat-stream guard, agent-quality, Vitest, and build
 - branch protection requires PR review, code owner review, conversation resolution, and green `check`
 
-The main gap is not missing automation. The gap is end-to-end agent discipline around sizing, push timing, local closeout review, multi-agent coordination, and how advisory review findings become fixes, tests, docs, or conscious rejections.
+The main gap is not missing automation. The gap is end-to-end agent discipline around sizing, push timing, local closeout review, quality and simplicity review, multi-agent coordination, and how advisory review findings become fixes, tests, docs, or conscious rejections.
 
 ## Principles
 
@@ -62,6 +63,33 @@ The main gap is not missing automation. The gap is end-to-end agent discipline a
    - accepted findings become code, tests, runbooks, owner-plan updates, or a tracked follow-up
    - rejected findings get a short reason
    - repeated advisory findings are promoted into durable repo controls
+
+7. Quality is a constant gate, not a final polish pass.
+   - every code review asks whether the change fixes the root cause cleanly
+   - every review checks whether the implementation is simpler than the problem requires, not merely functional
+   - new abstractions must earn their place by reducing real complexity, clarifying ownership, or matching an established local pattern
+   - passing tests are required evidence, but they do not excuse brittle design, hidden coupling, duplicated state, or confusing control flow
+   - when the honest fix is a deeper cleanup, prefer that over stacking a quick workaround unless the task is explicitly a temporary stopgap
+
+## Quality and Simplicity Review Lens
+
+Every meaningful code change should pass this lens during self-review, structured closeout review, PR review, and human review:
+- Correctness: does the change address the real failure mode instead of masking symptoms?
+- Proof: are the tests, typecheck, lint, browser check, or runbook checks aligned with the risk of the touched surface?
+- Fit: does the change follow the owner docs, local architecture, established primitives, and naming conventions?
+- Simplicity: is the implementation the smallest clear design that solves the problem without clever indirection?
+- Maintainability: will a future agent understand the control flow, data ownership, and failure behavior without reconstructing chat context?
+- Boundaries: does the change avoid leaking responsibilities across server actions, service layer, shared logic, route UI, and runtime orchestration?
+- Cleanup: did the task remove obsolete code or docs when behavior changed, or consciously defer cleanup with a reason?
+
+Reviewers should treat these as real findings, not style preferences:
+- speculative abstractions without current callers
+- duplicate state or derived state stored in multiple places
+- bypassing shared primitives or owner-documented paths
+- broad refactors mixed into a narrow fix
+- new flags, options, or configuration that are not required by the current task
+- tests that only assert implementation details while missing user-visible or contract behavior
+- comments or docs that describe behavior the code no longer guarantees
 
 ## Work Size Classes
 
@@ -296,6 +324,7 @@ Required:
 - route-required validation has passed or failures are documented as blockers
 - no unrelated files are staged
 - self-review has checked ownership boundaries and user-visible behavior
+- quality and simplicity review lens has no unresolved blocking finding
 
 Recommended for meaningful code changes:
 - structured closeout review if installed and not noisy for this class
@@ -326,8 +355,9 @@ Before merge:
 2. Required human and code-owner review state is satisfied.
 3. `@codex review` feedback has been inspected.
 4. Any structured autoreview findings have been accepted/fixed or rejected with reason.
-5. Conversation threads are resolved.
-6. Final branch diff is still scoped.
+5. Quality and simplicity review findings have been accepted/fixed or rejected with reason.
+6. Conversation threads are resolved.
+7. Final branch diff is still scoped.
 
 After merge:
 1. sync repo-root `main`
@@ -359,6 +389,7 @@ If the pattern proves useful, create a LitRev-local closeout skill instead of de
 - read `AGENTS.md` routing first
 - require owner-doc retrieval based on touched paths
 - use `docs/runbooks/testing-ci-strategy.md` for validation vocabulary
+- apply the quality and simplicity review lens on every meaningful code change
 - report accepted and rejected findings separately
 - require promotion of repeated findings into tests, rules, runbooks, plans, or repo-health
 - forbid nested review panels unless explicitly requested
@@ -434,6 +465,7 @@ For each trial, record:
 - command/tool used
 - findings accepted
 - findings rejected
+- quality, simplicity, or maintainability findings discovered
 - whether a test/doc/rule changed because of the finding
 - time cost
 - whether the finding duplicated existing `@codex review` or CI
@@ -462,6 +494,7 @@ Add or update the PR template or auto-PR body so agent branches expose:
 - owner
 - touched domains
 - checks run
+- quality and simplicity review status
 - structured review status
 - remaining risk
 - cleanup manifest when relevant
