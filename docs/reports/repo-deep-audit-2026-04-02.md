@@ -132,7 +132,7 @@ Bottom line:
 Evidence:
 - `AGENTS.md` is concrete and operational.
 - `docs/plans/README.md` clearly separates active canonical plans from archive/supporting material.
-- `docs/runbooks/github-flow.md`, `docs/runbooks/db-ops.md`, and `docs/runbooks/db-architecture.md` are actionable, not decorative.
+- `docs/runbooks/git-flow.md`, `docs/runbooks/db-ops.md`, and `docs/runbooks/db-architecture.md` are actionable, not decorative.
 - `next-app/eslint/` contains repo-local rules, docs, tests, and layered configs.
 - CI enforces governance slices through `.github/workflows/ci.yml` and `npm run governance:ci-required`.
 

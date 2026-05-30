@@ -1,10 +1,10 @@
-# Agent Git Flow Plan
+# Agent Git Flow Design Notes
 
 ## Status
 
-This is a candidate plan, not the active Git policy.
+This is design background, not the active Git policy.
 
-The active operational contract remains [`docs/runbooks/github-flow.md`](../runbooks/github-flow.md) until this plan is explicitly promoted into runbook or `AGENTS.md` changes. Agents must continue following the current runbook while using this file only as design guidance.
+The active operational contract is [`docs/runbooks/git-flow.md`](../runbooks/git-flow.md). Agents should execute the runbook, not this file.
 
 ## Purpose
 
@@ -16,6 +16,7 @@ The flow must answer:
 - how larger changes are sliced, reviewed, pushed, and merged
 - when PRs should open
 - when branches should push to remote
+- when branches must stay local because the work is still a discussion or draft
 - how local checks, CI, GitHub review, human review, and optional structured autoreview fit together
 - how multiple agents coordinate without treating any task branch as the baseline
 - how every review protects code quality, maintainability, and necessary simplicity
@@ -32,6 +33,113 @@ LitRev already has a strong Git spine:
 
 The main gap is not missing automation. The gap is end-to-end agent discipline around sizing, push timing, local closeout review, quality and simplicity review, multi-agent coordination, and how advisory review findings become fixes, tests, docs, or conscious rejections.
 
+## Current Runbook Safeguards to Preserve
+
+The current runbook contains several mature safeguards that must survive any redesign. The new flow should make these easier to follow, not replace them with looser habits.
+
+### Automation and Review Visibility
+
+- Auto-created PRs request review from `@yaacovcorcos` and post `@codex review`.
+- Every non-draft PR open/update should request Codex review once per head commit when the connector is working.
+- Agents must inspect latest review state before merge decisions:
+  - `gh pr view <number> --json reviews,comments`
+  - `gh pr list --state open --json number,title,headRefName,baseRefName,reviewDecision,url`
+- A future workflow may improve draft/checkpoint behavior, but it must not remove explicit review visibility.
+
+### GitHub CLI Guardrails
+
+- Do not infer GitHub access from `GH_TOKEN`.
+- Before declaring GitHub unavailable, verify:
+  - `gh auth status`
+  - `gh auth token`
+  - `gh api user`
+- PR creation in agent flows must stay non-interactive:
+  - `gh pr create --base main --head YY/<task> --title "<title>" --body "<body>"`
+- If `gh pr create` appears to hang, suspect an interactive prompt or editor wait before blaming the GitHub API.
+
+### Branch Protection and CI Backstop
+
+- `main` requires PR review, 2 approvals, code-owner review, conversation resolution, and required `check`.
+- Force-push and branch deletion on `main` remain blocked.
+- `check` must continue to run on `YY/**` pushes, not only PR events, because auto-created PRs depend on push CI as a backstop.
+- Red CI on `main` PRs is release-blocking debt, not background noise.
+- Required governance exceptions belong in owning phase config, rules, or docs, not in workflow-level path skips, conditional omissions, or `continue-on-error`.
+
+### Local CI Vocabulary
+
+The redesigned flow should keep the old runbook's local reproduction vocabulary available in handoffs:
+- `cd next-app && npm run test:governance`
+- `cd next-app && npm run test:governance:informational`
+- `cd next-app && npm run check:agent-quality`
+- `cd next-app && npm run check:pr`
+
+When a branch touches governance or CI behavior, reviewers should also check whether the change affects:
+- raw repo lint as part of `check`
+- governance audit artifact upload with `if: always()`
+- schema drift warning/failure behavior
+- agent-quality, runtime-test-impact, and governance phase gates
+
+### Worktree and Branch Cleanup
+
+The old cleanup contract is strong and should remain explicit:
+- task worktrees live under `<repo-root>/.worktrees/`
+- task worktrees exist only while actively implemented, reviewed, or waiting to merge
+- finished task worktrees are not passive history
+- abandoned worktrees are removed, and their branches are deleted or intentionally archived
+- rescue worktrees are promoted, archived, or deleted after review
+- parent worktree directories are not removed while they contain active nested child worktrees
+
+Before deleting or re-homing any worktree, record a cleanup manifest. Prefer the PR body or PR comment when a PR exists; otherwise use a local scratch note. Each entry includes:
+- worktree path
+- branch name or detached HEAD SHA
+- status: `active`, `rescue`, `stale`, or `unknown`
+- decision: `keep`, `rehome`, `review`, or `delete`
+- short reason
+
+### Commit Hygiene
+
+- Stage only task-relevant files.
+- Use conventional commit types: `feat`, `fix`, `refactor`, `test`, `chore`, or `docs`.
+- One task normally produces one atomic commit unless a small coherent series improves review.
+- Commit immediately after validation; do not batch completed tasks.
+
+## Discussion and Drafting Mode
+
+Discussion is not delivery.
+
+When the user is actively discussing a proposal, plan, workflow, architecture choice, review finding, or draft document, the default is local-only work:
+- no push
+- no PR creation
+- no PR update
+- no waiting on GitHub CI
+- no remote review request
+
+In this repo, pushing a `YY/**` branch is not a neutral backup action. It can create or update a PR, request review, trigger CI, and make the user wait for remote systems. Therefore, agents must treat push as a delivery action.
+
+Use local-only discussion mode when:
+- the user is still shaping the policy or plan
+- the user asks to compare, think through, or review options
+- the change is a draft that may still be rewritten
+- the next useful step is conversation rather than review by CI or GitHub
+
+During local-only discussion mode, the agent may:
+- edit the task worktree draft
+- run `git diff --check` or another cheap local sanity check
+- summarize the local diff
+- list open decisions
+- leave the worktree dirty until the user says the draft is ready
+
+During local-only discussion mode, the agent must not:
+- push unless the user explicitly says to push
+- open or update a PR unless the user explicitly says to do so
+- wait on remote CI as a substitute for continuing the conversation
+- commit merely to satisfy the old delivery loop
+
+Exit discussion mode only when one of these is true:
+- the user says to publish, push, commit, open a PR, or make it review-ready
+- the draft has converged and the agent confirms before starting delivery closeout
+- the work must be preserved remotely for handoff, and the PR/body/comment clearly marks it as a blocked or draft checkpoint
+
 ## Principles
 
 1. `main` stays boring.
@@ -46,7 +154,8 @@ The main gap is not missing automation. The gap is end-to-end agent discipline a
 3. Push reviewed slices, not anxious noise.
    - push after a coherent validated commit
    - do not push merely to make local uncertainty remote
-   - if a remote checkpoint is necessary before validation, mark the PR as blocked/draft in the PR body or comment
+   - do not push during active discussion or drafting unless the user explicitly asks
+   - if a remote checkpoint is necessary before validation, use `draft/<task>` instead of pushing the delivery branch
 
 4. Open PRs early enough to get feedback, late enough to be meaningful.
    - small work opens a ready PR after the first validated commit
@@ -112,6 +221,35 @@ Checks:
 Push/PR:
 - never
 
+### Class 0.5: Collaborative Draft or Policy Discussion
+
+Examples:
+- drafting this Git flow design
+- comparing a new workflow against an old runbook
+- shaping architecture or quality policy before it is ready for review
+- editing a plan while the user is still deciding what the plan should say
+
+Flow:
+1. Use an existing task worktree if one already exists.
+2. Edit locally only.
+3. Keep a clear mental separation between "draft we are discussing" and "delivery-ready change."
+4. Run only cheap local checks that help the discussion, such as `git diff --check`.
+5. Report what changed and what still needs a decision.
+6. Do not commit, push, open a PR, update a PR, or wait on CI unless the user explicitly asks.
+
+Checks:
+- none by default
+- `git diff --check` is enough for Markdown mechanics when useful
+- route-level checks wait until the draft is ready for delivery
+
+Autoreview:
+- skip by default
+- use only if the user asks for a local advisory pass
+
+Push/PR:
+- never during active discussion
+- push only after explicit user approval or after a clearly confirmed delivery transition
+
 ### Class 1: Tiny Docs or Metadata Fix
 
 Examples:
@@ -134,8 +272,8 @@ Autoreview:
 - run only if the doc changes Git, CI, release, security, or agent authority
 
 Push/PR:
-- push after the atomic commit
-- open/update one PR
+- if this is delivery-ready, push after the atomic commit and open/update one PR
+- if this is part of active discussion or drafting, stay local until the user says to publish
 
 ### Class 2: Small Code Fix
 
@@ -301,7 +439,7 @@ Then:
 6. self-review
 7. optional structured closeout review
 8. commit
-9. push/PR
+9. push/PR only when the work has left discussion mode and is ready for delivery
 
 ### After Each Small Fix
 
@@ -313,13 +451,16 @@ For every completed small fix inside a branch:
 5. decide whether to push:
    - push immediately if this is the branch's PR-ready slice
    - hold locally only if more edits are needed before meaningful review and the work is not at risk
-   - if work must be handed off or preserved remotely before validation, push with an explicit blocked/draft note
+   - if work must be handed off or preserved remotely before validation, use the `draft/<task>` checkpoint path
 
 Do not accumulate unrelated fixes into one commit to "save PR overhead."
+
+If the branch is still in discussion mode, stop here and report the local diff. Do not push just because a coherent local edit exists.
 
 ### Before Push
 
 Required:
+- the work is no longer in active discussion/drafting mode, or the user explicitly requested a push
 - branch still targets current `origin/main` or has a clear reason not to
 - route-required validation has passed or failures are documented as blockers
 - no unrelated files are staged
@@ -335,6 +476,7 @@ Open a PR when:
 - the branch has one coherent validated slice
 - the PR description can explain scope, tests, and remaining risk
 - remote CI/review feedback would be meaningful
+- the user is not still using the branch as a discussion draft
 
 Use a draft/blocked PR when:
 - the branch needs remote visibility or multi-agent coordination before completion
@@ -345,8 +487,9 @@ Do not open a PR when:
 - the branch is a scratch exploration
 - the diff is still incoherent
 - the task has not passed enough local checks to avoid wasting review attention
+- the user is still discussing the content and the next useful step is local iteration
 
-Current automation auto-opens PRs on `YY/**` pushes. If draft PR behavior becomes important, a future implementation task should add an explicit draft-conversion or non-auto branch path instead of relying on convention alone.
+Current automation auto-opens PRs on `YY/**` pushes. Because of that, pushing is effectively a remote review and CI request. If draft PR behavior becomes important, a future implementation task should add an explicit draft-conversion or non-auto branch path instead of relying on convention alone.
 
 ### PR Closeout
 
@@ -378,7 +521,7 @@ The upstream OpenClaw `autoreview` skill is useful as a pattern:
 
 LitRev should not blindly import the skill as policy.
 
-Current candidate posture:
+Current design posture:
 - optional for Class 2
 - recommended for Class 3 and risky Class 4 slices
 - opt-in panel mode only for high-risk runtime/security/DB/release work
@@ -475,17 +618,19 @@ Exit criteria:
 - drop if it mostly duplicates existing GitHub review or creates noisy delay
 - localize into `litrev-closeout-review` only if useful patterns repeat
 
-### `GF-002` Draft PR and Remote Checkpoint Decision
+### `GF-002` Remote Checkpoint Decision
 
-Decide whether the current `YY/**` auto-PR behavior needs a draft/checkpoint path.
+Decision: keep `YY/**` as the delivery path and use `draft/<task>` for explicit remote checkpoints.
 
-Questions:
-- should remote checkpoints use a different branch prefix?
-- should the auto-PR workflow create drafts for branches with a marker?
-- should agents convert auto-created PRs to draft when validation is incomplete?
+Rationale:
+- `YY/**` already has delivery semantics through auto-PR, review request, and protected `check`.
+- `draft/**` avoids the auto-PR workflow and the protected `check` push trigger with the current workflow configuration.
+- Remote checkpoints should preserve or hand off unfinished work, not ask GitHub to review it as delivery.
 
 Exit criteria:
-- no ambiguity around when pushing creates review burden
+- `docs/runbooks/git-flow.md` names `draft/<task>` as the checkpoint path
+- `AGENTS.md` explains that `draft/<task>` is not a delivery branch and must not merge to `main`
+- agents understand that pushing `YY/**` is delivery
 
 ### `GF-003` PR Body Coordination Template
 
@@ -505,7 +650,7 @@ Exit criteria:
 ### `GF-004` Promote Adopted Rules
 
 Only after trial:
-1. update `docs/runbooks/github-flow.md`
+1. update `docs/runbooks/git-flow.md`
 2. update `AGENTS.md` if the rule becomes Tier 1 policy
 3. update workflow automation if behavior changes
 4. update `docs/runbooks/testing-ci-strategy.md` if validation vocabulary changes
@@ -513,17 +658,15 @@ Only after trial:
 
 ## Open Questions
 
-- Should ready PR creation remain automatic on every `YY/**` push, or should incomplete remote checkpoint branches bypass auto-PR?
 - Should structured closeout review run before commit, after commit, or both for medium/risky changes?
 - Should LitRev use the upstream `autoreview` helper as-is for a trial, or write a tiny repo-local prompt wrapper first?
 - What finding threshold justifies making structured closeout review recommended versus mandatory for specific risk classes?
-- Where should branch ownership metadata live before a PR exists?
+- Should `draft/**` checkpoint branches have an automatic stale-branch cleanup report, or is manual cleanup enough?
 
 ## Non-Goals
 
-- This plan does not change branch protection.
-- This plan does not replace `@codex review`.
-- This plan does not add new CI gates.
-- This plan does not remove the existing GitHub flow runbook.
-- This plan does not authorize direct commits to repo-root `main`.
-- This plan does not create a second canonical baseline.
+- These notes do not change branch protection.
+- These notes do not replace `@codex review`.
+- These notes do not add new CI gates.
+- These notes do not authorize direct commits to repo-root `main`.
+- These notes do not create a second canonical baseline.

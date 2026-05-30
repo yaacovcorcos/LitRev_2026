@@ -86,13 +86,23 @@ All run from `next-app/` except deploy.
 | Platform admin control-plane changes (`next-app/app/admin/**`, `next-app/app/api/admin/**`, `next-app/lib/server/admin/**`, `next-app/lib/server/auth/platform-admin.ts`) | `frontend-ui-specialist.md` | `docs/runbooks/admin-access.md`, `docs/plans/plan-backend.md` | `npm run lint`, `npm run typecheck`, `npm run test:vitest` |
 | Agent runtime/orchestration files (`next-app/lib/agent/**`, `next-app/lib/server/agent/**`, `next-app/app/actions/agent.ts`, `next-app/lib/server/ai/sub-agent.ts`) | `agent-runtime-specialist.md` | `docs/plans/plan-agentic.md`; read `docs/plans/plan-memory.md` if memory is touched; use `docs/plans/README.md` to identify any additional active runtime plans. Do not use superseded source plans marked inactive in `docs/plans/README.md`. | `npm run typecheck`, `npm run test:vitest` |
 | Plan/PRD/governance edits (`PRD.md`, `docs/plans/**`) | `planning-governance-specialist.md` | `docs/plans/README.md` and target plan file | If code is unchanged, no code gate required |
-| GitHub workflow/governance edits (`.github/workflows/**`, `.github/CODEOWNERS`, git policy in `AGENTS.md`) | `planning-governance-specialist.md` | `docs/runbooks/github-flow.md` | If code is unchanged, no code gate required |
+| Git workflow/governance edits (`.github/workflows/**`, `.github/CODEOWNERS`, git policy in `AGENTS.md`) | `planning-governance-specialist.md` | `docs/runbooks/git-flow.md` | If code is unchanged, no code gate required |
 
 If no row matches, consult `docs/agents/cold-memory-index.md`, then pick the nearest specialist and proceed conservatively.
 
 ## Git Workflow (Agent Auto-Commit/Push Policy)
 
 Rule: feature branches hold work; repo root `main` only mirrors merged work.
+
+Operational runbook: `docs/runbooks/git-flow.md`.
+
+Discussion is local. Push is delivery. PR is review and integration.
+
+- When the user is still discussing, drafting, comparing options, or shaping a plan/policy, stay local by default.
+- In discussion/draft mode, do not push, open or update a PR, request remote review, or wait on GitHub CI unless the user explicitly asks.
+- Pushing `YY/**` is a delivery action because it can create/update a PR, request review, and trigger CI.
+- Remote checkpoint branches use `draft/<task>` only when unfinished work explicitly needs remote preservation or handoff; they are not delivery branches and must not be merged to `main`.
+- Enter delivery mode only when the work is converged enough for review, or the user explicitly asks to publish/push/open a PR.
 
 - Repo root `main` is the only canonical baseline; task worktrees may use other branches temporarily, but they must never be treated as the baseline or replace repo root `main`.
 - Repo root is the canonical clean `main` checkout for this repository.
@@ -102,7 +112,8 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - Do not run `gh pr checkout <number>` in repo root; inspect or update PR branches from a dedicated task worktree instead.
 - Use repo root `main` for read-only work; enter a task worktree only for branch-specific execution such as edits, commits, pushes, rebases, or PR branch updates.
 - All normal agent work must happen on named feature branches.
-- Canonical agent branch prefix is `YY/`.
+- Canonical delivery branch prefix is `YY/`.
+- Optional remote checkpoint branch prefix is `draft/`.
 - Emergency hotfix branches should also use the `YY/` prefix, for example `YY/hotfix-<task>`.
 - Avoid long-lived detached worktrees.
 - Repo root `main` must not remain ahead of or behind `origin/main`.
@@ -112,7 +123,7 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - A task worktree should exist only while that task is actively being implemented, reviewed, or waiting to merge.
 - Before resuming an existing task worktree, `git fetch origin --prune` and confirm it is still the intended execution surface against current `origin/main`.
 - Once a task is merged, abandoned, or intentionally archived, remove its worktree immediately as part of the same cleanup flow.
-- Maintain a cleanup manifest before deleting or re-homing any worktree; follow the schema in `docs/runbooks/github-flow.md`.
+- Maintain a cleanup manifest before deleting or re-homing any worktree; follow the schema in `docs/runbooks/git-flow.md`.
 - Do not remove a parent worktree directory while it still contains active nested child worktrees.
 - After merge, sync repo root `main`, remove the merged task worktree, and delete the merged local branch in the same cleanup sequence.
 - Do not keep finished task worktrees around as passive history.
@@ -127,9 +138,9 @@ Rule: feature branches hold work; repo root `main` only mirrors merged work.
 - Never run bare interactive `gh pr create` in agent flows; always pass explicit `--base`, `--head`, `--title`, and `--body` flags.
 - If `gh pr create` appears to hang, suspect an interactive prompt or editor wait before blaming the GitHub API.
 - Before merge decisions, pull latest review feedback with `gh pr view <number> --json reviews,comments`.
-- After validation passes, push by default and open/update a PR targeting `main`.
-- A task is not complete at PR creation; monitor the PR until it is mergeable, merge it, then run the post-merge cleanup sequence from `docs/runbooks/github-flow.md`.
-- For the exact branch-start, push/PR, merge-sync, and worktree-cleanup procedure, follow `docs/runbooks/github-flow.md`.
+- After validation passes and the work has left discussion/draft mode, push and open/update a PR targeting `main`.
+- A task is not complete at PR creation; monitor the PR until it is mergeable, merge it, then run the post-merge cleanup sequence from `docs/runbooks/git-flow.md`.
+- For the exact branch-start, push/PR, merge-sync, and worktree-cleanup procedure, follow `docs/runbooks/git-flow.md`.
 
 ## Database Contract (Non-Negotiable)
 
