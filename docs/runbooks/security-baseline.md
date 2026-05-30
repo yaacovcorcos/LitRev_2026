@@ -22,7 +22,7 @@ Load these repo-local sources first:
 4. the owner docs for the touched subsystem:
    - backend/admin/storage/auth: [`docs/plans/plan-backend.md`](../plans/plan-backend.md), [`docs/runbooks/admin-access.md`](admin-access.md), [`docs/runbooks/db-architecture.md`](db-architecture.md)
    - agent/tool/runtime: [`docs/plans/plan-agentic.md`](../plans/plan-agentic.md), [`docs/plans/plan-memory.md`](../plans/plan-memory.md), [`docs/plans/plan-agent-quality.md`](../plans/plan-agent-quality.md)
-   - repo workflow / CI / supply chain: [`docs/runbooks/github-flow.md`](github-flow.md)
+   - repo workflow / CI / supply chain: [`docs/runbooks/git-flow.md`](git-flow.md)
 
 ## LitRev Trust Model
 
@@ -321,7 +321,7 @@ Check:
 
 Primary repo files:
 - `.github/**`
-- [`docs/runbooks/github-flow.md`](github-flow.md)
+- [`docs/runbooks/git-flow.md`](git-flow.md)
 - [`docs/runbooks/external-pattern-intake.md`](external-pattern-intake.md)
 
 ## External Canon
