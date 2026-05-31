@@ -19,7 +19,14 @@ export function MemoryCard({ payload, status = "proposed", onAccept, onReject, o
     const [editValue, setEditValue] = useState(payload.value);
     const isReviewable = isArtifactReviewable(status);
 
-    const memoryTypeLabel = payload.memoryType === "user" ? "User Preference" : "Project Decision";
+    const projectMemoryLabel = payload.projectMemoryType === "definition"
+        ? "Project Definition"
+        : payload.projectMemoryType === "criterion"
+            ? "Project Criterion"
+            : payload.projectMemoryType === "goal"
+                ? "Project Goal"
+                : "Project Decision";
+    const memoryTypeLabel = payload.memoryType === "user" ? "User Preference" : projectMemoryLabel;
     const memoryTypeIcon = payload.memoryType === "user" ? "person" : "folder";
 
     const handleSaveEdit = () => {

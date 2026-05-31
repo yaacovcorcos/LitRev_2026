@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { BaseBackButton } from "@/components/BaseBackButton";
 import { useProjects } from "@/contexts/ProjectsContext";
 import { EmptyState, EmptyStateSkeleton } from "@/components/ui/EmptyState";
@@ -29,9 +29,24 @@ import {
   getMemoryQualityMetricsAction,
   getSemanticRolloutStatusAction,
   runMemoryMaintenanceAction,
+  archiveStudyMemoryAction,
+  archiveUserMemoryAction,
+  updateStudyMemoryAction,
+  updateUserMemoryAction,
 } from "@/app/actions/memory";
 import type { PRISMAStats } from "@/lib/server/memory/prisma-stats";
-import { MEMORY_TABS, type MemoryTabId } from "@/lib/durable-route-state";
+import {
+  MEMORY_TAB_QUERY_PARAM,
+  MEMORY_TABS,
+  normalizeMemoryTabId,
+  type MemoryTabId,
+} from "@/lib/durable-route-state";
+import {
+  MEMORY_AUTHORITY_LABELS,
+  MEMORY_SOURCE_LABELS,
+  type MemoryAuthority,
+  type MemorySource,
+} from "@/lib/memory-contracts";
 import { DemoGuideCard } from "@/components/project/DemoGuideCard";
 import styles from "./memory.module.css";
 
@@ -43,6 +58,11 @@ interface UserPref {
   rationale?: string | null;
   tags: string[];
   status: string;
+  source?: string;
+  authority?: string;
+  polarity?: string;
+  confidence?: number | null;
+  pinned?: boolean;
 }
 
 interface StudyMemoryItem {
@@ -53,6 +73,10 @@ interface StudyMemoryItem {
   source?: string | null;
   confidence?: number | null;
   tags: string[];
+  status?: string;
+  authority?: string;
+  polarity?: string;
+  pinned?: boolean;
   study: { id: string; title: string; authors?: string | null; year?: number | null };
 }
 
@@ -96,7 +120,18 @@ interface SemanticRolloutStatus {
 
 // ── Provenance helper ────────────────────────────────────────────────────────
 
-function getProvenance(tags: string[]): { label: string; icon: string } {
+function getProvenance(tags: string[], source?: string | null): { label: string; icon: string } {
+  const normalizedSource = source as MemorySource | undefined;
+  if (normalizedSource && MEMORY_SOURCE_LABELS[normalizedSource]) {
+    const icon = normalizedSource === "protocol_sync"
+      ? "sync"
+      : normalizedSource === "conversation_extraction" || normalizedSource === "ai_proposal" || normalizedSource === "deep_analysis" || normalizedSource === "ai_generated"
+        ? "smart_toy"
+        : normalizedSource === "artifact_accept"
+          ? "task_alt"
+          : "person";
+    return { label: MEMORY_SOURCE_LABELS[normalizedSource], icon };
+  }
   if (tags.some((t) => t.startsWith("protocol-sync:")))
     return { label: "Protocol sync", icon: "sync" };
   if (tags.includes("conversation-extracted"))
@@ -108,6 +143,42 @@ function getProvenance(tags: string[]): { label: string; icon: string } {
   return { label: "User-defined", icon: "person" };
 }
 
+function formatAuthority(value?: string | null): string | null {
+  const authority = value as MemoryAuthority | undefined;
+  return authority && MEMORY_AUTHORITY_LABELS[authority] ? MEMORY_AUTHORITY_LABELS[authority] : null;
+}
+
+function TrustStrip({
+  source,
+  authority,
+  polarity,
+  status,
+  confidence,
+  pinned,
+}: {
+  source?: string | null;
+  authority?: string | null;
+  polarity?: string | null;
+  status?: string | null;
+  confidence?: number | null;
+  pinned?: boolean | null;
+}) {
+  const sourceLabel = source && MEMORY_SOURCE_LABELS[source as MemorySource]
+    ? MEMORY_SOURCE_LABELS[source as MemorySource]
+    : source;
+  const authorityLabel = formatAuthority(authority);
+  return (
+    <div className={styles.trustStrip}>
+      {authorityLabel && <span>{authorityLabel}</span>}
+      {sourceLabel && <span>{sourceLabel}</span>}
+      {polarity && polarity !== "affirming" && <span>{polarity}</span>}
+      {status && status !== "active" && <span>{status}</span>}
+      {confidence != null && <span>{Math.round(confidence * 100)}% confidence</span>}
+      {pinned && <span>pinned</span>}
+    </div>
+  );
+}
+
 // ── SINGLE USER ID (matches existing pattern) ───────────────────────────────
 
 
@@ -115,6 +186,9 @@ function getProvenance(tags: string[]): { label: string; icon: string } {
 
 function MemoryPageContent() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { getProjectById, isLoadingProjects, projectsError } = useProjects();
   const { isEmbeddedInProjectShell } = useProjectShell();
   const project = id ? getProjectById(id) : undefined;
@@ -131,11 +205,10 @@ function MemoryPageContent() {
     createMemory,
     updateMemory,
     archiveMemory,
-    deleteMemory,
   } = useProjectMemory();
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<MemoryTabId>("project");
+  const activeTab = normalizeMemoryTabId(searchParams.get(MEMORY_TAB_QUERY_PARAM)) ?? "project";
 
   // Lazy-loaded tab data
   const [studyMemories, setStudyMemories] = useState<StudyMemoryItem[] | null>(null);
@@ -160,6 +233,14 @@ function MemoryPageContent() {
   const [formRationale, setFormRationale] = useState("");
   const [formImportance, setFormImportance] = useState<ProjectMemoryImportance>("normal");
   const [showStatementError, setShowStatementError] = useState(false);
+
+  const selectTab = useCallback((tab: MemoryTabId) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === "project") params.delete(MEMORY_TAB_QUERY_PARAM);
+    else params.set(MEMORY_TAB_QUERY_PARAM, tab);
+    const query = params.toString();
+    router.push(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
 
   const resetForm = () => {
     setFormType("decision");
@@ -236,7 +317,7 @@ function MemoryPageContent() {
           const [retrieval, quality, rollout] = await Promise.all([
             getMemoryRetrievalStatsAction(id),
             getMemoryQualityMetricsAction(id),
-            getSemanticRolloutStatusAction(),
+            getSemanticRolloutStatusAction(id),
           ]);
           if (!active) return;
           setRetrievalStats(retrieval.success ? retrieval.data as RetrievalStats : null);
@@ -307,8 +388,36 @@ function MemoryPageContent() {
     await archiveMemory(memId);
   };
 
-  const handleDelete = async (memId: string) => {
-    await deleteMemory(memId);
+  const handleTogglePin = async (memory: ProjectMemory) => {
+    await updateMemory(memory.id, { pinned: !memory.pinned });
+  };
+
+  const handleArchiveStudyMemory = async (memId: string) => {
+    const result = await archiveStudyMemoryAction(memId);
+    if (!result.success) return;
+    setStudyMemories((prev) => prev?.filter((memory) => memory.id !== memId) ?? null);
+  };
+
+  const handleToggleStudyPin = async (memory: StudyMemoryItem) => {
+    const result = await updateStudyMemoryAction(memory.id, { pinned: !memory.pinned });
+    if (!result.success) return;
+    setStudyMemories((prev) => prev?.map((item) => (
+      item.id === memory.id ? { ...item, pinned: !memory.pinned } : item
+    )) ?? null);
+  };
+
+  const handleArchiveUserPreference = async (prefId: string) => {
+    const result = await archiveUserMemoryAction(prefId);
+    if (!result.success) return;
+    setUserPreferences((prev) => prev?.filter((pref) => pref.id !== prefId) ?? null);
+  };
+
+  const handleTogglePreferencePin = async (pref: UserPref) => {
+    const result = await updateUserMemoryAction(pref.id, { pinned: !pref.pinned });
+    if (!result.success) return;
+    setUserPreferences((prev) => prev?.map((item) => (
+      item.id === pref.id ? { ...item, pinned: !pref.pinned } : item
+    )) ?? null);
   };
 
   const runMaintenance = useCallback(async (dryRun: boolean) => {
@@ -442,12 +551,14 @@ function MemoryPageContent() {
         />
 
         {/* Tab Bar */}
-        <div className={styles.tabBar}>
+        <div className={styles.tabBar} role="tablist" aria-label="Memory views">
           {MEMORY_TABS.map((tab) => (
             <button
               key={tab.id}
+              role="tab"
+              aria-selected={activeTab === tab.id}
               className={`${styles.tab} ${activeTab === tab.id ? styles.tabActive : ""}`}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => selectTab(tab.id)}
             >
               <span className="material-icons-round">{tab.icon}</span>
               {tab.label}
@@ -531,7 +642,7 @@ function MemoryPageContent() {
                 </div>
               ) : (
                 filteredMemories.map((memory) => {
-                  const prov = getProvenance(memory.tags);
+                  const prov = getProvenance(memory.tags, memory.source);
                   return (
                     <div
                       key={memory.id}
@@ -556,6 +667,14 @@ function MemoryPageContent() {
                         </span>
                       </div>
                       <p className={styles.memoryStatement}>{memory.statement}</p>
+                      <TrustStrip
+                        source={memory.source}
+                        authority={memory.authority}
+                        polarity={memory.polarity}
+                        status={memory.status}
+                        confidence={memory.confidence}
+                        pinned={memory.pinned}
+                      />
                       {memory.rationale && (
                         <p className={styles.memoryRationale}>
                           <strong>Rationale:</strong> {memory.rationale}
@@ -584,19 +703,19 @@ function MemoryPageContent() {
                         </button>
                         <button
                           className={styles.actionBtn}
+                          onClick={() => handleTogglePin(memory)}
+                          aria-label={memory.pinned ? "Unpin memory" : "Pin memory"}
+                          title={memory.pinned ? "Unpin" : "Pin"}
+                        >
+                          <span className="material-icons-round">{memory.pinned ? "keep_off" : "push_pin"}</span>
+                        </button>
+                        <button
+                          className={styles.actionBtn}
                           onClick={() => handleArchive(memory.id)}
                           aria-label="Archive memory"
                           title="Archive"
                         >
                           <span className="material-icons-round">archive</span>
-                        </button>
-                        <button
-                          className={`${styles.actionBtn} ${styles.deleteBtn}`}
-                          onClick={() => handleDelete(memory.id)}
-                          aria-label="Delete memory"
-                          title="Delete"
-                        >
-                          <span className="material-icons-round">delete</span>
                         </button>
                       </div>
                     </div>
@@ -626,6 +745,7 @@ function MemoryPageContent() {
                   <button
                     className={styles.studyGroupHeader}
                     onClick={() => toggleStudy(study.id)}
+                    aria-expanded={expandedStudies.has(study.id)}
                   >
                     <span className="material-icons-round">
                       {expandedStudies.has(study.id) ? "expand_more" : "chevron_right"}
@@ -663,6 +783,32 @@ function MemoryPageContent() {
                             )}
                           </div>
                           <p className={styles.memoryStatement}>{sm.content}</p>
+                          <TrustStrip
+                            source={sm.source}
+                            authority={sm.authority}
+                            polarity={sm.polarity}
+                            status={sm.status}
+                            confidence={sm.confidence}
+                            pinned={sm.pinned}
+                          />
+                          <div className={styles.memoryActions}>
+                            <button
+                              className={styles.actionBtn}
+                              onClick={() => handleToggleStudyPin(sm)}
+                              aria-label={sm.pinned ? "Unpin study memory" : "Pin study memory"}
+                              title={sm.pinned ? "Unpin" : "Pin"}
+                            >
+                              <span className="material-icons-round">{sm.pinned ? "keep_off" : "push_pin"}</span>
+                            </button>
+                            <button
+                              className={styles.actionBtn}
+                              onClick={() => handleArchiveStudyMemory(sm.id)}
+                              aria-label="Archive study memory"
+                              title="Archive"
+                            >
+                              <span className="material-icons-round">archive</span>
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -693,17 +839,43 @@ function MemoryPageContent() {
                     <span className={styles.preferenceKey}>{pref.key}</span>
                     <span className={styles.provenanceBadge}>
                       <span className="material-icons-round">
-                        {getProvenance(pref.tags).icon}
+                        {getProvenance(pref.tags, pref.source).icon}
                       </span>
-                      {getProvenance(pref.tags).label}
+                      {getProvenance(pref.tags, pref.source).label}
                     </span>
                   </div>
                   <p className={styles.preferenceValue}>{pref.value}</p>
+                  <TrustStrip
+                    source={pref.source}
+                    authority={pref.authority}
+                    polarity={pref.polarity}
+                    status={pref.status}
+                    confidence={pref.confidence}
+                    pinned={pref.pinned}
+                  />
                   {pref.rationale && (
                     <p className={styles.memoryRationale}>
                       <strong>Rationale:</strong> {pref.rationale}
                     </p>
                   )}
+                  <div className={styles.memoryActions}>
+                    <button
+                      className={styles.actionBtn}
+                      onClick={() => handleTogglePreferencePin(pref)}
+                      aria-label={pref.pinned ? "Unpin preference" : "Pin preference"}
+                      title={pref.pinned ? "Unpin" : "Pin"}
+                    >
+                      <span className="material-icons-round">{pref.pinned ? "keep_off" : "push_pin"}</span>
+                    </button>
+                    <button
+                      className={styles.actionBtn}
+                      onClick={() => handleArchiveUserPreference(pref.id)}
+                      aria-label="Archive preference"
+                      title="Archive"
+                    >
+                      <span className="material-icons-round">archive</span>
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -881,11 +1053,12 @@ function MemoryPageContent() {
                 resetForm();
               }}
             />
-            <div className={styles.modal}>
+            <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby="memory-modal-title">
               <div className={styles.modalHeader}>
-                <h2>{editingId ? "Edit Memory" : "Add Memory"}</h2>
+                <h2 id="memory-modal-title">{editingId ? "Edit Memory" : "Add Memory"}</h2>
                 <button
                   className={styles.closeBtn}
+                  aria-label="Close memory dialog"
                   onClick={() => {
                     setIsAddOpen(false);
                     setEditingId(null);

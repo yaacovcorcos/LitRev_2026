@@ -4,12 +4,13 @@
  */
 
 import "server-only";
+import { createHash } from "crypto";
 import { normalizeAssistantContent } from "@/lib/ai/normalize-assistant-content";
 import { prisma } from "@/lib/server/prisma";
 import { getAIService } from "@/lib/server/ai";
 import type { AIMessage } from "@/types/ai";
 import type { MemoryProposalPayload } from "@/types/artifacts";
-import { createProjectMemory, type ProjectMemoryCategory } from "./project-memory";
+import type { ProjectMemoryCategory, ProjectMemoryType } from "./project-memory";
 import { createArtifact } from "@/lib/server/agent/artifacts";
 
 const VALID_CATEGORIES: ProjectMemoryCategory[] = [
@@ -75,6 +76,12 @@ function looksTransientScopingSummary(statement: string): boolean {
     return SCOPING_TRANSIENT_PATTERNS.some((pattern) => pattern.test(statement));
 }
 
+function proposalSourceEventId(extractionMarker: string, kind: string, content: string): string {
+    const normalized = `${kind}:${content.trim().toLowerCase().replace(/\s+/g, " ")}`;
+    const digest = createHash("sha256").update(normalized).digest("hex").slice(0, 16);
+    return `${extractionMarker}:${kind}:${digest}`;
+}
+
 export interface ExtractionResult {
     decisions: { statement: string; category?: string; rationale?: string }[];
     preferences: { key: string; value: string; rationale?: string }[];
@@ -85,7 +92,7 @@ const EMPTY_RESULT: ExtractionResult = { decisions: [], preferences: [], facts: 
 
 /**
  * Extract memories from a completed conversation using a lightweight AI model.
- * Decisions and facts are auto-stored. Preferences are proposed as memory_proposal artifacts.
+ * Inferred memories are proposed for review instead of silently becoming durable truth.
  */
 export async function extractMemoriesFromConversation(
     conversationId: string,
@@ -97,7 +104,7 @@ export async function extractMemoriesFromConversation(
 
     // 0. Dedup guard — skip if this conversation was already extracted
     // ProjectMemory catches decision/fact extraction; artifact marker catches preference-only extraction.
-    const [existingMemoryExtraction, existingPreferenceExtraction] = await Promise.all([
+    const [existingMemoryExtraction, existingLegacyProposalExtraction] = await Promise.all([
         prisma.projectMemory.findFirst({
             where: { projectId, tags: { has: `conversation:${conversationId}` } },
             select: { id: true },
@@ -112,7 +119,7 @@ export async function extractMemoriesFromConversation(
             select: { id: true },
         }),
     ]);
-    if (existingMemoryExtraction || existingPreferenceExtraction) return EMPTY_RESULT;
+    if (existingMemoryExtraction || existingLegacyProposalExtraction) return EMPTY_RESULT;
 
     // 1. Fetch conversation messages
     const messages = await prisma.aIMessage.findMany({
@@ -174,58 +181,109 @@ export async function extractMemoriesFromConversation(
         return EMPTY_RESULT;
     }
 
-    // 5. Auto-store explicit decisions
-    for (const decision of parsed.decisions) {
-        if (!decision.statement) continue;
-        const cat = VALID_CATEGORIES.includes(decision.category as ProjectMemoryCategory)
-            ? (decision.category as ProjectMemoryCategory) : undefined;
-        await createProjectMemory({
+    if (!runId) {
+        return parsed;
+    }
+    const reviewRunId = runId;
+
+    async function createMemoryProposal(
+        title: string,
+        payload: MemoryProposalPayload,
+        sourceEventId: string,
+    ) {
+        const existingProposal = await prisma.artifact.findFirst({
+            where: {
+                projectId,
+                conversationId,
+                type: "memory_proposal",
+                sourceEventId,
+            },
+            select: { id: true },
+        });
+        if (existingProposal) return;
+
+        await createArtifact({
+            runId: reviewRunId,
             projectId,
-            type: "decision",
-            category: cat,
+            conversationId,
+            userId,
+            type: "memory_proposal",
+            title,
+            payload,
+            sourceEventId,
+        });
+    }
+
+    async function proposeProjectMemory(
+        payload: {
+            title: string;
+            sourceEventKind: string;
+            statement: string;
+            rationale?: string;
+            category?: string;
+            projectMemoryType: ProjectMemoryType;
+            confidence: number;
+        },
+    ) {
+        if (!payload.statement) return;
+        const cat = VALID_CATEGORIES.includes(payload.category as ProjectMemoryCategory)
+            ? (payload.category as ProjectMemoryCategory)
+            : undefined;
+        const proposalPayload: MemoryProposalPayload = {
+            memoryType: "project",
+            value: payload.statement,
+            rationale: payload.rationale,
+            projectMemoryType: payload.projectMemoryType,
+            projectMemoryCategory: cat,
+            confidence: payload.confidence,
+        };
+        await createMemoryProposal(
+            payload.title,
+            proposalPayload,
+            proposalSourceEventId(extractionMarker, payload.sourceEventKind, payload.statement),
+        );
+    }
+
+    // 5. Propose explicit decisions for review.
+    for (const decision of parsed.decisions) {
+        await proposeProjectMemory({
+            title: "Memory proposal: conversation decision",
+            sourceEventKind: "decision",
             statement: decision.statement,
             rationale: decision.rationale,
-            importance: "important",
-            tags: ["conversation-extracted", `conversation:${conversationId}`],
+            category: decision.category,
+            projectMemoryType: "decision",
+            confidence: 0.65,
         });
     }
 
-    // 6. Auto-store facts as definitions
+    // 6. Propose facts as definitions for review.
     for (const fact of parsed.facts) {
-        if (!fact.statement) continue;
-        const cat = VALID_CATEGORIES.includes(fact.category as ProjectMemoryCategory)
-            ? (fact.category as ProjectMemoryCategory) : undefined;
-        await createProjectMemory({
-            projectId,
-            type: "definition",
-            category: cat,
+        await proposeProjectMemory({
+            title: "Memory proposal: conversation fact",
+            sourceEventKind: "fact",
             statement: fact.statement,
-            importance: "normal",
-            tags: ["conversation-extracted", `conversation:${conversationId}`],
+            category: fact.category,
+            projectMemoryType: "definition",
+            confidence: 0.55,
         });
     }
 
-    // 7. Propose inferred preferences as memory_proposal artifacts
-    if (parsed.preferences.length > 0 && runId) {
+    // 7. Propose inferred preferences as memory_proposal artifacts.
+    if (parsed.preferences.length > 0) {
         for (const pref of parsed.preferences) {
+            if (!pref.key || !pref.value) continue;
             const payload: MemoryProposalPayload = {
                 memoryType: "user",
                 key: pref.key,
                 value: pref.value,
                 rationale: pref.rationale,
             };
-            await createArtifact({
-                runId,
-                projectId,
-                conversationId,
-                userId,
-                type: "memory_proposal",
-                title: `Preference: ${pref.key}`,
+            await createMemoryProposal(
+                `Preference: ${pref.key}`,
                 payload,
-                // Use sourceEventId as an extraction ledger marker so preference-only
-                // extractions are still idempotent (no ProjectMemory side-effects).
-                sourceEventId: extractionMarker,
-            });
+                proposalSourceEventId(extractionMarker, `preference:${pref.key}`, pref.value),
+            );
         }
     }
 

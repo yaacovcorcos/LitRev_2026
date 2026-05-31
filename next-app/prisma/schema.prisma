@@ -400,7 +400,11 @@ model UserMemory {
 
   // Lifecycle
   status             String    @default("active") // "active" | "archived"
-  source             String    @default("explicit") // "explicit" | "extracted" | "sync" | "decision"
+  source             String    @default("explicit_user") // "explicit_user" | "conversation_extraction" | "artifact_accept" | "system_sync" | "legacy"
+  authority          String    @default("confirmed") // "canonical" | "confirmed" | "inferred" | "proposed"
+  polarity           String    @default("affirming") // "affirming" | "rejecting" | "neutral"
+  sourceRefType      String?
+  sourceRefId        String?
   confidence         Float     @default(1)
   retrievalCount     Int       @default(0)
   usedInAnswerCount  Int       @default(0)
@@ -408,6 +412,8 @@ model UserMemory {
   rejectedCount      Int       @default(0)
   contradictionCount Int       @default(0)
   pinned             Boolean   @default(false)
+  embeddingStatus    String    @default("pending") // "pending" | "ready" | "failed"
+  lastUsedAt         DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
   archivedAt         DateTime?
@@ -422,6 +428,8 @@ model UserMemory {
   @@index([userId, status])
   @@index([userId, type])
   @@index([userId, pinned])
+  @@index([userId, authority, status])
+  @@index([userId, embeddingStatus])
 }
 
 // Project Memory - project-level goals, criteria, and decisions
@@ -431,6 +439,7 @@ model ProjectMemory {
 
   // Memory content
   type      String // "decision" | "definition" | "criterion" | "goal"
+  key       String?
   category  String? // "inclusion" | "exclusion" | "outcome" | "population"
   statement String // The actual memory content
   rationale String? // Why this decision was made
@@ -438,7 +447,11 @@ model ProjectMemory {
 
   // Lifecycle
   status             String    @default("active") // "active" | "revised" | "archived"
-  source             String    @default("decision") // "explicit" | "extracted" | "sync" | "decision"
+  source             String    @default("explicit_user") // "explicit_user" | "protocol_sync" | "artifact_accept" | "conversation_extraction" | "system_sync" | "legacy"
+  authority          String    @default("confirmed") // "canonical" | "confirmed" | "inferred" | "proposed"
+  polarity           String    @default("affirming") // "affirming" | "rejecting" | "neutral"
+  sourceRefType      String?
+  sourceRefId        String?
   confidence         Float     @default(1)
   retrievalCount     Int       @default(0)
   usedInAnswerCount  Int       @default(0)
@@ -446,6 +459,8 @@ model ProjectMemory {
   rejectedCount      Int       @default(0)
   contradictionCount Int       @default(0)
   pinned             Boolean   @default(false)
+  embeddingStatus    String    @default("pending") // "pending" | "ready" | "failed"
+  lastUsedAt         DateTime?
   version            Int       @default(1)
   supersededBy       String? // ID of newer version
   createdAt          DateTime  @default(now())
@@ -453,8 +468,9 @@ model ProjectMemory {
   archivedAt         DateTime?
 
   // For retrieval
-  tags       String[] @default([])
-  importance String   @default("normal") // "critical" | "important" | "normal"
+  tags           String[] @default([])
+  importance     String   @default("normal") // "critical" | "important" | "normal"
+  importanceRank Int      @default(10)
 
   // Relations
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -462,7 +478,12 @@ model ProjectMemory {
   @@index([projectId, status])
   @@index([projectId, type])
   @@index([projectId, importance])
+  @@index([projectId, importanceRank])
   @@index([projectId, pinned])
+  @@index([projectId, key])
+  @@index([projectId, authority, status])
+  @@index([projectId, source])
+  @@index([projectId, embeddingStatus])
 }
 
 // Study Memory - study-level facts and summaries
@@ -473,9 +494,15 @@ model StudyMemory {
 
   // Memory content
   type       String // "summary" | "finding" | "limitation" | "quality"
+  key        String?
   category   String? // "methods" | "results" | "bias" | "population"
   content    String // The extracted/generated content
-  source     String? // "ai_generated" | "user_input" | "extracted"
+  source     String? // "deep_analysis" | "artifact_accept" | "explicit_user" | "ai_generated" | "extracted" | "legacy"
+  authority  String  @default("inferred") // "canonical" | "confirmed" | "inferred" | "proposed"
+  polarity   String  @default("affirming") // "affirming" | "rejecting" | "neutral"
+  sourceRefType String?
+  sourceRefId   String?
+  locator    Json?
   confidence Float? // AI confidence score (0-1)
 
   // Lifecycle
@@ -486,8 +513,11 @@ model StudyMemory {
   rejectedCount      Int      @default(0)
   contradictionCount Int      @default(0)
   pinned             Boolean  @default(false)
+  embeddingStatus    String   @default("pending") // "pending" | "ready" | "failed"
+  lastUsedAt         DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+  archivedAt         DateTime?
 
   // For retrieval
   tags String[] @default([])
@@ -500,6 +530,10 @@ model StudyMemory {
   @@index([projectId, type])
   @@index([studyId, status])
   @@index([projectId, pinned])
+  @@index([projectId, key])
+  @@index([projectId, authority, status])
+  @@index([projectId, source])
+  @@index([projectId, embeddingStatus])
 }
 
 // Conversation Summary - compressed context for long conversations
@@ -541,10 +575,35 @@ model MemoryRetrieval {
   projectId String?
   createdAt DateTime @default(now())
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  items     MemoryRetrievalItem[]
 
   @@index([conversationId])
   @@index([projectId])
   @@index([createdAt])
+}
+
+model MemoryRetrievalItem {
+  id            String   @id @default(cuid())
+  retrievalId   String
+  memoryType    String // "user" | "project" | "study"
+  memoryId      String
+  rank          Int
+  finalScore    Float
+  lexicalScore  Float?
+  semanticScore Float?
+  deterministic Boolean  @default(false)
+  tokenEstimate Int
+  source        String?
+  authority     String?
+  usedInAnswer  Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  retrieval MemoryRetrieval @relation(fields: [retrievalId], references: [id], onDelete: Cascade)
+
+  @@index([retrievalId])
+  @@index([memoryType, memoryId])
+  @@index([source])
+  @@index([authority])
 }
 
 // Semantic embedding index for hybrid memory retrieval (pgvector-backed)

@@ -64,13 +64,34 @@ WHERE schemaname='public'
   AND indexname IN (
     'AIMessage_conversationId_createdAt_id_idx',
     'UserMemory_userId_pinned_idx',
+    'UserMemory_userId_authority_status_idx',
+    'UserMemory_userId_embeddingStatus_idx',
     'ProjectMemory_projectId_pinned_idx',
+    'ProjectMemory_projectId_importanceRank_idx',
+    'ProjectMemory_projectId_key_idx',
+    'ProjectMemory_projectId_authority_status_idx',
+    'ProjectMemory_projectId_source_idx',
+    'ProjectMemory_projectId_embeddingStatus_idx',
     'StudyMemory_projectId_pinned_idx',
+    'StudyMemory_projectId_key_idx',
+    'StudyMemory_projectId_authority_status_idx',
+    'StudyMemory_projectId_source_idx',
+    'StudyMemory_projectId_embeddingStatus_idx',
+    'MemoryRetrievalItem_retrievalId_idx',
+    'MemoryRetrievalItem_memoryType_memoryId_idx',
+    'MemoryRetrievalItem_source_idx',
+    'MemoryRetrievalItem_authority_idx',
     'MemoryEmbedding_embedding_hnsw_idx',
     'AgentRun_parentRunId_startedAt_idx',
     'AgentRun_rootRunId_startedAt_idx',
     'AgentRun_conversationId_startedAt_idx',
-    'AgentRun_conversationId_lastActivityAt_idx'
+    'AgentRun_conversationId_lastActivityAt_idx',
+    'AgentRun_conversationId_lastDurableProgressAt_idx',
+    'ToolIdempotencyRecord_scopeKey_toolName_fingerprint_key',
+    'ToolIdempotencyRecord_scopeKey_createdAt_idx',
+    'DecisionRequestRecord_sourceRunId_callId_key',
+    'DecisionRequestRecord_conversationId_status_createdAt_idx',
+    'DecisionResolutionRecord_requestId_key'
   )
 ORDER BY indexname;
 ```

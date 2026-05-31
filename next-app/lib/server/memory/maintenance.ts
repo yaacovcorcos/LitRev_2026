@@ -112,24 +112,35 @@ export async function runMemoryMaintenance(options: {
     const studyArchiveIds = studyRows.filter(shouldArchiveLowUtility).map((row) => row.id);
 
     if (!dryRun) {
-        if (userArchiveIds.length > 0) {
-            await prisma.userMemory.updateMany({
-                where: { id: { in: userArchiveIds } },
-                data: { status: "archived", archivedAt: new Date() },
-            });
-        }
-        if (projectArchiveIds.length > 0) {
-            await prisma.projectMemory.updateMany({
-                where: { id: { in: projectArchiveIds } },
-                data: { status: "archived", archivedAt: new Date() },
-            });
-        }
-        if (studyArchiveIds.length > 0) {
-            await prisma.studyMemory.updateMany({
-                where: { id: { in: studyArchiveIds } },
-                data: { status: "archived" },
-            });
-        }
+        await prisma.$transaction(async (tx) => {
+            if (userArchiveIds.length > 0) {
+                await tx.memoryEmbedding.deleteMany({
+                    where: { memoryType: "user", memoryId: { in: userArchiveIds } },
+                });
+                await tx.userMemory.updateMany({
+                    where: { id: { in: userArchiveIds } },
+                    data: { status: "archived", archivedAt: new Date(), embeddingStatus: "pending" },
+                });
+            }
+            if (projectArchiveIds.length > 0) {
+                await tx.memoryEmbedding.deleteMany({
+                    where: { memoryType: "project", memoryId: { in: projectArchiveIds } },
+                });
+                await tx.projectMemory.updateMany({
+                    where: { id: { in: projectArchiveIds } },
+                    data: { status: "archived", archivedAt: new Date(), embeddingStatus: "pending" },
+                });
+            }
+            if (studyArchiveIds.length > 0) {
+                await tx.memoryEmbedding.deleteMany({
+                    where: { memoryType: "study", memoryId: { in: studyArchiveIds } },
+                });
+                await tx.studyMemory.updateMany({
+                    where: { id: { in: studyArchiveIds } },
+                    data: { status: "archived", archivedAt: new Date(), embeddingStatus: "pending" },
+                });
+            }
+        });
     }
 
     return {
@@ -167,4 +178,3 @@ export async function runMemoryMaintenanceLoop(options: {
         return null;
     }
 }
-

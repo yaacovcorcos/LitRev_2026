@@ -32,7 +32,8 @@ export async function onStudyAccepted(
             projectId,
             type: "summary",
             content: payload.keyDetail || payload.abstract!.slice(0, 500),
-            source: "ai_generated",
+            source: "artifact_accept",
+            authority: "confirmed",
             confidence: payload.confidence,
             tags: ["artifact-decision", "study-accepted"],
         });
@@ -45,7 +46,8 @@ export async function onStudyAccepted(
             projectId,
             type: "methods",
             content: `Study design: ${payload.studyType}${payload.sampleSize ? `, n=${payload.sampleSize}` : ""}`,
-            source: "ai_generated",
+            source: "artifact_accept",
+            authority: "confirmed",
             confidence: payload.confidence,
             tags: ["artifact-decision", "study-accepted"],
         });
@@ -74,6 +76,9 @@ export async function onStudyExcluded(
         statement: `Excluded "${payload.title}" (${payload.authors}, ${payload.year})`,
         rationale,
         importance: "normal",
+        source: "artifact_accept",
+        authority: "confirmed",
+        polarity: "rejecting",
         tags: ["artifact-decision", "study-excluded"],
     });
 }
@@ -90,6 +95,8 @@ export async function onDraftAccepted(
         type: "decision",
         statement: `Accepted draft for section "${payload.section}"${payload.subsection ? ` / ${payload.subsection}` : ""} (${payload.wordCount} words, ${payload.citations.length} citations)`,
         importance: "normal",
+        source: "artifact_accept",
+        authority: "confirmed",
         tags: ["artifact-decision", "draft-accepted"],
     });
 }

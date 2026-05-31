@@ -22,16 +22,11 @@ vi.mock("@/lib/server/ai", () => ({
     getAIService: vi.fn(() => ({ chat: mockChat })),
 }));
 
-vi.mock("@/lib/server/memory/project-memory", () => ({
-    createProjectMemory: vi.fn().mockResolvedValue({ id: "pm-new" }),
-}));
-
 vi.mock("@/lib/server/agent/artifacts", () => ({
     createArtifact: vi.fn().mockResolvedValue({ id: "art-new" }),
 }));
 
 const { prisma } = await import("@/lib/server/prisma");
-const { createProjectMemory } = await import("@/lib/server/memory/project-memory");
 const { createArtifact } = await import("@/lib/server/agent/artifacts");
 const { getAIService } = await import("@/lib/server/ai");
 
@@ -41,7 +36,6 @@ type ArtifactLookupResult = Awaited<ReturnType<typeof prisma.artifact.findFirst>
 const mockFindMany = vi.mocked(prisma.aIMessage.findMany);
 const mockMemoryFindFirst = vi.mocked(prisma.projectMemory.findFirst);
 const mockArtifactFindFirst = vi.mocked(prisma.artifact.findFirst);
-const mockCreatePM = vi.mocked(createProjectMemory);
 const mockCreateArtifact = vi.mocked(createArtifact);
 
 function makeMessages(count: number) {
@@ -79,7 +73,7 @@ describe("extractMemoriesFromConversation", () => {
     it("calls AI with grok-4-1-fast model", async () => {
         mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
 
-        await extractMemoriesFromConversation("conv-1", "proj-1");
+        await extractMemoriesFromConversation("conv-1", "proj-1", "run-1", "user-1");
 
         expect(mockChat).toHaveBeenCalledWith(
             expect.any(Array),
@@ -87,29 +81,45 @@ describe("extractMemoriesFromConversation", () => {
         );
     });
 
-    it("creates ProjectMemory for each extracted decision", async () => {
+    it("does not persist inferred decisions or facts without a reviewable run", async () => {
         mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
 
-        await extractMemoriesFromConversation("conv-1", "proj-1");
+        const result = await extractMemoriesFromConversation("conv-1", "proj-1");
 
-        expect(mockCreatePM).toHaveBeenCalledWith(expect.objectContaining({
-            type: "decision",
-            statement: "Exclude case studies",
-            category: "exclusion",
-            rationale: "Low evidence",
-            importance: "important",
-        }));
+        expect(result.decisions).toHaveLength(1);
+        expect(result.facts).toHaveLength(1);
+        expect(mockCreateArtifact).not.toHaveBeenCalled();
     });
 
-    it("creates ProjectMemory (type: definition) for each fact", async () => {
+    it("creates reviewable project-memory proposals for extracted decisions and facts", async () => {
         mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
 
-        await extractMemoriesFromConversation("conv-1", "proj-1");
+        await extractMemoriesFromConversation("conv-1", "proj-1", "run-1", "user-1");
 
-        expect(mockCreatePM).toHaveBeenCalledWith(expect.objectContaining({
-            type: "definition",
-            statement: "Primary outcome is mortality",
-            category: "outcome",
+        expect(mockCreateArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            type: "memory_proposal",
+            title: "Memory proposal: conversation decision",
+            sourceEventId: expect.stringMatching(/^conversation-extractor:conv-1:decision:/),
+            payload: expect.objectContaining({
+                memoryType: "project",
+                value: "Exclude case studies",
+                rationale: "Low evidence",
+                projectMemoryType: "decision",
+                projectMemoryCategory: "exclusion",
+                confidence: 0.65,
+            }),
+        }));
+        expect(mockCreateArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            type: "memory_proposal",
+            title: "Memory proposal: conversation fact",
+            sourceEventId: expect.stringMatching(/^conversation-extractor:conv-1:fact:/),
+            payload: expect.objectContaining({
+                memoryType: "project",
+                value: "Primary outcome is mortality",
+                projectMemoryType: "definition",
+                projectMemoryCategory: "outcome",
+                confidence: 0.55,
+            }),
         }));
     });
 
@@ -121,7 +131,7 @@ describe("extractMemoriesFromConversation", () => {
         expect(mockCreateArtifact).toHaveBeenCalledWith(expect.objectContaining({
             type: "memory_proposal",
             title: "Preference: citation_style",
-            sourceEventId: "conversation-extractor:conv-1",
+            sourceEventId: expect.stringMatching(/^conversation-extractor:conv-1:preference:citation_style:/),
             payload: expect.objectContaining({
                 memoryType: "user",
                 key: "citation_style",
@@ -130,7 +140,7 @@ describe("extractMemoriesFromConversation", () => {
         }));
     });
 
-    it("skips extraction when preference artifacts already exist for the conversation", async () => {
+    it("skips extraction when proposal artifacts already exist for the conversation", async () => {
         mockMemoryFindFirst.mockResolvedValue(null);
         mockArtifactFindFirst.mockResolvedValue(asArtifactLookupResult({ id: "art-existing" }));
         mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
@@ -139,7 +149,6 @@ describe("extractMemoriesFromConversation", () => {
 
         expect(result).toEqual({ decisions: [], preferences: [], facts: [] });
         expect(mockChat).not.toHaveBeenCalled();
-        expect(mockCreatePM).not.toHaveBeenCalled();
         expect(mockCreateArtifact).not.toHaveBeenCalled();
     });
 
@@ -152,15 +161,30 @@ describe("extractMemoriesFromConversation", () => {
         expect(result).toEqual({ decisions: [], preferences: [], facts: [] });
     });
 
-    it("tags all created memories with conversation-extracted", async () => {
+    it("marks all conversation-extraction proposals with the same idempotency marker", async () => {
         mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
 
-        await extractMemoriesFromConversation("conv-1", "proj-1");
+        await extractMemoriesFromConversation("conv-1", "proj-1", "run-1", "user-1");
 
-        for (const call of mockCreatePM.mock.calls) {
-            expect(call[0].tags).toContain("conversation-extracted");
-            expect(call[0].tags).toContain("conversation:conv-1");
+        expect(mockCreateArtifact).toHaveBeenCalled();
+        for (const call of mockCreateArtifact.mock.calls) {
+            expect(call[0].sourceEventId).toMatch(/^conversation-extractor:conv-1:/);
         }
+    });
+
+    it("skips only the already-created proposal when retrying a partial extraction", async () => {
+        mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
+        mockArtifactFindFirst
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(asArtifactLookupResult({ id: "existing-decision-proposal" }))
+            .mockResolvedValue(null);
+
+        await extractMemoriesFromConversation("conv-1", "proj-1", "run-1", "user-1");
+
+        const titles = mockCreateArtifact.mock.calls.map((call) => call[0].title);
+        expect(titles).not.toContain("Memory proposal: conversation decision");
+        expect(titles).toContain("Memory proposal: conversation fact");
+        expect(titles).toContain("Preference: citation_style");
     });
 
     it("strips hidden scoping and mentioned-study metadata from assistant transcript before extraction", async () => {
@@ -172,7 +196,7 @@ describe("extractMemoriesFromConversation", () => {
             ...makeMessages(5),
         ]));
 
-        await extractMemoriesFromConversation("conv-1", "proj-1");
+        await extractMemoriesFromConversation("conv-1", "proj-1", "run-1", "user-1");
 
         const lastCall = mockChat.mock.calls.at(-1);
         expect(lastCall).toBeDefined();
@@ -198,12 +222,15 @@ describe("extractMemoriesFromConversation", () => {
             }),
         });
 
-        await extractMemoriesFromConversation("conv-1", "proj-1");
+        await extractMemoriesFromConversation("conv-1", "proj-1", "run-1", "user-1");
 
-        expect(mockCreatePM).toHaveBeenCalledTimes(1);
-        expect(mockCreatePM).toHaveBeenCalledWith(expect.objectContaining({
-            statement: "User chose to focus on adults over 65",
-            category: "population",
+        expect(mockCreateArtifact).toHaveBeenCalledTimes(1);
+        expect(mockCreateArtifact).toHaveBeenCalledWith(expect.objectContaining({
+            type: "memory_proposal",
+            payload: expect.objectContaining({
+                value: "User chose to focus on adults over 65",
+                projectMemoryCategory: "population",
+            }),
         }));
     });
 });

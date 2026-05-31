@@ -305,6 +305,15 @@ function createTx(store: Store) {
             }),
         },
         projectMemory: {
+            findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
+                const ids = (where.id as { in?: string[] } | undefined)?.in ?? [];
+                return cloneStore(store.projectMemories.filter((memory) => {
+                    if (ids.length > 0 && !ids.includes(String(memory.id))) return false;
+                    if (where.projectId && memory.projectId !== where.projectId) return false;
+                    if (where.status && memory.status !== where.status) return false;
+                    return true;
+                }));
+            }),
             update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
                 const memory = store.projectMemories.find((entry) => entry.id === where.id);
                 if (!memory) throw new Error("Project memory not found");
@@ -323,6 +332,9 @@ function createTx(store: Store) {
                 }
                 return { count };
             }),
+        },
+        memoryEmbedding: {
+            deleteMany: vi.fn(async () => ({ count: 0 })),
         },
         $executeRaw: vi.fn(async () => 1),
     };

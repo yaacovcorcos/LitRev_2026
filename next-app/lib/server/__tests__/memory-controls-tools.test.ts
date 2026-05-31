@@ -11,22 +11,22 @@ vi.mock("@/lib/server/memory/project-memory", () => ({
 }));
 
 vi.mock("@/lib/server/memory/study-memory", () => ({
-    getStudyMemories: vi.fn(),
+    getStudyMemoriesForProject: vi.fn(),
     getProjectStudyMemories: vi.fn(),
 }));
 
 const { getUserMemories } = await import("@/lib/server/memory/user-memory");
 const { getProjectMemories } = await import("@/lib/server/memory/project-memory");
-const { getStudyMemories, getProjectStudyMemories } = await import("@/lib/server/memory/study-memory");
+const { getStudyMemoriesForProject, getProjectStudyMemories } = await import("@/lib/server/memory/study-memory");
 
 type UserMemoriesResult = Awaited<ReturnType<typeof getUserMemories>>;
 type ProjectMemoriesResult = Awaited<ReturnType<typeof getProjectMemories>>;
-type StudyMemoriesResult = Awaited<ReturnType<typeof getStudyMemories>>;
+type StudyMemoriesResult = Awaited<ReturnType<typeof getStudyMemoriesForProject>>;
 type ProjectStudyMemoriesResult = Awaited<ReturnType<typeof getProjectStudyMemories>>;
 
 const mockGetUserMemories = vi.mocked(getUserMemories);
 const mockGetProjectMemories = vi.mocked(getProjectMemories);
-const mockGetStudyMemories = vi.mocked(getStudyMemories);
+const mockGetStudyMemories = vi.mocked(getStudyMemoriesForProject);
 const mockGetProjectStudyMemories = vi.mocked(getProjectStudyMemories);
 
 function asUserMemoriesResult(rows: unknown): UserMemoriesResult {
@@ -64,6 +64,10 @@ describe("memory control tools", () => {
                 type: "preference",
                 status: "active",
                 source: "explicit",
+                authority: "confirmed",
+                polarity: "affirming",
+                sourceRefType: null,
+                sourceRefId: null,
                 confidence: 1,
                 retrievalCount: 0,
                 usedInAnswerCount: 0,
@@ -71,6 +75,8 @@ describe("memory control tools", () => {
                 rejectedCount: 0,
                 contradictionCount: 0,
                 pinned: false,
+                embeddingStatus: "pending",
+                lastUsedAt: null,
                 tags: [],
                 rationale: null,
                 createdAt: new Date(),

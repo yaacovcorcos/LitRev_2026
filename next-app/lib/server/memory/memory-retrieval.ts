@@ -7,11 +7,19 @@ import { prisma } from "@/lib/server/prisma";
 import { Prisma } from "@prisma/client";
 import { getUserMemories } from "./user-memory";
 import { getProjectMemories, searchProjectMemories } from "./project-memory";
-import { getStudyMemories, searchStudyMemories } from "./study-memory";
+import { getStudyMemories, getStudyMemoriesForProject, searchStudyMemories } from "./study-memory";
 import { searchSemanticMemories } from "./semantic-memory";
 import { runMemoryMaintenanceLoop } from "./maintenance";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import { logServerWarn } from "@/lib/server/logging";
+import {
+    MEMORY_AUTHORITY_LABELS,
+    MEMORY_POLARITY_LABELS,
+    MEMORY_SOURCE_LABELS,
+    type MemoryAuthority,
+    type MemoryPolarity,
+    type MemorySource,
+} from "@/lib/memory-contracts";
 import type { AgentMode } from "@/types/agent";
 
 export interface MemoryContext {
@@ -33,7 +41,14 @@ export interface RetrievedMemory {
     relevance: number;
     updatedAt?: string;
     source?: string;
+    authority?: string;
+    polarity?: string;
     tags?: string[];
+    lexicalScore?: number;
+    semanticScore?: number;
+    deterministic?: boolean;
+    retrievalId?: string;
+    retrievalItemId?: string;
 }
 
 const HYBRID_VECTOR_WEIGHT = 0.7;
@@ -104,6 +119,10 @@ function likelyUsedInAnswer(memoryContent: string, answerText: string): boolean 
         if (overlap >= 2) return true;
     }
     return false;
+}
+
+function memoryKey(memory: Pick<RetrievedMemory, "type" | "id">): string {
+    return `${memory.type}:${memory.id}`;
 }
 
 // ── Relevance scoring ───────────────────────────────────────────────────────
@@ -252,7 +271,7 @@ function fuseMemoryLayers(
     const postDeterministicLimit = typeof maxMemories === "number"
         ? Math.max(0, maxMemories - deterministic.length)
         : Number.POSITIVE_INFINITY;
-    const deterministicIds = new Set(deterministic.map((m) => m.id));
+    const deterministicIds = new Set(deterministic.map(memoryKey));
     const fused = new Map<string, {
         memory: RetrievedMemory;
         lexical: number;
@@ -260,10 +279,11 @@ function fuseMemoryLayers(
     }>();
 
     for (const memory of keyword) {
-        if (deterministicIds.has(memory.id)) continue;
-        const existing = fused.get(memory.id);
+        const key = memoryKey(memory);
+        if (deterministicIds.has(key)) continue;
+        const existing = fused.get(key);
         if (!existing) {
-            fused.set(memory.id, {
+            fused.set(key, {
                 memory,
                 lexical: memory.relevance,
                 semantic: 0,
@@ -278,10 +298,11 @@ function fuseMemoryLayers(
     }
 
     for (const memory of semantic) {
-        if (deterministicIds.has(memory.id)) continue;
-        const existing = fused.get(memory.id);
+        const key = memoryKey(memory);
+        if (deterministicIds.has(key)) continue;
+        const existing = fused.get(key);
         if (!existing) {
-            fused.set(memory.id, {
+            fused.set(key, {
                 memory,
                 lexical: 0,
                 semantic: memory.relevance,
@@ -308,6 +329,9 @@ function fuseMemoryLayers(
             return {
                 ...entry.memory,
                 relevance: finalScore,
+                lexicalScore: entry.lexical,
+                semanticScore: entry.semantic,
+                deterministic: false,
             };
         })
         .sort((a, b) => b.relevance - a.relevance);
@@ -333,8 +357,9 @@ async function gatherDeterministicMemories(
     const seenIds = new Set<string>();
 
     function addMemory(mem: RetrievedMemory) {
-        if (!seenIds.has(mem.id)) {
-            seenIds.add(mem.id);
+        const key = memoryKey(mem);
+        if (!seenIds.has(key)) {
+            seenIds.add(key);
             deterministic.push(mem);
         }
     }
@@ -353,7 +378,11 @@ async function gatherDeterministicMemories(
                 content: `[${m.type}${m.category ? ` - ${m.category}` : ""}] ${m.statement}${m.rationale ? ` | Rationale: ${m.rationale}` : ""}`,
                 relevance: 1.5,
                 updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
+                source: m.source,
+                authority: m.authority,
+                polarity: m.polarity,
                 tags: m.tags,
+                deterministic: true,
             });
         }
     }
@@ -372,17 +401,23 @@ async function gatherDeterministicMemories(
                 content: `[${m.type}${m.category ? ` - ${m.category}` : ""}] ${m.statement}${m.rationale ? ` | Rationale: ${m.rationale}` : ""}`,
                 relevance: 1.3,
                 updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
+                source: m.source,
+                authority: m.authority,
+                polarity: m.polarity,
                 tags: m.tags,
+                deterministic: true,
             });
         }
     }
 
     // Rule 3 (drafting mode + cited studies): Include StudyMemories for cited studies
     if (context.agentMode === "drafting" && context.citedStudyIds?.length) {
+        if (!context.projectId) {
+            throw new Error("Project scope is required when retrieving memories for cited studies.");
+        }
         for (const studyId of context.citedStudyIds) {
-            const studyMems = await getStudyMemories(studyId, { status: "active" });
+            const studyMems = await getStudyMemoriesForProject(context.projectId, studyId, { status: "active" });
             for (const m of studyMems) {
-                if (context.projectId && m.projectId !== context.projectId) continue;
                 addMemory({
                     id: m.id,
                     type: "study",
@@ -391,7 +426,10 @@ async function gatherDeterministicMemories(
                     relevance: 1.2,
                     updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
                     source: m.source || undefined,
+                    authority: m.authority,
+                    polarity: m.polarity,
                     tags: m.tags,
+                    deterministic: true,
                 });
             }
         }
@@ -412,7 +450,11 @@ async function gatherDeterministicMemories(
                 content: `[${m.type} - ${m.category}] ${m.statement}${m.rationale ? ` | Rationale: ${m.rationale}` : ""}`,
                 relevance: 1.2,
                 updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
+                source: m.source,
+                authority: m.authority,
+                polarity: m.polarity,
                 tags: m.tags,
+                deterministic: true,
             });
         }
     }
@@ -427,7 +469,11 @@ async function gatherDeterministicMemories(
             content: `${m.key}: ${m.value}${m.rationale ? ` (${m.rationale})` : ""}`,
             relevance: 1.0,
             updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
+            source: m.source,
+            authority: m.authority,
+            polarity: m.polarity,
             tags: m.tags,
+            deterministic: true,
         });
     }
 
@@ -452,7 +498,7 @@ async function gatherKeywordMemories(
     if (opts.includeUser) {
         const userMemories = await getUserMemories(context.userId, { status: "active" });
         for (const m of userMemories) {
-            if (excludeIds.has(m.id)) continue;
+            if (excludeIds.has(memoryKey({ id: m.id, type: "user" }))) continue;
             const content = `${m.key}: ${m.value}${m.rationale ? ` (${m.rationale})` : ""}`;
             const relevance = calculateRelevance(query, content, m.tags);
             if (relevance >= opts.minRelevance) {
@@ -463,7 +509,11 @@ async function gatherKeywordMemories(
                     content,
                     relevance,
                     updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
+                    source: m.source,
+                    authority: m.authority,
+                    polarity: m.polarity,
                     tags: m.tags,
+                    lexicalScore: relevance,
                 });
             }
         }
@@ -474,7 +524,7 @@ async function gatherKeywordMemories(
             ? await searchProjectMemories(context.projectId, query)
             : await getProjectMemories(context.projectId, { status: "active" });
         for (const m of projectMemories) {
-            if (excludeIds.has(m.id)) continue;
+            if (excludeIds.has(memoryKey({ id: m.id, type: "project" }))) continue;
             const content = `[${m.type}${m.category ? ` - ${m.category}` : ""}] ${m.statement}${m.rationale ? ` | Rationale: ${m.rationale}` : ""}`;
             const relevance = calculateRelevance(query, content, m.tags)
                 * (m.importance === "critical" ? 1.5 : m.importance === "important" ? 1.2 : 1.0);
@@ -486,24 +536,34 @@ async function gatherKeywordMemories(
                     content,
                     relevance,
                     updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
+                    source: m.source,
+                    authority: m.authority,
+                    polarity: m.polarity,
                     tags: m.tags,
+                    lexicalScore: relevance,
                 });
             }
         }
     }
 
     if (opts.includeStudy && context.studyId) {
-        const studyMemories = await getStudyMemories(context.studyId, { status: "active" });
+        const studyMemories = context.projectId
+            ? await getStudyMemoriesForProject(context.projectId, context.studyId, { status: "active" })
+            : await getStudyMemories(context.studyId, { status: "active" });
         for (const m of studyMemories) {
             if (context.projectId && m.projectId !== context.projectId) continue;
-            if (excludeIds.has(m.id)) continue;
+            if (excludeIds.has(memoryKey({ id: m.id, type: "study" }))) continue;
             const content = `[${m.type}${m.category ? ` - ${m.category}` : ""}] ${m.content}`;
             const relevance = calculateRelevance(query, m.content, m.tags) * (m.confidence ?? 1.0);
             if (relevance >= opts.minRelevance) {
                 results.push({
                     id: m.id, type: "study", memoryType: m.type, content, relevance,
                     updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
-                    source: m.source || undefined, tags: m.tags,
+                    source: m.source || undefined,
+                    authority: m.authority,
+                    polarity: m.polarity,
+                    tags: m.tags,
+                    lexicalScore: relevance,
                 });
             }
         }
@@ -515,7 +575,7 @@ async function gatherKeywordMemories(
             : undefined);
 
         for (const m of scopedStudyMatches) {
-            if (excludeIds.has(m.id)) continue;
+            if (excludeIds.has(memoryKey({ id: m.id, type: "study" }))) continue;
             const content = `[${m.type}${m.category ? ` - ${m.category}` : ""}] ${m.content}`;
             const relevance = calculateRelevance(query, m.content, m.tags) * (m.confidence ?? 1.0);
             if (relevance >= opts.minRelevance) {
@@ -527,7 +587,10 @@ async function gatherKeywordMemories(
                     relevance,
                     updatedAt: toIsoDate((m as { updatedAt?: unknown }).updatedAt),
                     source: m.source || undefined,
+                    authority: m.authority,
+                    polarity: m.polarity,
                     tags: m.tags,
+                    lexicalScore: relevance,
                 });
             }
         }
@@ -548,7 +611,11 @@ async function gatherSemanticMemories(
     },
     excludeIds: Set<string>,
 ): Promise<RetrievedMemory[]> {
-    return searchSemanticMemories(context, opts, excludeIds);
+    const results = await searchSemanticMemories(context, opts, excludeIds);
+    return results.map((memory) => ({
+        ...memory,
+        semanticScore: memory.relevance,
+    }));
 }
 
 // ── Main retrieval ──────────────────────────────────────────────────────────
@@ -573,9 +640,13 @@ export async function retrieveMemories(
         memoryBudgetTokens = 2000,
     } = options || {};
 
+    if (context.citedStudyIds?.length && !context.projectId) {
+        throw new Error("Project scope is required when retrieving memories for cited studies.");
+    }
+
     // Phase 1: Deterministic scope rules
     const deterministic = await gatherDeterministicMemories(context);
-    const deterministicIds = new Set(deterministic.map((d) => d.id));
+    const deterministicIds = new Set(deterministic.map(memoryKey));
 
     // Phase 2: Keyword relevance (skip already-included IDs)
     const keyword = await gatherKeywordMemories(
@@ -588,7 +659,7 @@ export async function retrieveMemories(
     const semantic = await gatherSemanticMemories(
         context,
         { minRelevance, includeUser, includeProject, includeStudy },
-        new Set([...deterministicIds, ...keyword.map((k) => k.id)]),
+        deterministicIds,
     );
 
     const useAdvancedRerank = isAdvancedRetrievalRerankEnabled();
@@ -639,20 +710,28 @@ export async function retrieveMemories(
 
     // Log retrieval for audit trail
     if (trimmed.length > 0) {
-        await logMemoryRetrieval({
-            userId: context.userId,
-            projectId: context.projectId,
-            conversationId: context.conversationId,
-            query: context.query || "context-based",
-            memories: trimmed,
-        }).catch((error) => {
+        try {
+            const auditItems = await logMemoryRetrieval({
+                userId: context.userId,
+                projectId: context.projectId,
+                conversationId: context.conversationId,
+                query: context.query || "context-based",
+                memories: trimmed,
+            });
+            for (const memory of trimmed) {
+                const audit = auditItems.get(memoryKey(memory));
+                if (!audit) continue;
+                memory.retrievalId = audit.retrievalId;
+                memory.retrievalItemId = audit.retrievalItemId;
+            }
+        } catch (error) {
             logServerWarn("memory", "retrieval audit logging failed", {
                 userId: context.userId,
                 projectId: context.projectId ?? null,
                 conversationId: context.conversationId ?? null,
                 error: error instanceof Error ? error.message : String(error),
             });
-        });
+        }
         await incrementRetrievalCounters(trimmed).catch(() => {});
         await runMemoryMaintenanceLoop({ projectId: context.projectId, userId: context.userId }).catch(() => null);
     }
@@ -672,13 +751,15 @@ export async function markMemoriesUsedInAnswer(memories: RetrievedMemory[], answ
     const userIds = [...new Set(used.filter((m) => m.type === "user").map((m) => m.id))];
     const projectIds = [...new Set(used.filter((m) => m.type === "project").map((m) => m.id))];
     const studyIds = [...new Set(used.filter((m) => m.type === "study").map((m) => m.id))];
+    const retrievalItemIds = [...new Set(used.map((m) => m.retrievalItemId).filter((id): id is string => Boolean(id)))];
 
     const updates: Promise<unknown>[] = [];
     if (userIds.length > 0) {
         const values = userIds.map((id) => Prisma.sql`${id}`);
         updates.push(prisma.$executeRaw`
             UPDATE "UserMemory"
-            SET "usedInAnswerCount" = "usedInAnswerCount" + 1
+            SET "usedInAnswerCount" = "usedInAnswerCount" + 1,
+                "lastUsedAt" = NOW()
             WHERE "id" IN (${Prisma.join(values)})
         `);
     }
@@ -686,7 +767,8 @@ export async function markMemoriesUsedInAnswer(memories: RetrievedMemory[], answ
         const values = projectIds.map((id) => Prisma.sql`${id}`);
         updates.push(prisma.$executeRaw`
             UPDATE "ProjectMemory"
-            SET "usedInAnswerCount" = "usedInAnswerCount" + 1
+            SET "usedInAnswerCount" = "usedInAnswerCount" + 1,
+                "lastUsedAt" = NOW()
             WHERE "id" IN (${Prisma.join(values)})
         `);
     }
@@ -694,9 +776,16 @@ export async function markMemoriesUsedInAnswer(memories: RetrievedMemory[], answ
         const values = studyIds.map((id) => Prisma.sql`${id}`);
         updates.push(prisma.$executeRaw`
             UPDATE "StudyMemory"
-            SET "usedInAnswerCount" = "usedInAnswerCount" + 1
+            SET "usedInAnswerCount" = "usedInAnswerCount" + 1,
+                "lastUsedAt" = NOW()
             WHERE "id" IN (${Prisma.join(values)})
         `);
+    }
+    if (retrievalItemIds.length > 0) {
+        updates.push(prisma.memoryRetrievalItem.updateMany({
+            where: { id: { in: retrievalItemIds } },
+            data: { usedInAnswer: true },
+        }));
     }
     if (updates.length > 0) await Promise.all(updates);
 }
@@ -709,7 +798,8 @@ async function logMemoryRetrieval(input: {
     conversationId?: string;
     query: string;
     memories: RetrievedMemory[];
-}) {
+}): Promise<Map<string, { retrievalId: string; retrievalItemId: string }>> {
+    const auditItems = new Map<string, { retrievalId: string; retrievalItemId: string }>();
     const memoryIdsByType = input.memories.reduce(
         (acc, mem) => {
             if (!acc[mem.type]) acc[mem.type] = [];
@@ -720,7 +810,8 @@ async function logMemoryRetrieval(input: {
     );
 
     for (const [memoryType, ids] of Object.entries(memoryIdsByType)) {
-        await prisma.memoryRetrieval.create({
+        const memories = input.memories.filter((memory) => memory.type === memoryType);
+        const created = await prisma.memoryRetrieval.create({
             data: {
                 conversationId: input.conversationId,
                 query: input.query,
@@ -729,9 +820,40 @@ async function logMemoryRetrieval(input: {
                 resultCount: ids.length,
                 userId: input.userId,
                 projectId: input.projectId,
+                items: {
+                    create: memories.map((memory, index) => ({
+                        memoryType,
+                        memoryId: memory.id,
+                        rank: index + 1,
+                        finalScore: memory.relevance,
+                        lexicalScore: memory.lexicalScore,
+                        semanticScore: memory.semanticScore,
+                        deterministic: memory.deterministic ?? false,
+                        tokenEstimate: estimateTokens(memory.content),
+                        source: memory.source,
+                        authority: memory.authority,
+                    })),
+                },
+            },
+            include: {
+                items: {
+                    select: {
+                        id: true,
+                        retrievalId: true,
+                        memoryType: true,
+                        memoryId: true,
+                    },
+                },
             },
         });
+        for (const item of created.items ?? []) {
+            auditItems.set(`${item.memoryType}:${item.memoryId}`, {
+                retrievalId: item.retrievalId,
+                retrievalItemId: item.id,
+            });
+        }
     }
+    return auditItems;
 }
 
 async function incrementRetrievalCounters(memories: RetrievedMemory[]) {
@@ -745,7 +867,8 @@ async function incrementRetrievalCounters(memories: RetrievedMemory[]) {
         updates.push(
             prisma.$executeRaw`
                 UPDATE "UserMemory"
-                SET "retrievalCount" = "retrievalCount" + 1
+                SET "retrievalCount" = "retrievalCount" + 1,
+                    "lastUsedAt" = NOW()
                 WHERE "id" IN (${Prisma.join(userIdValues)})
             `,
         );
@@ -755,7 +878,8 @@ async function incrementRetrievalCounters(memories: RetrievedMemory[]) {
         updates.push(
             prisma.$executeRaw`
                 UPDATE "ProjectMemory"
-                SET "retrievalCount" = "retrievalCount" + 1
+                SET "retrievalCount" = "retrievalCount" + 1,
+                    "lastUsedAt" = NOW()
                 WHERE "id" IN (${Prisma.join(projectIdValues)})
             `,
         );
@@ -765,7 +889,8 @@ async function incrementRetrievalCounters(memories: RetrievedMemory[]) {
         updates.push(
             prisma.$executeRaw`
                 UPDATE "StudyMemory"
-                SET "retrievalCount" = "retrievalCount" + 1
+                SET "retrievalCount" = "retrievalCount" + 1,
+                    "lastUsedAt" = NOW()
                 WHERE "id" IN (${Prisma.join(studyIdValues)})
             `,
         );
@@ -778,6 +903,43 @@ async function incrementRetrievalCounters(memories: RetrievedMemory[]) {
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
+function hasOwnLabel<T extends string>(
+    labels: Record<T, string>,
+    value: string | undefined,
+): value is T {
+    return Boolean(value && Object.prototype.hasOwnProperty.call(labels, value));
+}
+
+function isKnownMemoryAuthority(value: string | undefined): value is MemoryAuthority {
+    return hasOwnLabel(MEMORY_AUTHORITY_LABELS, value);
+}
+
+function isKnownMemorySource(value: string | undefined): value is MemorySource {
+    return hasOwnLabel(MEMORY_SOURCE_LABELS, value);
+}
+
+function isKnownMemoryPolarity(value: string | undefined): value is MemoryPolarity {
+    return hasOwnLabel(MEMORY_POLARITY_LABELS, value);
+}
+
+function formatMemoryProvenance(memory: RetrievedMemory): string {
+    const labels: string[] = [];
+    if (isKnownMemoryAuthority(memory.authority)) {
+        labels.push(MEMORY_AUTHORITY_LABELS[memory.authority]);
+    }
+    if (isKnownMemorySource(memory.source)) {
+        labels.push(MEMORY_SOURCE_LABELS[memory.source]);
+    }
+    if (isKnownMemoryPolarity(memory.polarity) && memory.polarity !== "affirming") {
+        labels.push(MEMORY_POLARITY_LABELS[memory.polarity]);
+    }
+    return labels.length > 0 ? `[${labels.join(" / ")}] ` : "";
+}
+
+function formatMemoryLine(memory: RetrievedMemory): string {
+    return `- ${formatMemoryProvenance(memory)}${memory.content}`;
+}
+
 export function formatMemoriesForContext(memories: RetrievedMemory[]): string {
     if (memories.length === 0) return "";
 
@@ -788,16 +950,16 @@ export function formatMemoriesForContext(memories: RetrievedMemory[]): string {
     const sections: string[] = [];
 
     if (userMemories.length > 0) {
-        sections.push(`User Preferences:\n${userMemories.map((m) => `- ${m.content}`).join("\n")}`);
+        sections.push(`User Preferences:\n${userMemories.map(formatMemoryLine).join("\n")}`);
     }
     if (projectMemories.length > 0) {
-        sections.push(`Project Context:\n${projectMemories.map((m) => `- ${m.content}`).join("\n")}`);
+        sections.push(`Project Context:\n${projectMemories.map(formatMemoryLine).join("\n")}`);
     }
     if (studyMemories.length > 0) {
-        sections.push(`Study Information:\n${studyMemories.map((m) => `- ${m.content}`).join("\n")}`);
+        sections.push(`Study Information:\n${studyMemories.map(formatMemoryLine).join("\n")}`);
     }
 
-    return `\n\n## Relevant Memory\nThe following is from previous conversations and project data. Use these to inform your response — reference user decisions naturally when relevant but do not repeat this list back to the user.\n\n${sections.join("\n\n")}\n`;
+    return `\n\n## Relevant Memory\nThe following is from previous conversations and project data. Each item may include compact provenance labels. Treat Canonical/Confirmed items as stronger than Inferred/Proposed items, and treat Rejecting items as ruled-out or negative memory rather than instructions to follow. Use these to inform your response — reference user decisions naturally when relevant but do not repeat this list back to the user.\n\n${sections.join("\n\n")}\n`;
 }
 
 /**

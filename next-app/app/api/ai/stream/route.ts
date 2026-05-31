@@ -35,7 +35,10 @@ import {
     deriveChatUnificationSurface,
 } from "@/lib/server/ai/chat-unification-runtime-metrics";
 import type { ContextCaptureTarget } from "@/types/context-capture";
-import { buildContextCapturePromptBlock } from "@/lib/server/ai/context-capture";
+import {
+    buildContextCapturePromptBlock,
+    rehydrateContextCaptureTargets,
+} from "@/lib/server/ai/context-capture";
 import { logServerError, logServerWarn } from "@/lib/server/logging";
 import { resolveRequestedContinuation } from "@/lib/server/agent/requested-continuation";
 import { settleClarificationDismissedRun } from "@/lib/server/agent/run";
@@ -243,8 +246,25 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        const contextCapturePrompt = contextTargets.length > 0
-            ? buildContextCapturePromptBlock(contextTargets)
+        let rehydratedContextTargets: ContextCaptureTarget[] = [];
+        if (contextTargets.length > 0 && scopedProjectId) {
+            try {
+                rehydratedContextTargets = await rehydrateContextCaptureTargets(contextTargets, {
+                    ownerId: authResult.context.userId,
+                    workspaceId: authResult.context.workspaceId,
+                    projectId: scopedProjectId,
+                    conversationId: options?.conversationId,
+                });
+            } catch {
+                return new Response(
+                    JSON.stringify({ error: "Context capture target not found or access denied" }),
+                    { status: 403, headers: { "Content-Type": "application/json" } },
+                );
+            }
+        }
+
+        const contextCapturePrompt = rehydratedContextTargets.length > 0
+            ? buildContextCapturePromptBlock(rehydratedContextTargets)
             : "";
 
         const service = getAIService();

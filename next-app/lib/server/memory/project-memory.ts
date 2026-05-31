@@ -5,6 +5,17 @@
 
 import { prisma } from "@/lib/server/prisma";
 import type { Prisma } from "@prisma/client";
+import {
+    authorityFromSource,
+    extractMemoryKeyFromTags,
+    normalizeMemoryAuthority,
+    normalizeMemoryPolarity,
+    projectImportanceRank,
+    sourceFromTags,
+    type MemoryAuthority,
+    type MemoryPolarity,
+    type MemorySource,
+} from "@/lib/memory-contracts";
 
 type ProjectMemoryDbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -16,21 +27,126 @@ export type ProjectMemoryImportance = "critical" | "important" | "normal";
 export interface CreateProjectMemoryInput {
     projectId: string;
     type: ProjectMemoryType;
+    key?: string;
     statement: string;
     category?: ProjectMemoryCategory;
     rationale?: string;
     context?: string;
     tags?: string[];
     importance?: ProjectMemoryImportance;
+    source?: MemorySource;
+    authority?: MemoryAuthority;
+    polarity?: MemoryPolarity;
+    sourceRefType?: string;
+    sourceRefId?: string;
+    confidence?: number;
+    pinned?: boolean;
 }
 
 export interface UpdateProjectMemoryInput {
+    key?: string;
     statement?: string;
     rationale?: string;
     context?: string;
     tags?: string[];
     importance?: ProjectMemoryImportance;
     status?: ProjectMemoryStatus;
+    source?: MemorySource;
+    authority?: MemoryAuthority;
+    polarity?: MemoryPolarity;
+    sourceRefType?: string;
+    sourceRefId?: string;
+    confidence?: number;
+    pinned?: boolean;
+}
+
+function normalizeMemoryKey(value: string | null | undefined): string | undefined {
+    const key = value?.trim();
+    return key || undefined;
+}
+
+function withKeyTag(tags: string[] | undefined, key: string | undefined): string[] {
+    const existing = tags ?? [];
+    if (!key) return existing;
+    const keyTag = `memory-key:${key}`;
+    return existing.includes(keyTag) ? existing : [...existing, keyTag];
+}
+
+function createProjectMemoryData(input: CreateProjectMemoryInput): Prisma.ProjectMemoryUncheckedCreateInput {
+    const key = normalizeMemoryKey(input.key ?? extractMemoryKeyFromTags(input.tags));
+    const tags = withKeyTag(input.tags, key);
+    const source = sourceFromTags(tags, input.source ?? "explicit_user");
+    const authority = input.authority ?? authorityFromSource(source);
+    const importance = input.importance ?? "normal";
+
+    return {
+        projectId: input.projectId,
+        type: input.type,
+        key,
+        statement: input.statement,
+        category: input.category,
+        rationale: input.rationale,
+        context: input.context,
+        tags,
+        importance,
+        importanceRank: projectImportanceRank(importance),
+        source,
+        authority,
+        polarity: input.polarity ?? "affirming",
+        sourceRefType: input.sourceRefType,
+        sourceRefId: input.sourceRefId,
+        confidence: input.confidence ?? 1,
+        pinned: input.pinned ?? false,
+        embeddingStatus: "pending",
+    };
+}
+
+function updateProjectMemoryData(
+    input: UpdateProjectMemoryInput,
+    existing: {
+        key: string | null;
+        tags: string[];
+        source: string;
+        authority: string;
+    },
+): Prisma.ProjectMemoryUncheckedUpdateInput {
+    const key = input.key !== undefined ? normalizeMemoryKey(input.key) : normalizeMemoryKey(existing.key);
+    const tags = input.tags !== undefined || input.key !== undefined
+        ? withKeyTag(input.tags ?? existing.tags, key)
+        : undefined;
+    const source = input.source !== undefined || input.tags !== undefined
+        ? sourceFromTags(tags ?? existing.tags, input.source ?? existing.source)
+        : undefined;
+    const authority = input.authority !== undefined
+        ? normalizeMemoryAuthority(input.authority)
+        : source !== undefined
+            ? authorityFromSource(source, existing.authority)
+            : undefined;
+    const data: Prisma.ProjectMemoryUncheckedUpdateInput = {
+        ...input,
+        ...(input.key !== undefined ? { key } : {}),
+        ...(tags !== undefined ? { tags } : {}),
+        ...(input.importance !== undefined ? { importanceRank: projectImportanceRank(input.importance) } : {}),
+        ...(source !== undefined ? { source } : {}),
+        ...(authority !== undefined ? { authority } : {}),
+        ...(input.polarity !== undefined ? { polarity: normalizeMemoryPolarity(input.polarity) } : {}),
+        ...(input.status === "archived" ? { archivedAt: new Date() } : {}),
+        ...(input.status === "active" ? { archivedAt: null } : {}),
+    };
+
+    if (
+        input.statement !== undefined
+        || input.rationale !== undefined
+        || input.context !== undefined
+        || input.tags !== undefined
+        || input.source !== undefined
+        || input.authority !== undefined
+        || input.polarity !== undefined
+    ) {
+        data.embeddingStatus = "pending";
+    }
+
+    return data;
 }
 
 /**
@@ -45,7 +161,7 @@ export async function createProjectMemoryWithDb(
     input: CreateProjectMemoryInput,
 ) {
     return db.projectMemory.create({
-        data: input,
+        data: createProjectMemoryData(input),
     });
 }
 
@@ -68,6 +184,7 @@ export async function getProjectMemories(
         category?: ProjectMemoryCategory;
         status?: ProjectMemoryStatus;
         importance?: ProjectMemoryImportance;
+        authority?: MemoryAuthority;
         tags?: string[];
     },
     db: ProjectMemoryDbClient = prisma,
@@ -79,12 +196,13 @@ export async function getProjectMemories(
             category: options?.category,
             status: options?.status ?? "active",
             importance: options?.importance,
+            authority: options?.authority,
             ...(options?.tags?.length
                 ? { tags: { hasSome: options.tags } }
                 : {}),
         },
         orderBy: [
-            { importance: "desc" },
+            { importanceRank: "desc" },
             { updatedAt: "desc" },
         ],
     });
@@ -98,6 +216,18 @@ export async function updateProjectMemory(
     input: UpdateProjectMemoryInput,
     db: ProjectMemoryDbClient = prisma,
 ) {
+    if (db === prisma) {
+        return prisma.$transaction((tx) => updateProjectMemoryInDb(tx, id, input));
+    }
+
+    return updateProjectMemoryInDb(db, id, input);
+}
+
+async function updateProjectMemoryInDb(
+    db: ProjectMemoryDbClient,
+    id: string,
+    input: UpdateProjectMemoryInput,
+) {
     const existing = await db.projectMemory.findUnique({
         where: { id },
     });
@@ -108,25 +238,48 @@ export async function updateProjectMemory(
 
     // If statement changed and status is active, create new version
     if (input.statement && input.statement !== existing.statement && existing.status === "active") {
-        // Mark old version as revised
-        await db.projectMemory.update({
-            where: { id },
-            data: { status: "revised" },
+        const newKey = normalizeMemoryKey(input.key ?? existing.key ?? extractMemoryKeyFromTags(existing.tags));
+        const newTags = withKeyTag(input.tags ?? existing.tags, newKey);
+        const source = sourceFromTags(newTags, input.source ?? existing.source);
+        const importance = input.importance ?? (existing.importance as ProjectMemoryImportance);
+        const created = await db.projectMemory.create({
+            data: createProjectMemoryData({
+                projectId: existing.projectId,
+                type: existing.type as ProjectMemoryType,
+                key: newKey,
+                category: existing.category as ProjectMemoryCategory | undefined,
+                statement: input.statement,
+                rationale: input.rationale ?? existing.rationale ?? undefined,
+                context: input.context ?? existing.context ?? undefined,
+                tags: newTags,
+                importance,
+                source,
+                authority: input.authority ?? normalizeMemoryAuthority(existing.authority),
+                polarity: input.polarity ?? normalizeMemoryPolarity(existing.polarity),
+                sourceRefType: input.sourceRefType ?? existing.sourceRefType ?? undefined,
+                sourceRefId: input.sourceRefId ?? existing.sourceRefId ?? undefined,
+                confidence: input.confidence ?? existing.confidence,
+                pinned: input.pinned ?? existing.pinned,
+            }),
         });
 
-        // Create new version
-        return db.projectMemory.create({
+        await db.memoryEmbedding.deleteMany({
+            where: { memoryType: "project", memoryId: id },
+        });
+
+        await db.projectMemory.update({
+            where: { id },
             data: {
-                projectId: existing.projectId,
-                type: existing.type,
-                category: existing.category,
-                statement: input.statement,
-                rationale: input.rationale ?? existing.rationale,
-                context: input.context ?? existing.context,
-                tags: input.tags ?? existing.tags,
-                importance: input.importance ?? existing.importance,
+                status: "revised",
+                supersededBy: created.id,
+                embeddingStatus: "pending",
+            },
+        });
+
+        return db.projectMemory.update({
+            where: { id: created.id },
+            data: {
                 version: existing.version + 1,
-                supersededBy: existing.id,
             },
         });
     }
@@ -134,12 +287,7 @@ export async function updateProjectMemory(
     // Otherwise just update in place
     return db.projectMemory.update({
         where: { id },
-        data: {
-            ...input,
-            ...(input.status === "archived"
-                ? { archivedAt: new Date() }
-                : {}),
-        },
+        data: updateProjectMemoryData(input, existing),
     });
 }
 
@@ -154,21 +302,36 @@ export async function archiveProjectMemoryWithDb(
     db: ProjectMemoryDbClient,
     id: string,
 ) {
-    return db.projectMemory.update({
-        where: { id },
-        data: {
-            status: "archived",
-            archivedAt: new Date(),
-        },
-    });
+    const run = async (client: ProjectMemoryDbClient) => {
+        await client.memoryEmbedding.deleteMany({
+            where: { memoryType: "project", memoryId: id },
+        });
+        return client.projectMemory.update({
+            where: { id },
+            data: {
+                status: "archived",
+                archivedAt: new Date(),
+                embeddingStatus: "pending",
+            },
+        });
+    };
+    if (db === prisma) {
+        return prisma.$transaction((tx) => run(tx));
+    }
+    return run(db);
 }
 
 /**
  * Delete a project memory permanently
  */
 export async function deleteProjectMemory(id: string) {
-    return prisma.projectMemory.delete({
-        where: { id },
+    return prisma.$transaction(async (tx) => {
+        await tx.memoryEmbedding.deleteMany({
+            where: { memoryType: "project", memoryId: id },
+        });
+        return tx.projectMemory.delete({
+            where: { id },
+        });
     });
 }
 
@@ -189,7 +352,7 @@ export async function searchProjectMemories(projectId: string, query: string) {
             ],
         },
         orderBy: [
-            { importance: "desc" },
+            { importanceRank: "desc" },
             { updatedAt: "desc" },
         ],
     });
@@ -205,7 +368,19 @@ export async function getProjectMemoryHistory(id: string) {
 
     if (!memory) return [];
 
-    // Find all versions in the chain
+    const key = normalizeMemoryKey(memory.key ?? extractMemoryKeyFromTags(memory.tags));
+    if (key) {
+        return prisma.projectMemory.findMany({
+            where: {
+                projectId: memory.projectId,
+                key,
+            },
+            orderBy: { version: "desc" },
+        });
+    }
+
+    // Find direct neighbors in the version chain. New rows are pointed to by
+    // older rows through supersededBy, so include both directions.
     return prisma.projectMemory.findMany({
         where: {
             projectId: memory.projectId,
@@ -213,6 +388,7 @@ export async function getProjectMemoryHistory(id: string) {
             OR: [
                 { id },
                 { supersededBy: id },
+                ...(memory.supersededBy ? [{ id: memory.supersededBy }] : []),
             ],
         },
         orderBy: { version: "desc" },

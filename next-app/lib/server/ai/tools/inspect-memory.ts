@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { getUserMemories } from "@/lib/server/memory/user-memory";
 import { getProjectMemories } from "@/lib/server/memory/project-memory";
-import { getProjectStudyMemories, getStudyMemories } from "@/lib/server/memory/study-memory";
+import { getProjectStudyMemories, getStudyMemoriesForProject } from "@/lib/server/memory/study-memory";
 import { normalizedMemoryKey, normalizedMemoryValue } from "@/lib/server/memory/conflict-policy";
 
 const inputSchema = z.object({
@@ -14,10 +14,12 @@ const inputSchema = z.object({
 const outputSchema = z.object({
     summary: z.string(),
     memories: z.array(z.object({
-        id: z.string(),
-        memoryType: z.enum(["user", "project", "study"]),
-        key: z.string(),
-        value: z.string(),
+                id: z.string(),
+                memoryType: z.enum(["user", "project", "study"]),
+                key: z.string(),
+                value: z.string(),
+                source: z.string().optional(),
+                authority: z.string().optional(),
     })),
 });
 
@@ -62,7 +64,7 @@ export const inspectMemoryTool: AITool = {
         const memoryType = (args.memoryType as "all" | "user" | "project" | "study") || "all";
         const normalizedKeyFilter = typeof args.key === "string" ? normalizedMemoryKey(args.key) : "";
         const limit = typeof args.limit === "number" ? Math.min(Math.max(Math.floor(args.limit), 1), 25) : 10;
-        const rows: Array<{ id: string; memoryType: "user" | "project" | "study"; key: string; value: string }> = [];
+        const rows: Array<{ id: string; memoryType: "user" | "project" | "study"; key: string; value: string; source?: string; authority?: string }> = [];
 
         const includeUser = memoryType === "all" || memoryType === "user";
         const includeProject = memoryType === "all" || memoryType === "project";
@@ -77,6 +79,8 @@ export const inspectMemoryTool: AITool = {
                     memoryType: "user",
                     key: memory.key,
                     value: memory.value,
+                    source: memory.source,
+                    authority: memory.authority,
                 });
             }
         }
@@ -91,13 +95,15 @@ export const inspectMemoryTool: AITool = {
                     memoryType: "project",
                     key,
                     value: memory.statement,
+                    source: memory.source,
+                    authority: memory.authority,
                 });
             }
         }
 
         if (includeStudy) {
-            const studyMemories = context?.studyId
-                ? await getStudyMemories(context.studyId, { status: "active" })
+            const studyMemories = context?.studyId && context?.projectId
+                ? await getStudyMemoriesForProject(context.projectId, context.studyId, { status: "active" })
                 : context?.projectId
                     ? await getProjectStudyMemories(context.projectId)
                     : [];
@@ -109,6 +115,8 @@ export const inspectMemoryTool: AITool = {
                     memoryType: "study",
                     key,
                     value: normalizedMemoryValue(memory.content),
+                    source: memory.source || undefined,
+                    authority: memory.authority,
                 });
             }
         }
@@ -127,4 +135,3 @@ export const inspectMemoryTool: AITool = {
         };
     },
 };
-

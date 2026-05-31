@@ -191,6 +191,10 @@ export interface MemoryProposalPayload {
     key?: string;
     value: string;
     rationale?: string;
+    projectMemoryType?: "decision" | "definition" | "criterion" | "goal";
+    projectMemoryCategory?: "inclusion" | "exclusion" | "outcome" | "population" | "intervention" | "comparison";
+    polarity?: "affirming" | "rejecting" | "neutral";
+    confidence?: number;
 }
 
 export interface MemoryForgetMatch {
@@ -371,6 +375,10 @@ export const MemoryProposalSchema = z.object({
     key: z.string().optional(),
     value: z.string().min(1),
     rationale: z.string().optional(),
+    projectMemoryType: z.enum(["decision", "definition", "criterion", "goal"]).optional(),
+    projectMemoryCategory: z.enum(["inclusion", "exclusion", "outcome", "population", "intervention", "comparison"]).optional(),
+    polarity: z.enum(["affirming", "rejecting", "neutral"]).optional(),
+    confidence: z.number().min(0).max(1).optional(),
 });
 
 export const MemoryForgetProposalSchema = z.object({

@@ -1,19 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runMemoryMaintenance, utilityScore, shouldArchiveLowUtility } from "../memory/maintenance";
 
+const prismaMocks = vi.hoisted(() => {
+    const mocks = {
+        userFindMany: vi.fn(),
+        userUpdateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        projectFindMany: vi.fn(),
+        projectUpdateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        studyFindMany: vi.fn(),
+        studyUpdateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        memoryEmbeddingDeleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        transaction: vi.fn(),
+    };
+
+    mocks.transaction = vi.fn(async (callback) => callback({
+        memoryEmbedding: { deleteMany: mocks.memoryEmbeddingDeleteMany },
+        userMemory: { updateMany: mocks.userUpdateMany },
+        projectMemory: { updateMany: mocks.projectUpdateMany },
+        studyMemory: { updateMany: mocks.studyUpdateMany },
+    }));
+
+    return mocks;
+});
+
 vi.mock("@/lib/server/prisma", () => ({
     prisma: {
+        $transaction: prismaMocks.transaction,
+        memoryEmbedding: {
+            deleteMany: prismaMocks.memoryEmbeddingDeleteMany,
+        },
         userMemory: {
-            findMany: vi.fn(),
-            updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+            findMany: prismaMocks.userFindMany,
+            updateMany: prismaMocks.userUpdateMany,
         },
         projectMemory: {
-            findMany: vi.fn(),
-            updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+            findMany: prismaMocks.projectFindMany,
+            updateMany: prismaMocks.projectUpdateMany,
         },
         studyMemory: {
-            findMany: vi.fn(),
-            updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+            findMany: prismaMocks.studyFindMany,
+            updateMany: prismaMocks.studyUpdateMany,
         },
     },
 }));
@@ -29,6 +55,7 @@ const mockProjectFindMany = vi.mocked(prisma.projectMemory.findMany);
 const mockStudyFindMany = vi.mocked(prisma.studyMemory.findMany);
 const mockUserUpdateMany = vi.mocked(prisma.userMemory.updateMany);
 const mockProjectUpdateMany = vi.mocked(prisma.projectMemory.updateMany);
+const mockMemoryEmbeddingDeleteMany = vi.mocked(prisma.memoryEmbedding.deleteMany);
 
 function asUserFindManyResult(rows: unknown): UserFindManyResult {
     return rows as UserFindManyResult;
@@ -78,6 +105,9 @@ describe("memory maintenance", () => {
         expect(mockProjectUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
             where: { id: { in: ["p-low"] } },
         }));
+        expect(mockMemoryEmbeddingDeleteMany).toHaveBeenCalledWith({
+            where: { memoryType: "project", memoryId: { in: ["p-low"] } },
+        });
     });
 
     it("supports dry-run without mutating memory rows", async () => {
