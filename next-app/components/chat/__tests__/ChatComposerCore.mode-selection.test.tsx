@@ -28,6 +28,29 @@ describe("ChatComposerCore mode selection", () => {
         vi.clearAllMocks();
     });
 
+    it("reserves the mode pill row before the first prompt text appears", () => {
+        const { container } = render(
+            <ChatComposerCore
+                page="overview"
+                inputPlaceholder="Ask"
+                isLoading={false}
+                sendMessage={vi.fn()}
+                cancelStream={vi.fn()}
+                showVoice={false}
+            />,
+        );
+
+        const slot = container.querySelector('[data-mode-pill-slot="true"]');
+        expect(slot?.getAttribute("data-mode-pill-visible")).toBe("false");
+
+        fireEvent.change(screen.getByLabelText("Copilot prompt"), {
+            target: { value: "Find studies about diabetes" },
+        });
+
+        expect(slot?.getAttribute("data-mode-pill-visible")).toBe("true");
+        expect(screen.getByText("General (auto)")).toBeTruthy();
+    });
+
     it("keeps manual mode visible and sticky across sends", async () => {
         const sendMessage = vi.fn();
         const { rerender } = render(

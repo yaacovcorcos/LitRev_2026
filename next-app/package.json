@@ -27,7 +27,7 @@
     "test": "vitest",
     "test:vitest": "vitest run",
     "test:eslint-rules": "vitest run eslint/rules/**/*.test.ts",
-    "test:governance-tooling": "vitest run scripts/__tests__/check-runtime-test-impact.test.ts scripts/__tests__/eslint-governance-config.test.ts scripts/__tests__/eslint-governance-logging-config.test.ts scripts/__tests__/eslint-governance-phase1-config.test.ts scripts/__tests__/eslint-governance-phase2-hotspots-config.test.ts scripts/__tests__/eslint-governance-phase3-searchability-config.test.ts scripts/__tests__/eslint-governance-phase4-async-config.test.ts scripts/__tests__/eslint-governance-phase4-tests-config.test.ts scripts/__tests__/governance-ci-contract.test.ts scripts/__tests__/lint-governance-audit.test.ts",
+    "test:governance-tooling": "vitest run scripts/__tests__/check-runtime-test-impact.test.ts scripts/__tests__/eslint-governance-config.test.ts scripts/__tests__/eslint-governance-logging-config.test.ts scripts/__tests__/eslint-governance-phase1-config.test.ts scripts/__tests__/eslint-governance-phase2-hotspots-config.test.ts scripts/__tests__/eslint-governance-phase3-searchability-config.test.ts scripts/__tests__/eslint-governance-phase4-async-config.test.ts scripts/__tests__/eslint-governance-phase4-tests-config.test.ts scripts/__tests__/github-workflows.test.ts scripts/__tests__/governance-ci-contract.test.ts scripts/__tests__/lint-governance-audit.test.ts",
     "test:run": "vitest run",
     "test:governance": "npm run governance:ci-required",
     "test:governance:informational": "npm run governance:ci-informational",

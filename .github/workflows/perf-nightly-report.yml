@@ -1,8 +1,8 @@
-name: Performance Nightly Report
+name: Performance Certification Report
 
 on:
   workflow_run:
-    workflows: ["Performance Nightly"]
+    workflows: ["Performance Certification"]
     types: [completed]
 
 permissions:
@@ -18,7 +18,7 @@ jobs:
         run: |
           {
             echo "## Findings"
-            echo "- \`Performance Nightly\` run \`${{ github.event.workflow_run.id }}\` on branch \`${{ github.event.workflow_run.head_branch }}\` finished with conclusion \`${{ github.event.workflow_run.conclusion }}\`."
+            echo "- \`Performance Certification\` run \`${{ github.event.workflow_run.id }}\` on branch \`${{ github.event.workflow_run.head_branch }}\` finished with conclusion \`${{ github.event.workflow_run.conclusion }}\`."
             echo "- No performance artifact metrics were analyzed because the source workflow did not succeed."
             echo
             echo "## Implications"

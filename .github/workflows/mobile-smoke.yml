@@ -18,6 +18,9 @@ on:
       - ".github/workflows/**"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   mobile-foundation:
     runs-on: ubuntu-latest

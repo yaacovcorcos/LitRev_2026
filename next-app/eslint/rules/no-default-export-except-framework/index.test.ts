@@ -12,6 +12,14 @@ createRuleTester().run("litrev/no-default-export-except-framework", rule, {
       filename: "/repo/next-app/app/page.tsx",
     },
     {
+      code: "export default function NotFound() {}",
+      filename: "/repo/next-app/app/not-found.tsx",
+    },
+    {
+      code: "export default function GlobalError() {}",
+      filename: "/repo/next-app/app/global-error.tsx",
+    },
+    {
       code: "export default async function GET() { return Response.json({ ok: true }); }",
       filename: "/repo/next-app/app/api/ping/route.ts",
     },

@@ -74,7 +74,7 @@ export function isFrameworkDefaultAllowedFile(filename) {
   const relative = relativeToRoot(filename);
   if (isGeneratedFile(filename)) return true;
   if (!relative.startsWith("app/")) return false;
-  return /(?:^|\/)(page|layout|loading|error|route)\.[jt]sx?$/.test(relative);
+  return /(?:^|\/)(page|layout|loading|error|global-error|not-found|route)\.[jt]sx?$/.test(relative);
 }
 
 export function isIgnoredPrimaryExportFilename(filename) {

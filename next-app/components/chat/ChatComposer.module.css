@@ -931,6 +931,12 @@
 
 /* ---- Agent Mode Pill ---- */
 
+.modePillSlot {
+    min-height: 40px;
+    display: flex;
+    align-items: flex-start;
+}
+
 .modePill {
     display: inline-flex;
     align-items: center;
@@ -983,6 +989,10 @@
 
 /* Mirrors PHONE_MAX_WIDTH in lib/mobile/breakpoints.ts. */
 @media (max-width: 767px) {
+    .modePillSlot {
+        min-height: 50px;
+    }
+
     .contextReceiptRemove,
     .pendingAttachmentRemove,
     .voiceError button,

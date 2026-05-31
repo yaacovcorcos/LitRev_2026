@@ -124,7 +124,7 @@ if (!current) {
   console.log("");
   console.log("## Recommended Next Actions");
   console.log("1. Verify the uploaded artifact contains `results-nightly.json` from the nightly matrix.");
-  console.log("2. Re-run `Performance Nightly` after fixing artifact generation/upload.");
+  console.log("2. Re-run `Performance Certification` after fixing artifact generation/upload.");
   process.exit(0);
 }
 

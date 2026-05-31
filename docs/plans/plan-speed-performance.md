@@ -35,7 +35,7 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
   - `next-app/scripts/generate-perf-results.ts` supports separate `mandatory` and `nightly` matrices and writes nightly artifacts under `output/performance/nightly/**`
   - `.github/workflows/perf-nightly.yml` builds a production app, captures nightly probe artifacts, and uploads them separately from the PR-gated results artifact
   - the local `next start` performance job explicitly opts into non-secure Better Auth cookies only when `PERF_PROBE_INSECURE_AUTH_COOKIES=1`, `PERF_PROBE_BASE_URL` is a local HTTP origin, `VERCEL_ENV=preview`, and `ENABLE_DEV_QUICK_LOGIN=1`; deployed preview and production auth cookies remain secure by default
-  - the follow-up nightly report workflow also exists, but end-to-end nightly reporting still depends on workflow-name alignment between the producer and report workflows and should not yet be treated as fully closed operationally
+  - the follow-up nightly report workflow now follows the producing `Performance Certification` workflow by name, but end-to-end nightly reporting should still be confirmed with consecutive successful scheduled runs before any nightly signal graduates into PR gating
 - Project entry boot is now route-aware through the shared project shell boot contract:
   - root overview entry no longer boots provider data by default
   - `protocol` deep links boot protocol only, and `ledger` deep links boot studies only
@@ -488,7 +488,7 @@ Precedence rules:
   - Keep nightly-only routes and the `slow-network` profile out of the PR gate until:
     - nightly artifacts are stable across consecutive runs
     - the report flow is confirmed reliable end to end
-    - any workflow-name coupling between the nightly producer and report workflows is reconciled so the report path actually follows the producing workflow
+    - the workflow-name coupling remains covered by regression tests so the report path continues to follow the producing workflow
 - [ ] `SPD-008` Complete the canonical loading/cache/memory upgrade program before implementation waves begin.
   - This task owns the repo-wide current-state model for:
     - route boot behavior

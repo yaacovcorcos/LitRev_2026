@@ -91,6 +91,7 @@ The agent should not merely "feel smart." It should be:
   - strict continue remains strict
   - retry/replace can now prefer checkpoint-backed or durable continuation over restart-from-zero when the source is proven
   - interrupted latest tool calls now use a runtime-owned restart policy: read-only calls and idempotent mutations can seed a bounded continuation, while unsafe or decision-sensitive calls still stop truthfully
+- Artifact undo remains bounded by a server-owned expiry window. The default window is `5` minutes, and operators can tune it with `ARTIFACT_UNDO_WINDOW_MS`; missing, blank, non-finite, and non-positive values fall back to the default.
 - `ask_user` is already runtime-safe and request-bound:
   - canonical identity is `sourceRunId + callId`
   - `questionId` support already exists as additive question-level structure

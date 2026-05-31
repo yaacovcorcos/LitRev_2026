@@ -537,6 +537,7 @@ export function ChatComposerCore({
     const selectedModelInfo = USER_SELECTABLE_MODELS.find((m) => m.id === selectedModel);
     const ALL_MODES: AgentMode[] = getUserSelectableAgentModes();
     const isManualMode = isManualComposerModeSelection(modeSelection);
+    const shouldShowModePill = Boolean(input.trim() || isManualMode);
 
     const modelControl = hideModelControl ? null : hasMounted ? (
         <DropdownMenu.Root>
@@ -669,70 +670,76 @@ export function ChatComposerCore({
                 }}
                 onClick={handleComposerSurfaceClick}
             >
-                {(input.trim() || isManualMode) && (
-                    <div className={styles.modePill}>
-                        <span className={`material-icons-round ${styles.modePillIcon}`}>
-                            {modeMeta.icon}
-                        </span>
-                        <span className={styles.modePillLabel}>
-                            {modeMeta.label}
-                            {isManualMode ? " (manual)" : " (auto)"}
-                        </span>
-                        {hasMounted ? (
-                            <DropdownMenu.Root>
-                                <DropdownMenu.Trigger asChild>
-                                    <button
-                                        type="button"
-                                        className={styles.modePillChevron}
-                                        aria-label="Change agent mode"
-                                    >
-                                        <span className="material-icons-round">expand_more</span>
-                                    </button>
-                                </DropdownMenu.Trigger>
-                                <DropdownMenu.Portal>
-                                    <DropdownMenu.Content className={styles.modeDropdown} side="bottom" align="start" sideOffset={4}>
-                                        <DropdownMenu.Item
-                                            className={`${styles.modeItem} ${!isManualMode ? styles.modeItemActive : ""}`}
-                                            onSelect={() => setModeSelection(AUTO_COMPOSER_MODE_SELECTION)}
+                <div
+                    className={styles.modePillSlot}
+                    data-mode-pill-slot="true"
+                    data-mode-pill-visible={shouldShowModePill ? "true" : "false"}
+                >
+                    {shouldShowModePill ? (
+                        <div className={styles.modePill}>
+                            <span className={`material-icons-round ${styles.modePillIcon}`}>
+                                {modeMeta.icon}
+                            </span>
+                            <span className={styles.modePillLabel}>
+                                {modeMeta.label}
+                                {isManualMode ? " (manual)" : " (auto)"}
+                            </span>
+                            {hasMounted ? (
+                                <DropdownMenu.Root>
+                                    <DropdownMenu.Trigger asChild>
+                                        <button
+                                            type="button"
+                                            className={styles.modePillChevron}
+                                            aria-label="Change agent mode"
                                         >
-                                            <span className={`material-icons-round ${styles.modeItemIcon}`}>
-                                                auto_awesome
-                                            </span>
-                                            <span className={styles.modeItemName}>Auto</span>
-                                            <span className={styles.modeItemDesc}>Choose the mode automatically from the current request</span>
-                                        </DropdownMenu.Item>
-                                        {ALL_MODES.map((mode) => {
-                                            const meta = AGENT_MODE_META[mode];
-                                            const isActive = isManualMode && mode === effectiveMode;
-                                            return (
-                                                <DropdownMenu.Item
-                                                    key={mode}
-                                                    className={`${styles.modeItem} ${isActive ? styles.modeItemActive : ""}`}
-                                                    onSelect={() => setModeSelection({ kind: "manual", mode })}
-                                                >
-                                                    <span className={`material-icons-round ${styles.modeItemIcon}`}>
-                                                        {meta.icon}
-                                                    </span>
-                                                    <span className={styles.modeItemName}>{meta.label}</span>
-                                                    <span className={styles.modeItemDesc}>{meta.description}</span>
-                                                </DropdownMenu.Item>
-                                            );
-                                        })}
-                                    </DropdownMenu.Content>
-                                </DropdownMenu.Portal>
-                            </DropdownMenu.Root>
-                        ) : (
-                            <button
-                                type="button"
-                                className={`${styles.modePillChevron} ${styles.mountPlaceholder}`}
-                                aria-hidden="true"
-                                tabIndex={-1}
-                            >
-                                <span className="material-icons-round">expand_more</span>
-                            </button>
-                        )}
-                    </div>
-                )}
+                                            <span className="material-icons-round">expand_more</span>
+                                        </button>
+                                    </DropdownMenu.Trigger>
+                                    <DropdownMenu.Portal>
+                                        <DropdownMenu.Content className={styles.modeDropdown} side="bottom" align="start" sideOffset={4}>
+                                            <DropdownMenu.Item
+                                                className={`${styles.modeItem} ${!isManualMode ? styles.modeItemActive : ""}`}
+                                                onSelect={() => setModeSelection(AUTO_COMPOSER_MODE_SELECTION)}
+                                            >
+                                                <span className={`material-icons-round ${styles.modeItemIcon}`}>
+                                                    auto_awesome
+                                                </span>
+                                                <span className={styles.modeItemName}>Auto</span>
+                                                <span className={styles.modeItemDesc}>Choose the mode automatically from the current request</span>
+                                            </DropdownMenu.Item>
+                                            {ALL_MODES.map((mode) => {
+                                                const meta = AGENT_MODE_META[mode];
+                                                const isActive = isManualMode && mode === effectiveMode;
+                                                return (
+                                                    <DropdownMenu.Item
+                                                        key={mode}
+                                                        className={`${styles.modeItem} ${isActive ? styles.modeItemActive : ""}`}
+                                                        onSelect={() => setModeSelection({ kind: "manual", mode })}
+                                                    >
+                                                        <span className={`material-icons-round ${styles.modeItemIcon}`}>
+                                                            {meta.icon}
+                                                        </span>
+                                                        <span className={styles.modeItemName}>{meta.label}</span>
+                                                        <span className={styles.modeItemDesc}>{meta.description}</span>
+                                                    </DropdownMenu.Item>
+                                                );
+                                            })}
+                                        </DropdownMenu.Content>
+                                    </DropdownMenu.Portal>
+                                </DropdownMenu.Root>
+                            ) : (
+                                <button
+                                    type="button"
+                                    className={`${styles.modePillChevron} ${styles.mountPlaceholder}`}
+                                    aria-hidden="true"
+                                    tabIndex={-1}
+                                >
+                                    <span className="material-icons-round">expand_more</span>
+                                </button>
+                            )}
+                        </div>
+                    ) : null}
+                </div>
 
                 {(pendingAttachment || isAttaching) && (
                     <div

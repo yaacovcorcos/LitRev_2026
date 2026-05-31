@@ -8,6 +8,7 @@ import {
     buildQuickExtractPrompt,
     buildDeepAnalysisPrompt,
 } from "./pdf-extraction-prompts";
+import { getPdfExtractionModelConfig } from "./pdf-extraction-config";
 import type { StudyDetails, StudyType } from "@/types/ledger";
 import { extractHeaderWithGrobid, type GrobidHeaderExtraction } from "./grobid";
 import { fetchFileAssetBytes, type FileAssetStorageRecord } from "./file-storage";
@@ -17,8 +18,6 @@ const MAX_PDF_SIZE_MB = 50;
 const MAX_PDF_SIZE_BYTES = MAX_PDF_SIZE_MB * 1024 * 1024;
 const MAX_TEXT_CHARS = 40000; // ~10k tokens
 const AI_TIMEOUT_MS = 30000;
-const QUICK_EXTRACT_MODEL = "grok-4-1-fast";
-const DEEP_ANALYSIS_MODEL = "grok-4-1-fast";
 
 // Types
 export type ConfidenceLevel = "high" | "medium" | "low";
@@ -226,7 +225,7 @@ function parseAIJson(content: string): Record<string, unknown> | null {
 
 /**
  * Stage 1 AI: Quick extraction of bibliographic metadata + abstract
- * Uses grok-4-1-fast for speed and cost
+ * Uses the configured fast PDF extraction model for speed and cost
  */
 export async function quickExtractWithAI(
     text: string,
@@ -241,6 +240,7 @@ export async function quickExtractWithAI(
 }> {
     const aiService = getAIService();
     const userPrompt = buildQuickExtractPrompt(text, regexResults);
+    const { quickExtractModel } = getPdfExtractionModelConfig();
 
     const messages = [
         {
@@ -262,7 +262,7 @@ export async function quickExtractWithAI(
 
     try {
         const response = await aiService.chat(messages, {
-            model: QUICK_EXTRACT_MODEL,
+            model: quickExtractModel,
             temperature: 0.2,
             maxTokens: 2000,
             projectId,
@@ -318,7 +318,7 @@ export async function quickExtractWithAI(
 
 /**
  * Stage 2 AI: Deep analysis — summary, study type, keywords, quality
- * Uses grok-4-1-fast for nuanced analysis
+ * Uses the configured deep PDF extraction model for nuanced analysis
  */
 export async function deepAnalyzeWithAI(
     text: string,
@@ -332,6 +332,7 @@ export async function deepAnalyzeWithAI(
         abstract: existingDetails.abstract,
         journal: existingDetails.journal,
     });
+    const { deepAnalysisModel } = getPdfExtractionModelConfig();
 
     const messages = [
         {
@@ -353,7 +354,7 @@ export async function deepAnalyzeWithAI(
 
     try {
         const response = await aiService.chat(messages, {
-            model: DEEP_ANALYSIS_MODEL,
+            model: deepAnalysisModel,
             temperature: 0.3,
             maxTokens: 2000,
             projectId,
