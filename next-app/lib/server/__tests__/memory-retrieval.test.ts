@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import {
     retrieveMemories,
     markMemoriesUsedInAnswer,
+    formatMemoriesForContext,
     hybridFuseScore,
     temporalDecayMultiplier,
     applyTemporalDecayScore,
@@ -109,6 +110,70 @@ afterAll(() => {
     } else {
         delete process.env.ENABLE_MEMORY_ADVANCED_RERANKING;
     }
+});
+
+describe("formatMemoriesForContext", () => {
+    it("carries source and authority labels into prompt context", () => {
+        const context = formatMemoriesForContext([
+            {
+                id: "pm-1",
+                type: "project",
+                memoryType: "criterion",
+                content: "[criterion - inclusion] Include adult RCTs",
+                relevance: 1,
+                source: "protocol_sync",
+                authority: "canonical",
+                polarity: "affirming",
+            },
+            {
+                id: "sm-1",
+                type: "study",
+                memoryType: "finding",
+                content: "[finding - results] Small improvement in pain scores",
+                relevance: 0.8,
+                source: "deep_analysis",
+                authority: "inferred",
+                polarity: "affirming",
+            },
+        ]);
+
+        expect(context).toContain("[Canonical / Protocol sync] [criterion - inclusion] Include adult RCTs");
+        expect(context).toContain("[Inferred / Deep analysis] [finding - results] Small improvement in pain scores");
+        expect(context).toContain("Treat Canonical/Confirmed items as stronger than Inferred/Proposed items");
+    });
+
+    it("marks rejecting memories as negative context", () => {
+        const context = formatMemoriesForContext([
+            {
+                id: "pm-2",
+                type: "project",
+                memoryType: "decision",
+                content: "[decision - exclusion] Excluded grey literature",
+                relevance: 1,
+                source: "artifact_accept",
+                authority: "confirmed",
+                polarity: "rejecting",
+            },
+        ]);
+
+        expect(context).toContain("[Confirmed / Accepted artifact / Rejecting] [decision - exclusion] Excluded grey literature");
+        expect(context).toContain("Rejecting items as ruled-out or negative memory");
+    });
+
+    it("does not invent provenance labels for legacy rows without metadata", () => {
+        const context = formatMemoriesForContext([
+            {
+                id: "um-1",
+                type: "user",
+                memoryType: "preference",
+                content: "style: concise",
+                relevance: 1,
+            },
+        ]);
+
+        expect(context).toContain("- style: concise");
+        expect(context).not.toContain("[Confirmed]");
+    });
 });
 
 describe("retrieveMemories — deterministic scope rules", () => {

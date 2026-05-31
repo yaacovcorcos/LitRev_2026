@@ -12,6 +12,14 @@ import { searchSemanticMemories } from "./semantic-memory";
 import { runMemoryMaintenanceLoop } from "./maintenance";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import { logServerWarn } from "@/lib/server/logging";
+import {
+    MEMORY_AUTHORITY_LABELS,
+    MEMORY_POLARITY_LABELS,
+    MEMORY_SOURCE_LABELS,
+    type MemoryAuthority,
+    type MemoryPolarity,
+    type MemorySource,
+} from "@/lib/memory-contracts";
 import type { AgentMode } from "@/types/agent";
 
 export interface MemoryContext {
@@ -895,6 +903,43 @@ async function incrementRetrievalCounters(memories: RetrievedMemory[]) {
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
+function hasOwnLabel<T extends string>(
+    labels: Record<T, string>,
+    value: string | undefined,
+): value is T {
+    return Boolean(value && Object.prototype.hasOwnProperty.call(labels, value));
+}
+
+function isKnownMemoryAuthority(value: string | undefined): value is MemoryAuthority {
+    return hasOwnLabel(MEMORY_AUTHORITY_LABELS, value);
+}
+
+function isKnownMemorySource(value: string | undefined): value is MemorySource {
+    return hasOwnLabel(MEMORY_SOURCE_LABELS, value);
+}
+
+function isKnownMemoryPolarity(value: string | undefined): value is MemoryPolarity {
+    return hasOwnLabel(MEMORY_POLARITY_LABELS, value);
+}
+
+function formatMemoryProvenance(memory: RetrievedMemory): string {
+    const labels: string[] = [];
+    if (isKnownMemoryAuthority(memory.authority)) {
+        labels.push(MEMORY_AUTHORITY_LABELS[memory.authority]);
+    }
+    if (isKnownMemorySource(memory.source)) {
+        labels.push(MEMORY_SOURCE_LABELS[memory.source]);
+    }
+    if (isKnownMemoryPolarity(memory.polarity) && memory.polarity !== "affirming") {
+        labels.push(MEMORY_POLARITY_LABELS[memory.polarity]);
+    }
+    return labels.length > 0 ? `[${labels.join(" / ")}] ` : "";
+}
+
+function formatMemoryLine(memory: RetrievedMemory): string {
+    return `- ${formatMemoryProvenance(memory)}${memory.content}`;
+}
+
 export function formatMemoriesForContext(memories: RetrievedMemory[]): string {
     if (memories.length === 0) return "";
 
@@ -905,16 +950,16 @@ export function formatMemoriesForContext(memories: RetrievedMemory[]): string {
     const sections: string[] = [];
 
     if (userMemories.length > 0) {
-        sections.push(`User Preferences:\n${userMemories.map((m) => `- ${m.content}`).join("\n")}`);
+        sections.push(`User Preferences:\n${userMemories.map(formatMemoryLine).join("\n")}`);
     }
     if (projectMemories.length > 0) {
-        sections.push(`Project Context:\n${projectMemories.map((m) => `- ${m.content}`).join("\n")}`);
+        sections.push(`Project Context:\n${projectMemories.map(formatMemoryLine).join("\n")}`);
     }
     if (studyMemories.length > 0) {
-        sections.push(`Study Information:\n${studyMemories.map((m) => `- ${m.content}`).join("\n")}`);
+        sections.push(`Study Information:\n${studyMemories.map(formatMemoryLine).join("\n")}`);
     }
 
-    return `\n\n## Relevant Memory\nThe following is from previous conversations and project data. Use these to inform your response — reference user decisions naturally when relevant but do not repeat this list back to the user.\n\n${sections.join("\n\n")}\n`;
+    return `\n\n## Relevant Memory\nThe following is from previous conversations and project data. Each item may include compact provenance labels. Treat Canonical/Confirmed items as stronger than Inferred/Proposed items, and treat Rejecting items as ruled-out or negative memory rather than instructions to follow. Use these to inform your response — reference user decisions naturally when relevant but do not repeat this list back to the user.\n\n${sections.join("\n\n")}\n`;
 }
 
 /**

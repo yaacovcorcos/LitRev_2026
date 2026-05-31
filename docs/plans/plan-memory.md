@@ -60,6 +60,7 @@ That means:
   - `store_memory`
   - `forget_memory`
   - `inspect_memory`
+- Prompt memory formatting preserves compact `authority`, `source`, and negative-memory polarity labels so recalled context does not lose its trust boundary when it reaches the model.
 - Prompt assembly is already stable-to-variable for caching and grounding.
 - The current prompt layer already includes:
   - scoping guidance
@@ -170,6 +171,7 @@ Borrow from them:
 - [x] Memory trust/provenance metadata is first-class across user, project, and study memory rows.
 - [x] Stable project/study memory keys, protocol-sync revision keys, and project-memory version chaining are implemented.
 - [x] Per-item retrieval audit rows now capture rank, score components, trust metadata, token estimate, and answer-use feedback.
+- [x] Recalled memory prompt context now includes compact source/authority/polarity labels instead of flattening canonical, confirmed, inferred, proposed, and rejecting memories into identical prose.
 - [x] Study-memory retrieval now requires project scope for cited-study context and server-side rehydration validates captured targets before prompt assembly.
 - [x] Request-time semantic retrieval no longer silently performs corpus-wide embedding backfill by default.
 - [x] Conversation summaries and selected draft context are marked as untrusted context before they enter future prompts.

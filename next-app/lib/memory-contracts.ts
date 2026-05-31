@@ -53,6 +53,12 @@ export const MEMORY_SOURCE_LABELS: Record<MemorySource, string> = {
   extracted: "Extracted",
 };
 
+export const MEMORY_POLARITY_LABELS: Record<MemoryPolarity, string> = {
+  affirming: "Affirming",
+  rejecting: "Rejecting",
+  neutral: "Neutral",
+};
+
 const IMPORTANCE_RANKS = {
   normal: 10,
   important: 20,
