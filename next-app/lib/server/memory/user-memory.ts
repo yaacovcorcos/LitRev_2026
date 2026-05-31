@@ -5,6 +5,15 @@
 
 import { prisma } from "@/lib/server/prisma";
 import type { Prisma } from "@prisma/client";
+import {
+    authorityFromSource,
+    normalizeMemoryAuthority,
+    normalizeMemoryPolarity,
+    sourceFromTags,
+    type MemoryAuthority,
+    type MemoryPolarity,
+    type MemorySource,
+} from "@/lib/memory-contracts";
 
 type UserMemoryDbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -18,6 +27,13 @@ export interface CreateUserMemoryInput {
     value: string;
     rationale?: string;
     tags?: string[];
+    source?: MemorySource;
+    authority?: MemoryAuthority;
+    polarity?: MemoryPolarity;
+    sourceRefType?: string;
+    sourceRefId?: string;
+    confidence?: number;
+    pinned?: boolean;
 }
 
 export interface UpdateUserMemoryInput {
@@ -25,6 +41,63 @@ export interface UpdateUserMemoryInput {
     rationale?: string;
     tags?: string[];
     status?: UserMemoryStatus;
+    source?: MemorySource;
+    authority?: MemoryAuthority;
+    polarity?: MemoryPolarity;
+    sourceRefType?: string;
+    sourceRefId?: string;
+    confidence?: number;
+    pinned?: boolean;
+}
+
+function createUserMemoryData(input: CreateUserMemoryInput) {
+    const source = sourceFromTags(input.tags, input.source ?? "explicit_user");
+    return {
+        ...input,
+        source,
+        authority: input.authority ?? authorityFromSource(source, "confirmed"),
+        polarity: input.polarity ?? "affirming",
+        confidence: input.confidence ?? 1,
+        pinned: input.pinned ?? false,
+        embeddingStatus: "pending",
+    };
+}
+
+function updateUserMemoryData(
+    input: UpdateUserMemoryInput,
+    fallback?: {
+        source?: string | null;
+        authority?: string | null;
+    },
+) {
+    const source = input.source !== undefined || input.tags !== undefined
+        ? sourceFromTags(input.tags, input.source ?? fallback?.source ?? "explicit_user")
+        : undefined;
+    const authority = input.authority !== undefined
+        ? normalizeMemoryAuthority(input.authority)
+        : source !== undefined
+            ? authorityFromSource(source, fallback?.authority ?? "confirmed")
+            : undefined;
+    const data: Prisma.UserMemoryUncheckedUpdateInput = {
+        ...input,
+        ...(source !== undefined ? { source } : {}),
+        ...(authority !== undefined ? { authority } : {}),
+        ...(input.polarity !== undefined ? { polarity: normalizeMemoryPolarity(input.polarity) } : {}),
+        ...(input.status === "archived" ? { archivedAt: new Date() } : {}),
+    };
+
+    if (
+        input.value !== undefined
+        || input.rationale !== undefined
+        || input.tags !== undefined
+        || input.source !== undefined
+        || input.authority !== undefined
+        || input.polarity !== undefined
+    ) {
+        data.embeddingStatus = "pending";
+    }
+
+    return data;
 }
 
 /**
@@ -44,13 +117,9 @@ export async function setUserMemoryWithDb(
         where: {
             userId_key: { userId, key },
         },
-        create: {
-            userId,
-            key,
-            ...data,
-        },
+        create: createUserMemoryData({ userId, key, ...data }),
         update: {
-            ...data,
+            ...updateUserMemoryData(data),
             updatedAt: new Date(),
         },
     });
@@ -75,6 +144,7 @@ export async function getUserMemories(
     options?: {
         type?: UserMemoryType;
         status?: UserMemoryStatus;
+        authority?: MemoryAuthority;
         tags?: string[];
     },
     db: UserMemoryDbClient = prisma,
@@ -84,6 +154,7 @@ export async function getUserMemories(
             userId,
             type: options?.type,
             status: options?.status ?? "active",
+            authority: options?.authority,
             ...(options?.tags?.length
                 ? { tags: { hasSome: options.tags } }
                 : {}),
@@ -100,14 +171,19 @@ export async function updateUserMemory(
     input: UpdateUserMemoryInput,
     db: UserMemoryDbClient = prisma,
 ) {
+    const existing = await db.userMemory.findUnique({
+        where: { id },
+        select: {
+            source: true,
+            authority: true,
+        },
+    });
+    if (!existing) {
+        throw new Error("Memory not found");
+    }
     return db.userMemory.update({
         where: { id },
-        data: {
-            ...input,
-            ...(input.status === "archived"
-                ? { archivedAt: new Date() }
-                : {}),
-        },
+        data: updateUserMemoryData(input, existing),
     });
 }
 
@@ -115,8 +191,13 @@ export async function updateUserMemory(
  * Archive a user memory
  */
 export async function archiveUserMemory(id: string) {
-    return updateUserMemory(id, {
-        status: "archived",
+    return prisma.$transaction(async (tx) => {
+        await tx.memoryEmbedding.deleteMany({
+            where: { memoryType: "user", memoryId: id },
+        });
+        return updateUserMemory(id, {
+            status: "archived",
+        }, tx);
     });
 }
 
@@ -124,8 +205,13 @@ export async function archiveUserMemory(id: string) {
  * Delete a user memory permanently
  */
 export async function deleteUserMemory(id: string) {
-    return prisma.userMemory.delete({
-        where: { id },
+    return prisma.$transaction(async (tx) => {
+        await tx.memoryEmbedding.deleteMany({
+            where: { memoryType: "user", memoryId: id },
+        });
+        return tx.userMemory.delete({
+            where: { id },
+        });
     });
 }
 

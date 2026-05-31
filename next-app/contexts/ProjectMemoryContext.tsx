@@ -25,7 +25,6 @@ import {
   createProjectMemoryAction,
   updateProjectMemoryAction,
   archiveProjectMemoryAction,
-  deleteProjectMemoryAction,
 } from "@/app/actions/memory";
 import type {
   CreateProjectMemoryInput,
@@ -52,7 +51,6 @@ type ProjectMemoryContextValue = {
   createMemory: (input: Omit<CreateProjectMemoryInput, "projectId">) => Promise<ProjectMemory>;
   updateMemory: (id: string, input: UpdateProjectMemoryInput) => Promise<ProjectMemory>;
   archiveMemory: (id: string) => Promise<void>;
-  deleteMemory: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -171,12 +169,6 @@ export function ProjectMemoryProvider({ projectId, children, initialData }: Proj
     setMemories((prev) => prev.filter((m) => m.id !== id));
   }, []);
 
-  const deleteMemory = useCallback(async (id: string) => {
-    const result = await deleteProjectMemoryAction(id);
-    if (!result.success) throw new Error(result.error);
-    setMemories((prev) => prev.filter((m) => m.id !== id));
-  }, []);
-
   const value = useMemo(
     () => ({
       memories,
@@ -194,7 +186,6 @@ export function ProjectMemoryProvider({ projectId, children, initialData }: Proj
       createMemory,
       updateMemory,
       archiveMemory,
-      deleteMemory,
       refresh: loadMemories,
     }),
     [
@@ -209,7 +200,6 @@ export function ProjectMemoryProvider({ projectId, children, initialData }: Proj
       createMemory,
       updateMemory,
       archiveMemory,
-      deleteMemory,
       loadMemories,
     ]
   );

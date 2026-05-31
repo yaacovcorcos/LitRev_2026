@@ -56,7 +56,8 @@ describe("onStudyAccepted", () => {
             studyId: "study-1",
             projectId: "proj-1",
             type: "summary",
-            source: "ai_generated",
+            source: "artifact_accept",
+            authority: "confirmed",
             confidence: 0.85,
         });
         expect(memories[1]).toMatchObject({
@@ -94,6 +95,9 @@ describe("onStudyExcluded", () => {
             category: "exclusion",
             statement: 'Excluded "Effect of ACE inhibitors" (Smith et al., 2023)',
             rationale: "Wrong population",
+            source: "artifact_accept",
+            authority: "confirmed",
+            polarity: "rejecting",
             tags: ["artifact-decision", "study-excluded"],
         }));
     });
@@ -122,6 +126,8 @@ describe("onDraftAccepted", () => {
         expect(mockCreatePM).toHaveBeenCalledWith(expect.objectContaining({
             type: "decision",
             statement: 'Accepted draft for section "Methods" / Search Strategy (450 words, 1 citations)',
+            source: "artifact_accept",
+            authority: "confirmed",
             tags: ["artifact-decision", "draft-accepted"],
         }));
     });

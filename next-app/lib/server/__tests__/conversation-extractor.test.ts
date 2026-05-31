@@ -97,7 +97,11 @@ describe("extractMemoriesFromConversation", () => {
             statement: "Exclude case studies",
             category: "exclusion",
             rationale: "Low evidence",
-            importance: "important",
+            importance: "normal",
+            source: "conversation_extraction",
+            authority: "inferred",
+            sourceRefType: "conversation",
+            sourceRefId: "conv-1",
         }));
     });
 
@@ -110,6 +114,8 @@ describe("extractMemoriesFromConversation", () => {
             type: "definition",
             statement: "Primary outcome is mortality",
             category: "outcome",
+            source: "conversation_extraction",
+            authority: "inferred",
         }));
     });
 

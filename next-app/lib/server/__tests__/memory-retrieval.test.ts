@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import {
     retrieveMemories,
+    markMemoriesUsedInAnswer,
     hybridFuseScore,
     temporalDecayMultiplier,
     applyTemporalDecayScore,
@@ -11,6 +12,7 @@ vi.mock("@/lib/server/prisma", () => ({
     prisma: {
         $executeRaw: vi.fn().mockResolvedValue(1),
         memoryRetrieval: { create: vi.fn().mockResolvedValue({}) },
+        memoryRetrievalItem: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     },
 }));
 
@@ -29,6 +31,7 @@ vi.mock("@/lib/server/memory/project-memory", () => ({
 
 vi.mock("@/lib/server/memory/study-memory", () => ({
     getStudyMemories: vi.fn().mockResolvedValue([]),
+    getStudyMemoriesForProject: vi.fn().mockResolvedValue([]),
     searchStudyMemories: vi.fn().mockResolvedValue([]),
 }));
 
@@ -38,7 +41,7 @@ vi.mock("@/lib/server/memory/semantic-memory", () => ({
 
 const { getUserMemories } = await import("@/lib/server/memory/user-memory");
 const { getProjectMemories, searchProjectMemories } = await import("@/lib/server/memory/project-memory");
-const { getStudyMemories, searchStudyMemories } = await import("@/lib/server/memory/study-memory");
+const { getStudyMemoriesForProject, searchStudyMemories } = await import("@/lib/server/memory/study-memory");
 const { searchSemanticMemories } = await import("@/lib/server/memory/semantic-memory");
 const { recordRunEvent } = await import("@/lib/server/agent/run-event-recorder");
 const { prisma } = await import("@/lib/server/prisma");
@@ -46,7 +49,7 @@ const { prisma } = await import("@/lib/server/prisma");
 type UserMemoriesResult = Awaited<ReturnType<typeof getUserMemories>>;
 type ProjectMemoriesResult = Awaited<ReturnType<typeof getProjectMemories>>;
 type ProjectMemorySearchResult = Awaited<ReturnType<typeof searchProjectMemories>>;
-type StudyMemoriesResult = Awaited<ReturnType<typeof getStudyMemories>>;
+type ScopedStudyMemoriesResult = Awaited<ReturnType<typeof getStudyMemoriesForProject>>;
 type StudyMemorySearchResult = Awaited<ReturnType<typeof searchStudyMemories>>;
 type SemanticSearchResult = Awaited<ReturnType<typeof searchSemanticMemories>>;
 type ProjectMemoryOptions = Parameters<typeof getProjectMemories>[1];
@@ -55,11 +58,12 @@ type MemoryRetrievalCreateArgs = Parameters<typeof prisma.memoryRetrieval.create
 const mockGetUserMemories = vi.mocked(getUserMemories);
 const mockGetProjectMemories = vi.mocked(getProjectMemories);
 const mockSearchProjectMemories = vi.mocked(searchProjectMemories);
-const mockGetStudyMemories = vi.mocked(getStudyMemories);
+const mockGetStudyMemoriesForProject = vi.mocked(getStudyMemoriesForProject);
 const mockSearchStudyMemories = vi.mocked(searchStudyMemories);
 const mockSearchSemanticMemories = vi.mocked(searchSemanticMemories);
 const mockRecordRunEvent = vi.mocked(recordRunEvent);
 const mockMemoryRetrievalCreate = vi.mocked(prisma.memoryRetrieval.create);
+const mockMemoryRetrievalItemUpdateMany = vi.mocked(prisma.memoryRetrievalItem.updateMany);
 const mockExecuteRaw = vi.mocked(prisma.$executeRaw);
 const originalAdvancedRerankFlag = process.env.ENABLE_MEMORY_ADVANCED_RERANKING;
 
@@ -75,8 +79,8 @@ function asProjectMemorySearchResult(rows: unknown): ProjectMemorySearchResult {
     return rows as ProjectMemorySearchResult;
 }
 
-function asStudyMemoriesResult(rows: unknown): StudyMemoriesResult {
-    return rows as StudyMemoriesResult;
+function asScopedStudyMemoriesResult(rows: unknown): ScopedStudyMemoriesResult {
+    return rows as ScopedStudyMemoriesResult;
 }
 
 function asStudyMemorySearchResult(rows: unknown): StudyMemorySearchResult {
@@ -92,7 +96,7 @@ beforeEach(() => {
     mockGetUserMemories.mockResolvedValue([]);
     mockGetProjectMemories.mockResolvedValue([]);
     mockSearchProjectMemories.mockResolvedValue([]);
-    mockGetStudyMemories.mockResolvedValue([]);
+    mockGetStudyMemoriesForProject.mockResolvedValue([]);
     mockSearchStudyMemories.mockResolvedValue([]);
     mockSearchSemanticMemories.mockResolvedValue([]);
     mockExecuteRaw.mockResolvedValue(1);
@@ -149,7 +153,7 @@ describe("retrieveMemories — deterministic scope rules", () => {
     });
 
     it("in drafting mode with citedStudyIds: includes StudyMemories", async () => {
-        mockGetStudyMemories.mockResolvedValue(asStudyMemoriesResult([
+        mockGetStudyMemoriesForProject.mockResolvedValue(asScopedStudyMemoriesResult([
             { id: "sm-1", studyId: "study-A", projectId: "p1", type: "summary", category: null, content: "Study findings...", source: "ai_generated", confidence: 0.9, tags: [], status: "active" },
         ]));
 
@@ -161,22 +165,15 @@ describe("retrieveMemories — deterministic scope rules", () => {
         });
 
         expect(result.some((m) => m.id === "sm-1")).toBe(true);
-        expect(mockGetStudyMemories).toHaveBeenCalledWith("study-A", { status: "active" });
+        expect(mockGetStudyMemoriesForProject).toHaveBeenCalledWith("p1", "study-A", { status: "active" });
     });
 
-    it("filters study memories that do not belong to the active project", async () => {
-        mockGetStudyMemories.mockResolvedValue(asStudyMemoriesResult([
-            { id: "sm-other", studyId: "study-A", projectId: "p-other", type: "summary", category: null, content: "Other project summary", source: "ai_generated", confidence: 0.9, tags: [], status: "active" },
-        ]));
-
-        const result = await retrieveMemories({
+    it("rejects cited study retrieval without a project scope", async () => {
+        await expect(retrieveMemories({
             userId: "u1",
-            projectId: "p1",
             agentMode: "drafting",
             citedStudyIds: ["study-A"],
-        });
-
-        expect(result.some((m) => m.id === "sm-other")).toBe(false);
+        })).rejects.toThrow("Project scope is required");
     });
 
     it("in qa mode: includes exclusion decisions", async () => {
@@ -474,7 +471,7 @@ describe("retrieveMemories — deterministic scope rules", () => {
 
     it("logs retrieval with conversationId when provided", async () => {
         mockGetUserMemories.mockResolvedValue(asUserMemoriesResult([
-            { id: "um-1", type: "preference", key: "style", value: "formal", rationale: null, tags: [], status: "active" },
+            { id: "um-1", type: "preference", key: "style", value: "formal", rationale: null, tags: [], status: "active", source: "explicit_user", authority: "confirmed" },
         ]));
 
         await retrieveMemories({
@@ -487,7 +484,57 @@ describe("retrieveMemories — deterministic scope rules", () => {
         expect(mockMemoryRetrievalCreate).toHaveBeenCalled();
         const firstCall = mockMemoryRetrievalCreate.mock.calls[0]?.[0] as MemoryRetrievalCreateArgs | undefined;
         expect(firstCall?.data?.conversationId).toBe("conv-123");
+        expect(firstCall?.data).toEqual(expect.objectContaining({
+            items: {
+                create: [expect.objectContaining({
+                    memoryId: "um-1",
+                    memoryType: "user",
+                    source: "explicit_user",
+                    authority: "confirmed",
+                    tokenEstimate: expect.any(Number),
+                })],
+            },
+        }));
         expect(mockExecuteRaw).toHaveBeenCalled();
+    });
+
+    it("marks only the concrete retrieval item rows used by the answer", async () => {
+        mockGetUserMemories.mockResolvedValue(asUserMemoriesResult([
+            {
+                id: "um-1",
+                type: "preference",
+                key: "style",
+                value: "formal writing",
+                rationale: null,
+                tags: [],
+                status: "active",
+                source: "explicit_user",
+                authority: "confirmed",
+            },
+        ]));
+        mockMemoryRetrievalCreate.mockResolvedValueOnce({
+            id: "ret-user",
+            items: [{
+                id: "ret-item-1",
+                retrievalId: "ret-user",
+                memoryType: "user",
+                memoryId: "um-1",
+            }],
+        } as never);
+
+        const result = await retrieveMemories({ userId: "u1", query: "style" });
+
+        expect(result[0].retrievalItemId).toBe("ret-item-1");
+
+        await markMemoriesUsedInAnswer(result, "Please use the formal style in this answer.");
+
+        expect(mockMemoryRetrievalItemUpdateMany).toHaveBeenCalledWith({
+            where: { id: { in: ["ret-item-1"] } },
+            data: { usedInAnswer: true },
+        });
+        expect(mockMemoryRetrievalItemUpdateMany).not.toHaveBeenCalledWith(expect.objectContaining({
+            where: expect.objectContaining({ memoryId: expect.anything() }),
+        }));
     });
 
     it("merges semantic layer results into retrieval output", async () => {
@@ -525,9 +572,55 @@ describe("retrieveMemories — deterministic scope rules", () => {
                 minRelevance: 0.3,
                 includeProject: true,
             }),
-            expect.any(Set),
+            new Set(),
         );
         expect(result.some((memory) => memory.id === "pm-semantic")).toBe(true);
+    });
+
+    it("allows lexical and semantic layers to overlap before fusion", async () => {
+        mockSearchProjectMemories.mockResolvedValue(asProjectMemorySearchResult([
+            {
+                id: "pm-overlap",
+                projectId: "p1",
+                type: "definition",
+                category: "outcome",
+                statement: "Symptom burden score is primary outcome",
+                rationale: null,
+                context: null,
+                status: "active",
+                version: 1,
+                supersededBy: null,
+                tags: [],
+                importance: "normal",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                archivedAt: null,
+            },
+        ]));
+        mockSearchSemanticMemories.mockResolvedValue(asSemanticSearchResult([
+            {
+                id: "pm-overlap",
+                type: "project",
+                memoryType: "definition",
+                content: "[definition - outcome] Symptom burden score is primary outcome",
+                relevance: 0.9,
+                tags: [],
+            },
+        ]));
+
+        const result = await retrieveMemories(
+            { userId: "u1", projectId: "p1", query: "symptom burden endpoint" },
+            { includeUser: false, includeProject: true, includeStudy: false },
+        );
+
+        expect(mockSearchSemanticMemories).toHaveBeenCalledWith(
+            expect.any(Object),
+            expect.any(Object),
+            new Set(),
+        );
+        expect(result.filter((memory) => memory.id === "pm-overlap")).toHaveLength(1);
+        expect(result[0].semanticScore).toBeGreaterThan(0);
+        expect(result[0].lexicalScore).toBeGreaterThan(0);
     });
 });
 

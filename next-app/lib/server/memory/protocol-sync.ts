@@ -18,6 +18,7 @@ interface DesiredMemory {
     category?: ProjectMemoryCategory;
     statement: string;
     tag: string;
+    key: string;
 }
 
 // Note: methodology/search scalar/list fields are currently mapped to `definition`
@@ -35,7 +36,8 @@ const PICO_FIELDS: { key: keyof ProtocolData["pico"]; category: ProjectMemoryCat
  * - Research question → type: "goal"
  * - PICO/search/methodology scalar fields → type: "definition"
  * - Eligibility criteria + list-style methodology fields → type: "criterion"/"definition"
- * - All synced memories get importance: "critical" and a "protocol-sync:" tag
+ * - All synced memories get importance: "critical", a stable "protocol:*" key,
+ *   and a "protocol-sync:" tag
  * - Diffs against existing: creates new, revises changed, archives removed
  */
 export async function syncProtocolToMemory(
@@ -51,6 +53,7 @@ export async function syncProtocolToMemory(
             type: "goal",
             statement: researchQuestion,
             tag: "protocol-sync:research-question",
+            key: "protocol:research-question",
         });
     }
 
@@ -62,6 +65,7 @@ export async function syncProtocolToMemory(
                 category,
                 statement: value,
                 tag: `protocol-sync:pico-${key}`,
+                key: `protocol:pico-${key}`,
             });
         }
     }
@@ -72,6 +76,7 @@ export async function syncProtocolToMemory(
             type: "definition",
             statement: `Search query: ${searchQuery}`,
             tag: "protocol-sync:search-query",
+            key: "protocol:search-query",
         });
     }
 
@@ -82,6 +87,7 @@ export async function syncProtocolToMemory(
                 type: "definition",
                 statement: `Database: ${value}`,
                 tag: `protocol-sync:database-${i}`,
+                key: `protocol:database-${i}`,
             });
         }
     }
@@ -94,6 +100,7 @@ export async function syncProtocolToMemory(
                 category: "inclusion",
                 statement: value,
                 tag: `protocol-sync:inclusion-${i}`,
+                key: `protocol:inclusion-${i}`,
             });
         }
     }
@@ -106,6 +113,7 @@ export async function syncProtocolToMemory(
                 category: "exclusion",
                 statement: value,
                 tag: `protocol-sync:exclusion-${i}`,
+                key: `protocol:exclusion-${i}`,
             });
         }
     }
@@ -117,6 +125,7 @@ export async function syncProtocolToMemory(
                 type: "definition",
                 statement: `Study design: ${value}`,
                 tag: `protocol-sync:study-design-${i}`,
+                key: `protocol:study-design-${i}`,
             });
         }
     }
@@ -127,6 +136,7 @@ export async function syncProtocolToMemory(
             type: "definition",
             statement: `Time frame start: ${timeFrameStart}`,
             tag: "protocol-sync:timeframe-start",
+            key: "protocol:timeframe-start",
         });
     }
 
@@ -136,6 +146,7 @@ export async function syncProtocolToMemory(
             type: "definition",
             statement: `Time frame end: ${timeFrameEnd}`,
             tag: "protocol-sync:timeframe-end",
+            key: "protocol:timeframe-end",
         });
     }
 
@@ -145,6 +156,7 @@ export async function syncProtocolToMemory(
             type: "definition",
             statement: `Quality assessment tool: ${qualityTool}`,
             tag: "protocol-sync:quality-tool",
+            key: "protocol:quality-tool",
         });
     }
 
@@ -154,6 +166,7 @@ export async function syncProtocolToMemory(
             type: "definition",
             statement: `Quality assessment notes: ${qualityNotes}`,
             tag: "protocol-sync:quality-notes",
+            key: "protocol:quality-notes",
         });
     }
 
@@ -182,7 +195,7 @@ export async function syncProtocolToMemory(
         if (ex) {
             // Existing memory with same tag — check if statement changed
             if (ex.statement !== d.statement) {
-                await updateProjectMemory(ex.id, { statement: d.statement });
+                await updateProjectMemory(ex.id, { statement: d.statement, key: d.key });
                 revised++;
             }
             // Same statement → skip (idempotent)
@@ -191,6 +204,7 @@ export async function syncProtocolToMemory(
             await createProjectMemory({
                 projectId,
                 type: d.type,
+                key: d.key,
                 category: d.category,
                 statement: d.statement,
                 importance: "critical",

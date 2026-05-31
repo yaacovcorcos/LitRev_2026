@@ -217,7 +217,10 @@ describe("syncProtocolToMemory", () => {
         const result = await syncProtocolToMemory("proj-1", protocol);
 
         expect(result.revised).toBe(1);
-        expect(mockUpdate).toHaveBeenCalledWith("mem-pop", { statement: "New population text" });
+        expect(mockUpdate).toHaveBeenCalledWith("mem-pop", {
+            key: "protocol:pico-population",
+            statement: "New population text",
+        });
     });
 
     it("archives memory when a criterion is removed from protocol", async () => {

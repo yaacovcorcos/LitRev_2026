@@ -13,15 +13,26 @@ export interface ProjectMemory {
   id: string;
   projectId: string;
   type: string; // ProjectMemoryType at runtime
+  key?: string | null;
   category?: string | null; // ProjectMemoryCategory at runtime
   statement: string;
   rationale?: string | null;
   context?: string | null;
   status: string; // ProjectMemoryStatus at runtime
+  source: string;
+  authority: string;
+  polarity: string;
+  sourceRefType?: string | null;
+  sourceRefId?: string | null;
+  confidence: number;
+  pinned: boolean;
+  embeddingStatus?: string;
+  lastUsedAt?: Date | null;
   version: number;
   supersededBy?: string | null;
   tags: string[];
   importance: string; // ProjectMemoryImportance at runtime
+  importanceRank?: number;
   createdAt: Date;
   updatedAt: Date;
   archivedAt?: Date | null;

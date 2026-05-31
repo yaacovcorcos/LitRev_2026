@@ -39,7 +39,7 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 | Auth and admin | `User`, `Session`, `Account`, `Verification`, `AdminAuditLog` | Identity, sessions, provider links, verification flows, admin audit trail |
 | Workspace and project core | `Workspace`, `WorkspaceMember`, `Project`, `Protocol`, `Draft`, `DraftVersion`, `DraftCheckpoint`, `Study`, `StudyProcessingJob`, `Note`, `FileAsset` | Collaboration scope, project state, draft history/checkpoints, studies, durable study-PDF processing state, notes, file metadata |
 | AI chat and telemetry | `AIConversation`, `AIMessage`, `AIUsage`, `ChatUnificationMetric` | Conversation storage, message timeline, token/cost attribution, chat surface telemetry |
-| Memory and retrieval | `UserMemory`, `ProjectMemory`, `StudyMemory`, `ConversationSummary`, `MemoryRetrieval`, `MemoryEmbedding` | Durable memory, summarization, retrieval audit trail, vector search |
+| Memory and retrieval | `UserMemory`, `ProjectMemory`, `StudyMemory`, `ConversationSummary`, `MemoryRetrieval`, `MemoryRetrievalItem`, `MemoryEmbedding` | Durable memory, summarization, item-level retrieval audit trail, vector search |
 | Agent runtime | `AgentRun`, `RunEvent`, `RunCheckpoint`, `ToolIdempotencyRecord`, `DecisionRequestRecord`, `DecisionResolutionRecord`, `Artifact`, `AutonomyConfig` | Event-sourced runs, explicit continuation seeds, run lineage, durable mutating-tool receipts, first-class user decision requests/resolutions, reviewable artifacts, autonomy presets |
 
 ## Table Glossary
@@ -64,11 +64,12 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 | `AIConversation` | Chat container for global/project/study contexts | `projectId -> Project` | Indexes on `userId + context`, `userId + projectId`, `workspaceId`, `workspaceId + context`, `projectId`, `studyId`, `context` | `userId`, `workspaceId`, `title`, `page`, `projectId`, `studyId` are optional to support global and scoped chats | No |
 | `AIMessage` | Ordered messages within a conversation | `conversationId -> AIConversation` | Indexes on `conversationId`, `conversationId + createdAt + id` | `toolCalls`, `toolResultId`, `attachments` optional for tool/attachment flows | No |
 | `AIUsage` | Token/cost attribution records | `conversationId -> AIConversation`, `projectId -> Project` | Indexes on user/workspace/project/conversation/source/contextPage + `createdAt` | `userId`, `workspaceId`, `projectId`, `conversationId` are optional because attribution can vary by surface/context | No |
-| `UserMemory` | User-level preferences and workflow memory | `userId -> User` | Unique on `userId + key`; indexes on `userId + status`, `userId + type`, `userId + pinned` | `rationale`, `archivedAt` optional | No |
-| `ProjectMemory` | Project-level goals, criteria, definitions, decisions | `projectId -> Project` | Indexes on `projectId + status`, `projectId + type`, `projectId + importance`, `projectId + pinned` | `category`, `rationale`, `context`, `supersededBy`, `archivedAt` optional | No |
-| `StudyMemory` | Study-level extracted facts and summaries | `studyId -> Study`, `projectId -> Project` | Indexes on `studyId + type`, `projectId + type`, `studyId + status`, `projectId + pinned` | `category`, `source`, `confidence` optional | No |
+| `UserMemory` | User-level preferences and workflow memory | `userId -> User` | Unique on `userId + key`; indexes on `userId + status`, `userId + type`, `userId + pinned`, `userId + authority + status`, `userId + embeddingStatus` | `rationale`, source reference fields, `lastUsedAt`, `archivedAt` optional | No |
+| `ProjectMemory` | Project-level goals, criteria, definitions, decisions | `projectId -> Project` | Indexes on `projectId + status`, `projectId + type`, `projectId + importance`, `projectId + importanceRank`, `projectId + pinned`, `projectId + key`, `projectId + authority + status`, `projectId + source`, `projectId + embeddingStatus` | `key`, `category`, `rationale`, `context`, source reference fields, `lastUsedAt`, `supersededBy`, `archivedAt` optional | No |
+| `StudyMemory` | Study-level extracted facts and summaries | `studyId -> Study`, `projectId -> Project` | Indexes on `studyId + type`, `projectId + type`, `studyId + status`, `projectId + pinned`, `projectId + key`, `projectId + authority + status`, `projectId + source`, `projectId + embeddingStatus` | `key`, `category`, `source`, source reference fields, `locator`, `confidence`, `lastUsedAt`, `archivedAt` optional | No |
 | `ConversationSummary` | Compressed summary of a long conversation | `conversationId -> AIConversation` | `conversationId` unique; index on `conversationId` | None | No |
-| `MemoryRetrieval` | Audit trail of memory retrieval attempts | `projectId -> Project` | Indexes on `conversationId`, `projectId`, `createdAt` | `conversationId`, `userId`, `projectId` optional because retrieval can happen in different scopes | No |
+| `MemoryRetrieval` | Parent audit record for memory retrieval attempts | `projectId -> Project` | Indexes on `conversationId`, `projectId`, `createdAt` | `conversationId`, `userId`, `projectId` optional because retrieval can happen in different scopes; `memoryIds` is a compact rollup, while item details live in `MemoryRetrievalItem` | No |
+| `MemoryRetrievalItem` | Per-memory retrieval audit rows with rank, score components, trust metadata, and answer-use flag | `retrievalId -> MemoryRetrieval` | Indexes on `retrievalId`, `memoryType + memoryId`, `source`, `authority` | `lexicalScore`, `semanticScore`, `source`, `authority` optional because deterministic or legacy retrieval rows may not have all score/trust dimensions | No |
 | `MemoryEmbedding` | Vector index backing semantic memory retrieval | `projectId -> Project` | Unique on `memoryType + memoryId + model`; indexes on `projectId + memoryType`, `userId + memoryType`, `studyId + memoryType` | `userId`, `projectId`, `studyId` optional because embeddings can belong to different memory scopes | No |
 | `AgentRun` | Top-level agent execution trace | `projectId -> Project`, `parentRunId -> AgentRun` | Indexes on `projectId + startedAt`, `conversationId`, `conversationId + startedAt`, `conversationId + lastActivityAt`, `conversationId + lastDurableProgressAt`, `userId`, `parentRunId + startedAt`, `rootRunId + startedAt` | `projectId`, `conversationId`, `userId`, `parentRunId`, `rootRunId`, `model`, `completedAt` are intentionally nullable; `runPhase` is the coarse persisted lifecycle phase (`plan | ask | act | verify | finalize`) and `phaseEnteredAt` records when that phase became authoritative; `lastActivityAt` tracks liveness, `lastDurableProgressAt` tracks recovery-authoritative forward progress, `finalizationState` records durable finalize truth, `durabilityState` and `durabilityDegradedReason` record whether recovery-critical persistence remains trustworthy, and `abnormalEndClassification` records the latest known abnormal exit class | No |
 | `RunEvent` | Event stream within a run | `runId -> AgentRun` | Unique on `runId + sequence`; indexes on `runId + sequence`, `runId + type`, `artifactId` | Tool/artifact/error/timing fields are optional because event payloads vary by type | No |
@@ -105,6 +106,13 @@ For production migration/release procedure, use `docs/plans/db-production-runboo
 - `RunCheckpoint` may exist only when the source durable state and source event were committed together as one authoritative boundary. Invalidating a checkpoint is for later source drift only; it must not be used to paper over partial writes.
 - `DecisionRequestRecord` is the canonical durable state for pending `ask_user` requests. `user_input_required` run events remain transcript/replay mirrors, and legacy runs without decision rows must still resolve through the run-event fallback.
 - `DecisionResolutionRecord` is the canonical durable state for structured user answers, accepted recommendations, and cancellations. It is unique per decision request so replayed or retried resolution handling cannot create divergent answers for the same `sourceRunId + callId`.
+- Memory rows carry explicit trust metadata. `source` is normalized by the application contract, `authority` is one of `canonical | confirmed | inferred | proposed`, and `polarity` is one of `affirming | rejecting | neutral`. Protocol-synced project memories are canonical, accepted artifacts and explicit user edits are confirmed, and conversation extraction/deep analysis memories are inferred unless later confirmed.
+- `ProjectMemory.key` and `StudyMemory.key` are stable semantic identifiers when the source can provide one. Protocol sync uses `protocol:*` keys and should revise by key rather than accumulating duplicate active protocol rows.
+- `ProjectMemory` revision creates a new row and marks the prior row `revised` with `supersededBy`; callers should not mutate an accepted decision in place when the historical decision matters.
+- Archive, delete, and maintenance paths for memory rows must purge corresponding `MemoryEmbedding` rows before making the source memory inactive. `embeddingStatus` records whether a memory is waiting for embedding, ready, or failed.
+- Request-time semantic retrieval must not opportunistically embed the whole corpus by default. Embeddings are warmed by explicit rollout/warmup paths or by an explicitly enabled backfill mode.
+- Study memories are project-scoped. Runtime retrieval that cites study IDs must first prove project access and must not retrieve arbitrary study memory without a project scope.
+- `MemoryRetrievalItem` is the detailed audit source for what was retrieved, why it ranked where it did, and whether it was later marked used in an answer.
 - `MemoryEmbedding` depends on the `vector` extension and the embedding index path documented in the DB ops docs.
 - `Study.deletedAt` and `Note.deletedAt` are soft-delete markers, not archival tables.
 - Nullable `projectId` in runtime-oriented tables such as `AgentRun`, `Artifact`, and attribution tables is intentional and supports global or not-yet-project-bound flows.
@@ -119,8 +127,21 @@ These indexes protect major runtime paths. The operational gate owner and verifi
 |---|---|
 | `AIMessage_conversationId_createdAt_id_idx` | Stable conversation timeline pagination and cursor loading |
 | `UserMemory_userId_pinned_idx` | Fast pinned user-memory retrieval |
+| `UserMemory_userId_authority_status_idx` | Trust-filtered user-memory retrieval |
+| `UserMemory_userId_embeddingStatus_idx` | User-memory embedding lifecycle scans |
 | `ProjectMemory_projectId_pinned_idx` | Fast pinned project-memory retrieval |
+| `ProjectMemory_projectId_importanceRank_idx` | Stable deterministic project-memory ordering by importance |
+| `ProjectMemory_projectId_key_idx` | Stable-key lookup for protocol sync and version history |
+| `ProjectMemory_projectId_authority_status_idx` | Trust-filtered project-memory retrieval |
+| `ProjectMemory_projectId_source_idx` | Source/provenance filtering for project memory |
+| `ProjectMemory_projectId_embeddingStatus_idx` | Project-memory embedding lifecycle scans |
 | `StudyMemory_projectId_pinned_idx` | Fast pinned study-memory retrieval within project scope |
+| `StudyMemory_projectId_key_idx` | Stable-key lookup for study-level extracted memory |
+| `StudyMemory_projectId_authority_status_idx` | Trust-filtered study-memory retrieval |
+| `StudyMemory_projectId_source_idx` | Source/provenance filtering for study memory |
+| `StudyMemory_projectId_embeddingStatus_idx` | Study-memory embedding lifecycle scans |
+| `MemoryRetrievalItem_retrievalId_idx` | Per-retrieval item audit hydration |
+| `MemoryRetrievalItem_memoryType_memoryId_idx` | Memory-use audit lookup by source memory |
 | `MemoryEmbedding_embedding_hnsw_idx` | Vector similarity retrieval performance |
 | `AgentRun_parentRunId_startedAt_idx` | Child-run lineage lookups |
 | `AgentRun_rootRunId_startedAt_idx` | Root-run trace aggregation |
@@ -136,7 +157,7 @@ These indexes protect major runtime paths. The operational gate owner and verifi
 ## Migration Themes
 
 - Core app foundation: initial workspace/project/protocol/draft/study/file schema.
-- Memory and embeddings: pgvector support, memory tables, retrieval audit, summaries, and memory lifecycle metadata.
+- Memory and embeddings: pgvector support, memory tables, retrieval audit, per-item retrieval audit, trust/provenance metadata, summaries, and memory lifecycle metadata.
 - Draft history: section-scoped draft versioning.
 - Draft checkpoints: immutable whole-draft authoring-state snapshots with export/file provenance.
 - Study PDF processing: durable per-study per-phase queue/lease state via `StudyProcessingJob`.

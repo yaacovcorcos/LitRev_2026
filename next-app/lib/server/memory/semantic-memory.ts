@@ -16,6 +16,7 @@ const MAX_PROJECT_SCOPE_MEMORIES = 160;
 const MAX_STUDY_SCOPE_MEMORIES = 160;
 const MAX_SCOPE_MEMORIES = 300;
 const MAX_SEMANTIC_RESULTS = 20;
+const REQUEST_BACKFILL_FLAG = "ENABLE_MEMORY_REQUEST_EMBEDDING_BACKFILL";
 
 type SemanticMemoryScope = "user" | "project" | "study";
 
@@ -59,6 +60,8 @@ export interface SemanticRetrievedMemory {
     relevance: number;
     updatedAt?: string;
     source?: string;
+    authority?: string;
+    polarity?: string;
     tags?: string[];
 }
 
@@ -112,6 +115,13 @@ function clampRelevance(value: number): number {
     if (value < 0) return 0;
     if (value > 1) return 1;
     return value;
+}
+
+function readBooleanFlag(name: string): boolean {
+    const value = process.env[name];
+    if (!value) return false;
+    const normalized = value.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
 function chunk<T>(items: T[], size: number): T[][] {
@@ -203,7 +213,7 @@ async function collectScopeMemories(
                 status: "active",
             },
             orderBy: [
-                { importance: "desc" },
+                { importanceRank: "desc" },
                 { updatedAt: "desc" },
             ],
             take: MAX_PROJECT_SCOPE_MEMORIES,
@@ -294,7 +304,8 @@ async function fetchExistingHashes(candidates: ScopeMemory[]): Promise<Map<strin
 
 async function upsertEmbedding(candidate: ScopeMemory, embedding: number[]): Promise<void> {
     const vector = embeddingLiteral(embedding);
-    await prisma.$executeRaw(Prisma.sql`
+    await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw(Prisma.sql`
         INSERT INTO "MemoryEmbedding" (
             "id",
             "memoryType",
@@ -333,6 +344,23 @@ async function upsertEmbedding(candidate: ScopeMemory, embedding: number[]): Pro
             "studyId" = EXCLUDED."studyId",
             "updatedAt" = NOW()
     `);
+        if (candidate.memoryType === "user") {
+            await tx.userMemory.updateMany({
+                where: { id: candidate.memoryId },
+                data: { embeddingStatus: "ready" },
+            });
+        } else if (candidate.memoryType === "project") {
+            await tx.projectMemory.updateMany({
+                where: { id: candidate.memoryId },
+                data: { embeddingStatus: "ready" },
+            });
+        } else {
+            await tx.studyMemory.updateMany({
+                where: { id: candidate.memoryId },
+                data: { embeddingStatus: "ready" },
+            });
+        }
+    });
 }
 
 async function ensureScopeEmbeddings(candidates: ScopeMemory[]): Promise<void> {
@@ -432,7 +460,7 @@ async function hydrateSemanticRows(
     const studyIds: string[] = [];
 
     for (const row of rows) {
-        if (excludeIds.has(row.memoryId)) continue;
+        if (excludeIds.has(`${row.memoryType}:${row.memoryId}`)) continue;
         const key = `${row.memoryType}:${row.memoryId}`;
         const current = scores.get(key) ?? 0;
         scores.set(key, Math.max(current, clampRelevance(toScore(row.score))));
@@ -461,6 +489,9 @@ async function hydrateSemanticRows(
                 content: `${memory.key}: ${memory.value}${memory.rationale ? ` (${memory.rationale})` : ""}`,
                 relevance,
                 updatedAt: memory.updatedAt.toISOString(),
+                source: memory.source,
+                authority: memory.authority,
+                polarity: memory.polarity,
                 tags: memory.tags,
             });
         }
@@ -484,6 +515,9 @@ async function hydrateSemanticRows(
                 content: `[${memory.type}${memory.category ? ` - ${memory.category}` : ""}] ${memory.statement}${memory.rationale ? ` | Rationale: ${memory.rationale}` : ""}`,
                 relevance,
                 updatedAt: memory.updatedAt.toISOString(),
+                source: memory.source,
+                authority: memory.authority,
+                polarity: memory.polarity,
                 tags: memory.tags,
             });
         }
@@ -509,6 +543,8 @@ async function hydrateSemanticRows(
                 relevance: clampRelevance(relevance * (memory.confidence ?? 1)),
                 updatedAt: memory.updatedAt.toISOString(),
                 source: memory.source || undefined,
+                authority: memory.authority,
+                polarity: memory.polarity,
                 tags: memory.tags,
             });
         }
@@ -527,8 +563,10 @@ export async function searchSemanticMemories(
     if (!getOpenAIClient()) return [];
 
     try {
-        const scopeMemories = await collectScopeMemories(context, options);
-        await ensureScopeEmbeddings(scopeMemories);
+        if (readBooleanFlag(REQUEST_BACKFILL_FLAG)) {
+            const scopeMemories = await collectScopeMemories(context, options);
+            await ensureScopeEmbeddings(scopeMemories);
+        }
 
         const response = await createEmbeddingsWithRetry(getOpenAIClient()!, query.slice(0, 8000));
         const queryEmbedding = response.data[0]?.embedding;

@@ -28,6 +28,10 @@ function buildUserMemory(overrides: Partial<{
     rationale: string | null;
     status: string;
     source: string;
+    authority: string;
+    polarity: string;
+    sourceRefType: string | null;
+    sourceRefId: string | null;
     confidence: number;
     retrievalCount: number;
     usedInAnswerCount: number;
@@ -35,6 +39,8 @@ function buildUserMemory(overrides: Partial<{
     rejectedCount: number;
     contradictionCount: number;
     pinned: boolean;
+    embeddingStatus: string;
+    lastUsedAt: Date | null;
     tags: string[];
     createdAt: Date;
     updatedAt: Date;
@@ -49,6 +55,10 @@ function buildUserMemory(overrides: Partial<{
         rationale: null,
         status: "active",
         source: "explicit",
+        authority: "confirmed",
+        polarity: "affirming",
+        sourceRefType: null,
+        sourceRefId: null,
         confidence: 1,
         retrievalCount: 0,
         usedInAnswerCount: 0,
@@ -56,6 +66,8 @@ function buildUserMemory(overrides: Partial<{
         rejectedCount: 0,
         contradictionCount: 0,
         pinned: false,
+        embeddingStatus: "pending",
+        lastUsedAt: null,
         tags: [],
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -68,12 +80,17 @@ function buildProjectMemory(overrides: Partial<{
     id: string;
     projectId: string;
     type: string;
+    key: string | null;
     category: string | null;
     statement: string;
     rationale: string | null;
     context: string | null;
     status: string;
     source: string;
+    authority: string;
+    polarity: string;
+    sourceRefType: string | null;
+    sourceRefId: string | null;
     confidence: number;
     retrievalCount: number;
     usedInAnswerCount: number;
@@ -81,10 +98,13 @@ function buildProjectMemory(overrides: Partial<{
     rejectedCount: number;
     contradictionCount: number;
     pinned: boolean;
+    embeddingStatus: string;
+    lastUsedAt: Date | null;
     version: number;
     supersededBy: string | null;
     tags: string[];
     importance: string;
+    importanceRank: number;
     createdAt: Date;
     updatedAt: Date;
     archivedAt: Date | null;
@@ -93,12 +113,17 @@ function buildProjectMemory(overrides: Partial<{
         id: "pm-1",
         projectId: "proj-1",
         type: "decision",
+        key: null,
         category: null,
         statement: "Exclude case studies",
         rationale: null,
         context: null,
         status: "active",
         source: "decision",
+        authority: "confirmed",
+        polarity: "affirming",
+        sourceRefType: null,
+        sourceRefId: null,
         confidence: 1,
         retrievalCount: 0,
         usedInAnswerCount: 0,
@@ -106,10 +131,13 @@ function buildProjectMemory(overrides: Partial<{
         rejectedCount: 0,
         contradictionCount: 0,
         pinned: false,
+        embeddingStatus: "pending",
+        lastUsedAt: null,
         version: 1,
         supersededBy: null,
         tags: [],
         importance: "normal",
+        importanceRank: 10,
         createdAt: new Date(),
         updatedAt: new Date(),
         archivedAt: null,

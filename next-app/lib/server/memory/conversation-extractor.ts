@@ -185,7 +185,12 @@ export async function extractMemoriesFromConversation(
             category: cat,
             statement: decision.statement,
             rationale: decision.rationale,
-            importance: "important",
+            importance: "normal",
+            source: "conversation_extraction",
+            authority: "inferred",
+            confidence: 0.65,
+            sourceRefType: "conversation",
+            sourceRefId: conversationId,
             tags: ["conversation-extracted", `conversation:${conversationId}`],
         });
     }
@@ -201,6 +206,11 @@ export async function extractMemoriesFromConversation(
             category: cat,
             statement: fact.statement,
             importance: "normal",
+            source: "conversation_extraction",
+            authority: "inferred",
+            confidence: 0.55,
+            sourceRefType: "conversation",
+            sourceRefId: conversationId,
             tags: ["conversation-extracted", `conversation:${conversationId}`],
         });
     }

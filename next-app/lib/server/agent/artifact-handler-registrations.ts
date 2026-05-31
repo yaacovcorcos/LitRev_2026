@@ -181,6 +181,9 @@ async function applyMemoryProposal(
             .map((memory) => memory.id);
 
         if (variantIds.length > 0) {
+            await ctx.db.memoryEmbedding.deleteMany({
+                where: { memoryType: "user", memoryId: { in: variantIds } },
+            });
             await ctx.db.userMemory.updateMany({
                 where: {
                     id: { in: variantIds },
@@ -190,6 +193,7 @@ async function applyMemoryProposal(
                 data: {
                     status: "archived",
                     archivedAt: new Date(),
+                    embeddingStatus: "pending",
                 },
             });
         }
@@ -200,6 +204,8 @@ async function applyMemoryProposal(
             key,
             value: payload.value,
             rationale: payload.rationale,
+            source: "artifact_accept",
+            authority: "confirmed",
             tags: ["ai-proposed", keyTag],
         });
         await ctx.db.$executeRaw`
@@ -226,6 +232,7 @@ async function applyMemoryProposal(
                     where: { id: exact.id },
                     data: {
                         rationale: payload.rationale ?? exact.rationale,
+                        embeddingStatus: "pending",
                     },
                 });
                 await ctx.db.$executeRaw`
@@ -241,11 +248,15 @@ async function applyMemoryProposal(
                 .map((memory) => memory.id);
             conflictCount = conflictingIds.length;
             if (conflictingIds.length > 0) {
+                await ctx.db.memoryEmbedding.deleteMany({
+                    where: { memoryType: "project", memoryId: { in: conflictingIds } },
+                });
                 await ctx.db.projectMemory.updateMany({
                     where: { id: { in: conflictingIds } },
                     data: {
                         status: "archived",
                         archivedAt: new Date(),
+                        embeddingStatus: "pending",
                     },
                 });
                 const idValues = conflictingIds.map((id) => Prisma.sql`${id}`);
@@ -260,9 +271,12 @@ async function applyMemoryProposal(
         const created = await createProjectMemoryWithDb(ctx.db, {
             projectId: ctx.projectId,
             type: "decision",
+            key: normalizedKey || undefined,
             statement: payload.value,
             rationale: payload.rationale,
             importance: "normal",
+            source: "artifact_accept",
+            authority: "confirmed",
             tags: keyTag ? ["ai-proposed", keyTag] : ["ai-proposed"],
         });
         await ctx.db.$executeRaw`
@@ -293,18 +307,32 @@ async function applyMemoryForgetProposal(ctx: ArtifactExecutionContext, payload:
         if (!userId) {
             throw new ArtifactError("ARTIFACT_CONTEXT_MISSING", "User memory forget proposals require an acting user.");
         }
-        await ctx.db.userMemory.updateMany({
+        const scopedMatches = await ctx.db.userMemory.findMany({
             where: {
                 id: { in: matchIds },
+                userId,
+                status: "active",
+            },
+            select: { id: true },
+        });
+        const scopedIds = scopedMatches.map((memory) => memory.id);
+        if (scopedIds.length === 0) return;
+        await ctx.db.memoryEmbedding.deleteMany({
+            where: { memoryType: "user", memoryId: { in: scopedIds } },
+        });
+        await ctx.db.userMemory.updateMany({
+            where: {
+                id: { in: scopedIds },
                 userId,
                 status: "active",
             },
             data: {
                 status: "archived",
                 archivedAt: new Date(),
+                embeddingStatus: "pending",
             },
         });
-        const idValues = matchIds.map((id) => Prisma.sql`${id}`);
+        const idValues = scopedIds.map((id) => Prisma.sql`${id}`);
         await ctx.db.$executeRaw`
             UPDATE "UserMemory"
             SET "rejectedCount" = "rejectedCount" + 1
@@ -313,18 +341,32 @@ async function applyMemoryForgetProposal(ctx: ArtifactExecutionContext, payload:
         return;
     }
 
-    await ctx.db.projectMemory.updateMany({
+    const scopedMatches = await ctx.db.projectMemory.findMany({
         where: {
             id: { in: matchIds },
+            projectId: ctx.projectId,
+            status: "active",
+        },
+        select: { id: true },
+    });
+    const scopedIds = scopedMatches.map((memory) => memory.id);
+    if (scopedIds.length === 0) return;
+    await ctx.db.memoryEmbedding.deleteMany({
+        where: { memoryType: "project", memoryId: { in: scopedIds } },
+    });
+    await ctx.db.projectMemory.updateMany({
+        where: {
+            id: { in: scopedIds },
             projectId: ctx.projectId,
             status: "active",
         },
         data: {
             status: "archived",
             archivedAt: new Date(),
+            embeddingStatus: "pending",
         },
     });
-    const idValues = matchIds.map((id) => Prisma.sql`${id}`);
+    const idValues = scopedIds.map((id) => Prisma.sql`${id}`);
     await ctx.db.$executeRaw`
         UPDATE "ProjectMemory"
         SET "rejectedCount" = "rejectedCount" + 1

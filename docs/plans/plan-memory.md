@@ -44,7 +44,18 @@ That means:
   - `StudyMemory`
   - `ConversationSummary`
   - `MemoryRetrieval`
+  - `MemoryRetrievalItem`
+- Memory rows now carry explicit trust metadata:
+  - `source`
+  - `authority`
+  - `polarity`
+  - source reference fields
+  - embedding lifecycle status
+- Project and study memories can carry stable semantic `key` values. Protocol sync uses `protocol:*` keys so revised protocol facts update/version the intended memory instead of creating ambiguous duplicates.
 - Contradictions already require explicit confirmation by default, and conflicting accepted values archive/supersede older variants.
+- Study-memory retrieval is project-scoped, including cited-study retrieval from prompt context.
+- Conversation summaries and selected draft text are treated as untrusted context, not source-of-truth evidence.
+- Semantic retrieval no longer performs request-time corpus embedding backfill by default; warmup/rollout paths own embedding readiness unless an explicit backfill flag is enabled.
 - Memory tooling already exists:
   - `store_memory`
   - `forget_memory`
@@ -102,10 +113,15 @@ Borrow from them:
 - [ ] `K2-001` Ship `CAG-017` and unify decision-memory schema across summary and extraction paths.
   - outcome:
     - one decision-grade memory contract instead of overlapping summary and extractor heuristics
+  - current status:
+    - memory rows now have shared trust/provenance fields, and summary text is explicitly separated from canonical memory
+    - remaining work is to finish any higher-level product/eval definition of `CAG-017` rather than adding more storage primitives
 
 - [ ] `K2-002` Ship `CAG-018` negative-memory extraction with confidence and importance.
   - outcome:
     - rejected ideas and ruled-out directions become retrievable without pretending they were accepted decisions
+  - current status:
+    - storage now supports `polarity = rejecting`; extraction coverage still needs product-level tuning and evaluation before closing this item
 
 - [ ] `K2-003` Improve implicit-decision extraction.
   - options:
@@ -151,6 +167,12 @@ Borrow from them:
 
 ## Recently Completed
 
+- [x] Memory trust/provenance metadata is first-class across user, project, and study memory rows.
+- [x] Stable project/study memory keys, protocol-sync revision keys, and project-memory version chaining are implemented.
+- [x] Per-item retrieval audit rows now capture rank, score components, trust metadata, token estimate, and answer-use feedback.
+- [x] Study-memory retrieval now requires project scope for cited-study context and server-side rehydration validates captured targets before prompt assembly.
+- [x] Request-time semantic retrieval no longer silently performs corpus-wide embedding backfill by default.
+- [x] Conversation summaries and selected draft context are marked as untrusted context before they enter future prompts.
 - [x] Memory health metrics and rollout-status views are now implemented server-side.
 - [x] Retrieval-side audit logging is now best-effort rather than taking down the main retrieval path.
 - [x] Contradiction policy and archive-only forget semantics are codified.

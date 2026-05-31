@@ -4,28 +4,135 @@
  */
 
 import { prisma } from "@/lib/server/prisma";
+import type { Prisma } from "@prisma/client";
+import {
+    authorityFromSource,
+    extractMemoryKeyFromTags,
+    normalizeMemoryAuthority,
+    normalizeMemoryPolarity,
+    sourceFromTags,
+    type MemoryAuthority,
+    type MemoryPolarity,
+    type MemorySource,
+} from "@/lib/memory-contracts";
 
 export type StudyMemoryType = "summary" | "finding" | "limitation" | "quality" | "methods" | "results";
 export type StudyMemoryCategory = "methods" | "results" | "bias" | "population" | "intervention" | "outcomes";
-export type StudyMemorySource = "ai_generated" | "user_input" | "extracted";
+export type StudyMemorySource = MemorySource;
+
+type StudyMemoryDbClient = typeof prisma | Prisma.TransactionClient;
 
 export interface CreateStudyMemoryInput {
     studyId: string;
     projectId: string;
     type: StudyMemoryType;
+    key?: string;
     content: string;
     category?: StudyMemoryCategory;
     source?: StudyMemorySource;
+    authority?: MemoryAuthority;
+    polarity?: MemoryPolarity;
+    sourceRefType?: string;
+    sourceRefId?: string;
+    locator?: Prisma.InputJsonValue;
     confidence?: number;
     tags?: string[];
 }
 
 export interface UpdateStudyMemoryInput {
+    key?: string;
     content?: string;
     category?: StudyMemoryCategory;
+    source?: StudyMemorySource;
+    authority?: MemoryAuthority;
+    polarity?: MemoryPolarity;
+    sourceRefType?: string;
+    sourceRefId?: string;
+    locator?: Prisma.InputJsonValue;
     confidence?: number;
+    pinned?: boolean;
     tags?: string[];
     status?: "active" | "archived";
+}
+
+function normalizeMemoryKey(value: string | null | undefined): string | undefined {
+    const key = value?.trim();
+    return key || undefined;
+}
+
+function withKeyTag(tags: string[] | undefined, key: string | undefined): string[] {
+    const existing = tags ?? [];
+    if (!key) return existing;
+    const keyTag = `memory-key:${key}`;
+    return existing.includes(keyTag) ? existing : [...existing, keyTag];
+}
+
+function createStudyMemoryData(input: CreateStudyMemoryInput): Prisma.StudyMemoryUncheckedCreateInput {
+    const key = normalizeMemoryKey(input.key ?? extractMemoryKeyFromTags(input.tags));
+    const tags = withKeyTag(input.tags, key);
+    const source = sourceFromTags(tags, input.source ?? "explicit_user");
+    return {
+        studyId: input.studyId,
+        projectId: input.projectId,
+        type: input.type,
+        key,
+        content: input.content,
+        category: input.category,
+        source,
+        authority: input.authority ?? authorityFromSource(source, "inferred"),
+        polarity: input.polarity ?? "affirming",
+        sourceRefType: input.sourceRefType,
+        sourceRefId: input.sourceRefId,
+        locator: input.locator,
+        confidence: input.confidence,
+        tags,
+        embeddingStatus: "pending",
+    };
+}
+
+function updateStudyMemoryData(
+    input: UpdateStudyMemoryInput,
+    existing: {
+        key: string | null;
+        tags: string[];
+        source: string | null;
+        authority: string;
+    },
+): Prisma.StudyMemoryUncheckedUpdateInput {
+    const key = input.key !== undefined ? normalizeMemoryKey(input.key) : normalizeMemoryKey(existing.key);
+    const tags = input.tags !== undefined || input.key !== undefined
+        ? withKeyTag(input.tags ?? existing.tags, key)
+        : undefined;
+    const source = input.source !== undefined || input.tags !== undefined
+        ? sourceFromTags(tags ?? existing.tags, input.source ?? existing.source)
+        : undefined;
+    const authority = input.authority !== undefined
+        ? normalizeMemoryAuthority(input.authority)
+        : source !== undefined
+            ? authorityFromSource(source, existing.authority)
+            : undefined;
+    const data: Prisma.StudyMemoryUncheckedUpdateInput = {
+        ...input,
+        ...(input.key !== undefined ? { key } : {}),
+        ...(tags !== undefined ? { tags } : {}),
+        ...(source !== undefined ? { source } : {}),
+        ...(authority !== undefined ? { authority } : {}),
+        ...(input.polarity !== undefined ? { polarity: normalizeMemoryPolarity(input.polarity) } : {}),
+        ...(input.status === "archived" ? { archivedAt: new Date() } : {}),
+    };
+
+    if (
+        input.content !== undefined
+        || input.tags !== undefined
+        || input.source !== undefined
+        || input.authority !== undefined
+        || input.polarity !== undefined
+        || input.locator !== undefined
+    ) {
+        data.embeddingStatus = "pending";
+    }
+
+    return data;
 }
 
 /**
@@ -33,7 +140,7 @@ export interface UpdateStudyMemoryInput {
  */
 export async function createStudyMemory(input: CreateStudyMemoryInput) {
     return prisma.studyMemory.create({
-        data: input,
+        data: createStudyMemoryData(input),
     });
 }
 
@@ -56,6 +163,7 @@ export async function getStudyMemories(
         category?: StudyMemoryCategory;
         status?: string;
         minConfidence?: number;
+        authority?: MemoryAuthority;
         tags?: string[];
     }
 ) {
@@ -65,6 +173,39 @@ export async function getStudyMemories(
             type: options?.type,
             category: options?.category,
             status: options?.status ?? "active",
+            authority: options?.authority,
+            ...(options?.minConfidence !== undefined
+                ? { confidence: { gte: options.minConfidence } }
+                : {}),
+            ...(options?.tags?.length
+                ? { tags: { hasSome: options.tags } }
+                : {}),
+        },
+        orderBy: [
+            { type: "asc" },
+            { createdAt: "desc" },
+        ],
+    });
+}
+
+/**
+ * Get memories for a study only after binding it to the expected project.
+ * Use this anywhere the caller is working from project scope.
+ */
+export async function getStudyMemoriesForProject(
+    projectId: string,
+    studyId: string,
+    options?: Parameters<typeof getStudyMemories>[1],
+    db: StudyMemoryDbClient = prisma,
+) {
+    return db.studyMemory.findMany({
+        where: {
+            projectId,
+            studyId,
+            type: options?.type,
+            category: options?.category,
+            status: options?.status ?? "active",
+            authority: options?.authority,
             ...(options?.minConfidence !== undefined
                 ? { confidence: { gte: options.minConfidence } }
                 : {}),
@@ -88,6 +229,7 @@ export async function getProjectStudyMemories(
         type?: StudyMemoryType;
         category?: StudyMemoryCategory;
         minConfidence?: number;
+        authority?: MemoryAuthority;
         tags?: string[];
     }
 ) {
@@ -97,6 +239,7 @@ export async function getProjectStudyMemories(
             type: options?.type,
             category: options?.category,
             status: "active",
+            authority: options?.authority,
             ...(options?.minConfidence !== undefined
                 ? { confidence: { gte: options.minConfidence } }
                 : {}),
@@ -128,9 +271,40 @@ export async function updateStudyMemory(
     id: string,
     input: UpdateStudyMemoryInput
 ) {
+    const existing = await prisma.studyMemory.findUnique({
+        where: { id },
+        select: {
+            key: true,
+            tags: true,
+            source: true,
+            authority: true,
+        },
+    });
+    if (!existing) {
+        throw new Error("Memory not found");
+    }
     return prisma.studyMemory.update({
         where: { id },
-        data: input,
+        data: updateStudyMemoryData(input, existing),
+    });
+}
+
+/**
+ * Archive a study memory.
+ */
+export async function archiveStudyMemory(id: string) {
+    return prisma.$transaction(async (tx) => {
+        await tx.memoryEmbedding.deleteMany({
+            where: { memoryType: "study", memoryId: id },
+        });
+        return tx.studyMemory.update({
+            where: { id },
+            data: {
+                status: "archived",
+                archivedAt: new Date(),
+                embeddingStatus: "pending",
+            },
+        });
     });
 }
 
@@ -138,8 +312,13 @@ export async function updateStudyMemory(
  * Delete a study memory
  */
 export async function deleteStudyMemory(id: string) {
-    return prisma.studyMemory.delete({
-        where: { id },
+    return prisma.$transaction(async (tx) => {
+        await tx.memoryEmbedding.deleteMany({
+            where: { memoryType: "study", memoryId: id },
+        });
+        return tx.studyMemory.delete({
+            where: { id },
+        });
     });
 }
 
@@ -151,13 +330,29 @@ export async function deleteStudyMemoriesByTag(
     studyId: string,
     tag: string
 ): Promise<number> {
-    const result = await prisma.studyMemory.deleteMany({
-        where: {
-            studyId,
-            tags: { has: tag },
-        },
+    return prisma.$transaction(async (tx) => {
+        const matches = await tx.studyMemory.findMany({
+            where: {
+                studyId,
+                tags: { has: tag },
+            },
+            select: { id: true },
+        });
+        const ids = matches.map((memory) => memory.id);
+        if (ids.length === 0) return 0;
+        await tx.memoryEmbedding.deleteMany({
+            where: {
+                memoryType: "study",
+                memoryId: { in: ids },
+            },
+        });
+        const result = await tx.studyMemory.deleteMany({
+            where: {
+                id: { in: ids },
+            },
+        });
+        return result.count;
     });
-    return result.count;
 }
 
 /**
@@ -246,7 +441,8 @@ export async function createMemoriesFromDeepAnalysis(
             projectId,
             type: "summary",
             content: details.aiSummary,
-            source: "ai_generated",
+            source: "deep_analysis",
+            authority: "inferred",
             confidence: 0.8,
             tags: ["deep-analysis"],
         });
@@ -261,7 +457,8 @@ export async function createMemoriesFromDeepAnalysis(
             projectId,
             type: "methods",
             content: methodsParts.join(". "),
-            source: "ai_generated",
+            source: "deep_analysis",
+            authority: "inferred",
             confidence: 0.7,
             tags: ["deep-analysis"],
         });
@@ -276,7 +473,8 @@ export async function createMemoriesFromDeepAnalysis(
             projectId,
             type: "quality",
             content: qualityParts.join(". "),
-            source: "ai_generated",
+            source: "deep_analysis",
+            authority: "inferred",
             confidence: 0.75,
             tags: ["deep-analysis"],
         });
@@ -288,7 +486,8 @@ export async function createMemoriesFromDeepAnalysis(
             projectId,
             type: "results",
             content: `Primary outcome: ${details.primaryOutcome}`,
-            source: "ai_generated",
+            source: "deep_analysis",
+            authority: "inferred",
             confidence: 0.7,
             tags: ["deep-analysis"],
         });
