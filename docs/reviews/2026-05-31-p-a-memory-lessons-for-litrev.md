@@ -46,9 +46,11 @@ LitRev now carries compact memory provenance labels into `## Relevant Memory` pr
 
 This is deliberately smaller than P_A's full context-pack machinery, but it preserves the most important lesson: recalled context must keep its authority boundary when the model sees it.
 
+Conversation-extracted decisions and facts now also route through reviewable memory proposals instead of being auto-written to durable project memory. This applies the P_A rule that capture and belief are separate: extraction can observe a candidate memory, but user review promotes it.
+
 ## Recommended Next Steps
 
-1. Add a memory-review inbox for inferred project memories and user preferences, reusing existing artifact/proposal infrastructure where possible instead of creating another queue.
+1. Continue hardening the memory-review inbox around inferred project memories and user preferences, reusing existing artifact/proposal infrastructure where possible instead of creating another queue.
 2. Define a LitRev context-pack contract for high-value agent runs: task, project/protocol context, retrieved memory with provenance, cited study evidence, approval requirements, and write-back plan.
 3. Add periodic memory-health jobs for stale inferred memories, contradicted protocol facts, low-utility memories, and memories used in answers without enough evidence.
 4. Keep conversation summaries as context only. Promote durable memory only through explicit user decisions, accepted artifacts, protocol sync, or strongly typed study extraction with evidence locators.

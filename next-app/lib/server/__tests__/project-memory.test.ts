@@ -14,7 +14,7 @@ vi.mock("@/lib/server/prisma", () => ({
     },
 }));
 
-const { deleteProjectMemory, updateProjectMemory } = await import("@/lib/server/memory/project-memory");
+const { deleteProjectMemory, getProjectMemories, updateProjectMemory } = await import("@/lib/server/memory/project-memory");
 
 describe("project memory lifecycle", () => {
     beforeEach(() => {
@@ -100,6 +100,21 @@ describe("project memory lifecycle", () => {
             data: { version: 3 },
         });
         expect(result).toMatchObject({ id: "pm-2", version: 3 });
+    });
+
+    it("orders project memories by numeric importance rank instead of importance string", async () => {
+        const findMany = vi.fn().mockResolvedValue([]);
+
+        await getProjectMemories("proj-1", { status: "active" }, {
+            projectMemory: { findMany },
+        } as never);
+
+        expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+            orderBy: [
+                { importanceRank: "desc" },
+                { updatedAt: "desc" },
+            ],
+        }));
     });
 
     it("purges semantic embeddings before hard-deleting a project memory", async () => {

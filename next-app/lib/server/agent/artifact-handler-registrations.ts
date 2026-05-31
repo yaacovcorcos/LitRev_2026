@@ -222,6 +222,7 @@ async function applyMemoryProposal(
         const normalizedKey = payload.key ? normalizedMemoryKey(payload.key) : "";
         const keyTag = normalizedKey ? `memory-key:${normalizedKey}` : null;
         const normalizedValue = normalizedMemoryValue(payload.value);
+        const memoryType = payload.projectMemoryType ?? "decision";
         let conflictCount = 0;
 
         if (keyTag) {
@@ -270,13 +271,18 @@ async function applyMemoryProposal(
 
         const created = await createProjectMemoryWithDb(ctx.db, {
             projectId: ctx.projectId,
-            type: "decision",
+            type: memoryType,
             key: normalizedKey || undefined,
+            category: payload.projectMemoryCategory,
             statement: payload.value,
             rationale: payload.rationale,
             importance: "normal",
             source: "artifact_accept",
             authority: "confirmed",
+            polarity: payload.polarity ?? "affirming",
+            sourceRefType: conversationId ? "conversation" : undefined,
+            sourceRefId: conversationId ?? undefined,
+            confidence: payload.confidence,
             tags: keyTag ? ["ai-proposed", keyTag] : ["ai-proposed"],
         });
         await ctx.db.$executeRaw`

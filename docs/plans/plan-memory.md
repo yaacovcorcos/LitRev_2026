@@ -55,6 +55,7 @@ That means:
 - Contradictions already require explicit confirmation by default, and conflicting accepted values archive/supersede older variants.
 - Study-memory retrieval is project-scoped, including cited-study retrieval from prompt context.
 - Conversation summaries and selected draft text are treated as untrusted context, not source-of-truth evidence.
+- Conversation-extracted decisions, facts, and preferences are proposed as reviewable memory artifacts; they do not silently become durable project truth.
 - Semantic retrieval no longer performs request-time corpus embedding backfill by default; warmup/rollout paths own embedding readiness unless an explicit backfill flag is enabled.
 - Memory tooling already exists:
   - `store_memory`
@@ -175,6 +176,7 @@ Borrow from them:
 - [x] Study-memory retrieval now requires project scope for cited-study context and server-side rehydration validates captured targets before prompt assembly.
 - [x] Request-time semantic retrieval no longer silently performs corpus-wide embedding backfill by default.
 - [x] Conversation summaries and selected draft context are marked as untrusted context before they enter future prompts.
+- [x] Conversation-extracted decisions and facts now route through reviewable memory proposals instead of being auto-written to project memory.
 - [x] Memory health metrics and rollout-status views are now implemented server-side.
 - [x] Retrieval-side audit logging is now best-effort rather than taking down the main retrieval path.
 - [x] Contradiction policy and archive-only forget semantics are codified.
