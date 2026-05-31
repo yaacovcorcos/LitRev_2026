@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -154,6 +154,7 @@ const { undoArtifact, applyArtifact } = await import("@/lib/server/agent/artifac
 const { upsertStudyTrusted, updateStudyTrusted } = await import("@/lib/server/ledger");
 const mockUpsertStudy = vi.mocked(upsertStudyTrusted);
 const mockUpdateStudy = vi.mocked(updateStudyTrusted);
+const originalArtifactUndoWindowMs = process.env.ARTIFACT_UNDO_WINDOW_MS;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -235,6 +236,15 @@ describe("undoArtifact", () => {
         mocks.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback(makeTx()));
     });
 
+    afterEach(() => {
+        if (originalArtifactUndoWindowMs === undefined) {
+            delete process.env.ARTIFACT_UNDO_WINDOW_MS;
+            return;
+        }
+
+        process.env.ARTIFACT_UNDO_WINDOW_MS = originalArtifactUndoWindowMs;
+    });
+
     it("throws when artifact not found", async () => {
         mocks.findUnique.mockResolvedValue(null);
         await expect(undoArtifact("art-missing")).rejects.toThrow("Artifact not found");
@@ -249,6 +259,25 @@ describe("undoArtifact", () => {
         const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
         mocks.findUnique.mockResolvedValue(makeArtifact({ appliedAt: tenMinutesAgo, snapshot: {} }));
         await expect(undoArtifact("art-1")).rejects.toThrow("Undo window has expired");
+    });
+
+    it("honors a configured undo window", async () => {
+        process.env.ARTIFACT_UNDO_WINDOW_MS = String(15 * 60 * 1000);
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+        mocks.findUnique.mockResolvedValue(makeArtifact({
+            type: "protocol_suggestion",
+            appliedAt: tenMinutesAgo,
+            snapshot: { field: "researchQuestion", previousValue: "Old RQ" },
+            payload: { field: "researchQuestion", value: "New RQ", rationale: "test" },
+        }));
+
+        await undoArtifact("art-1");
+
+        expect(mocks.protocolUpsert).toHaveBeenCalledWith(
+            expect.any(Object),
+            "proj-1",
+            expect.objectContaining({ researchQuestion: "Old RQ" }),
+        );
     });
 
     it("restores protocol_suggestion field to previous value on undo", async () => {

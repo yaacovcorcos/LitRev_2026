@@ -56,7 +56,7 @@
     --text-primary: #2d2a26;
     /* Warm Charcoal */
     --text-secondary: #635f59;
-    --text-muted: #948f85;
+    --text-muted: #6f6960;
     --color-white: #ffffff;
 
     /* Accents (Earthy/Modern) */
@@ -244,7 +244,7 @@
     /* Text */
     --text-primary: #1b2a36;
     --text-secondary: #4f6172;
-    --text-muted: #74889a;
+    --text-muted: #5f7486;
 
     /* Surfaces & borders */
     --bg-secondary: rgba(var(--rgb-ui-contrast), 0.04);
@@ -311,7 +311,7 @@
     /* Text — light on dark */
     --text-primary: #e8e4de;
     --text-secondary: #b0a99f;
-    --text-muted: #7a7570;
+    --text-muted: #958f88;
 
     /* Surfaces & borders */
     --bg-secondary: rgba(255, 255, 255, 0.04);

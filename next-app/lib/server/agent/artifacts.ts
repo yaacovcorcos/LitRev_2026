@@ -30,6 +30,10 @@ import {
     buildEvidenceTableMarkdown,
     registerArtifactHandlers,
 } from "./artifact-handler-registrations";
+import {
+    formatArtifactUndoWindow,
+    getArtifactUndoWindowMs,
+} from "./artifact-config";
 
 // ── Apply function registry ──────────────────────────────────────────────────
 
@@ -243,7 +247,7 @@ export async function applyArtifact(
 
 /**
  * Undo an artifact — restore domain state from snapshot, then mark rejected.
- * Only allowed within a 5-minute window after apply.
+ * Only allowed within the configured window after apply.
  */
 export async function undoArtifact(artifactId: string) {
     const artifact = await loadArtifactForExecution(prisma, artifactId);
@@ -251,9 +255,13 @@ export async function undoArtifact(artifactId: string) {
         throw new ArtifactError("ARTIFACT_INVALID_STATE", "Artifact has not been applied");
     }
 
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-    if (artifact.appliedAt < fiveMinutesAgo) {
-        throw new ArtifactError("ARTIFACT_INVALID_STATE", "Undo window has expired (5 minutes)");
+    const undoWindowMs = getArtifactUndoWindowMs();
+    const undoWindowStart = new Date(Date.now() - undoWindowMs);
+    if (artifact.appliedAt < undoWindowStart) {
+        throw new ArtifactError(
+            "ARTIFACT_INVALID_STATE",
+            `Undo window has expired (${formatArtifactUndoWindow(undoWindowMs)})`,
+        );
     }
 
     return prisma.$transaction(async (tx) => {
