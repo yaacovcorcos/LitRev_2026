@@ -19,6 +19,7 @@ const PUBMED_URL_RE = /https?:\/\/pubmed\.ncbi\.nlm\.nih\.gov\/(\d{6,9})\/?/gi;
 const QUOTED_TITLE_YEAR_RE = /["“]([^"”\n]{8,500})["”]\s*\((19\d{2}|20\d{2})\)/g;
 
 const COMMENT_RE = /<!--\s*MENTIONED_STUDIES:\s*([\s\S]*?)\s*-->/i;
+const COMMENT_OPEN_RE = /<!--\s*MENTIONED_STUDIES:\s*([\s\S]*)$/i;
 const XML_RE = /<mentioned_studies>\s*([\s\S]*?)\s*<\/mentioned_studies>/i;
 const FENCED_RE = /```(?:mentioned_studies|json)\s*([\s\S]*?)```/gi;
 const PLACEHOLDER_MARKDOWN_LABELS = new Set([
@@ -159,6 +160,9 @@ function parseStructuredStudies(text: string): MentionedStudy[] {
 
     const commentMatch = text.match(COMMENT_RE);
     if (commentMatch?.[1]) maybeParse(commentMatch[1]);
+
+    const openCommentMatch = text.match(COMMENT_OPEN_RE);
+    if (openCommentMatch?.[1]) maybeParse(openCommentMatch[1]);
 
     const xmlMatch = text.match(XML_RE);
     if (xmlMatch?.[1]) maybeParse(xmlMatch[1]);
