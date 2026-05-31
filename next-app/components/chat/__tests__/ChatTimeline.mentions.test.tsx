@@ -67,6 +67,31 @@ describe("ChatTimeline mention and metadata behavior", () => {
     expect(screen.queryByText(/MENTIONED_STUDIES/i)).toBeNull();
   });
 
+  it("strips open mentioned-studies comments from rendered assistant text", () => {
+    const items: TimelineItem[] = [
+      {
+        type: "assistant_message",
+        id: "a1",
+        createdAt: "2026-02-21T00:00:00.000Z",
+        content: 'Visible narrative\n\n<!-- MENTIONED_STUDIES: {"studies":[{"title":"Study","doi":"10.1000/x"}]}',
+      },
+    ];
+
+    render(
+      <ChatTimeline
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Visible narrative")).not.toBeNull();
+    expect(screen.queryByText(/MENTIONED_STUDIES/i)).toBeNull();
+    expect(screen.getByText("Mentioned studies")).not.toBeNull();
+    expect(screen.getByText("Study")).not.toBeNull();
+  });
+
   it("renders mentioned-study chips and supports one-click add", async () => {
     addMentionedStudyAction.mockResolvedValue({ success: true, data: {
       created: true,

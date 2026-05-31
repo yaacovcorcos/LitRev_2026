@@ -85,6 +85,15 @@ describe("mentioned-studies parsing", () => {
         expect(stripMentionedStudiesMarkup(text)).toBe("Narrative");
     });
 
+    it("extracts structured mentioned studies from open hidden comments", () => {
+        const text = 'Summary\n<!-- MENTIONED_STUDIES: {"studies":[{"title":"Study A","doi":"10.1000/a"}]}';
+        const studies = extractMentionedStudies(text);
+
+        expect(studies).toHaveLength(1);
+        expect(studies[0]?.title).toBe("Study A");
+        expect(studies[0]?.doi).toBe("10.1000/a");
+    });
+
     it("strips fenced mentioned-studies blocks from visible text", () => {
         const text = 'Narrative\n\n```mentioned_studies\n{"studies":[]}\n```';
         expect(stripMentionedStudiesMarkup(text)).toBe("Narrative");
