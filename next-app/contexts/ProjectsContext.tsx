@@ -20,6 +20,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { HomeAuthState, HomeBootstrapState, HomeWorkspaceBootstrap } from "@/types/home-bootstrap";
 import type { Project } from "@/types/project";
 const LEGACY_CLAIM_SESSION_KEY = "litrev:legacyClaimBootstrap:v1";
+const HOME_BOOTSTRAP_TEMPLATE_ID = "litrev-home-bootstrap";
 
 declare global {
   interface Window {
@@ -59,8 +60,31 @@ function readWindowHomeBootstrap(): HomeWorkspaceBootstrap | null {
   return window.__litrevHomeBootstrap ?? null;
 }
 
+function readTemplateHomeBootstrap(): HomeWorkspaceBootstrap | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  const template = document.getElementById(HOME_BOOTSTRAP_TEMPLATE_ID);
+  if (!(template instanceof HTMLTemplateElement)) {
+    return null;
+  }
+
+  const raw = template.innerHTML.trim();
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as HomeWorkspaceBootstrap;
+  } catch (error) {
+    console.error("Failed to parse homepage bootstrap template", error);
+    return null;
+  }
+}
+
 function resolveInitialBootstrap(input?: HomeWorkspaceBootstrap | null): HomeWorkspaceBootstrap | null {
-  return input ?? readWindowHomeBootstrap();
+  return input ?? readTemplateHomeBootstrap() ?? readWindowHomeBootstrap();
 }
 
 function deriveHomeBootstrapState(

@@ -8,7 +8,7 @@ function getParam(searchParams: SearchParams, key: string): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function serializeBootstrapForInlineScript(input: unknown): string {
+function serializeBootstrapForTemplate(input: unknown): string {
   return JSON.stringify(input)
     .replace(/</g, "\\u003c")
     .replace(/\u2028/g, "\\u2028")
@@ -25,11 +25,11 @@ export default async function HomePage({
     searchParams,
   ]);
   const shouldOpenFromQuery = getParam(resolvedSearchParams ?? {}, "create") === "new";
-  const bootstrapScript = `window.__litrevHomeBootstrap=${serializeBootstrapForInlineScript(bootstrap)};`;
+  const serializedBootstrap = serializeBootstrapForTemplate(bootstrap);
 
   return (
     <>
-      <script dangerouslySetInnerHTML={{ __html: bootstrapScript }} />
+      <template id="litrev-home-bootstrap" dangerouslySetInnerHTML={{ __html: serializedBootstrap }} />
       <HomeClient bootstrap={bootstrap} shouldOpenFromQuery={shouldOpenFromQuery} />
     </>
   );

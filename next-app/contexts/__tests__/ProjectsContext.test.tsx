@@ -43,11 +43,16 @@ function Consumer() {
   );
 }
 
+function injectTemplateBootstrap(bootstrap: object) {
+  document.body.innerHTML = `<template id="litrev-home-bootstrap">${JSON.stringify(bootstrap).replace(/</g, "\\u003c")}</template>`;
+}
+
 describe("ProjectsProvider homepage seed behavior", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
     window.sessionStorage.clear();
+    document.body.innerHTML = "";
     window.__litrevHomeBootstrap = undefined;
 
     mocks.usePathname.mockReturnValue("/");
@@ -61,7 +66,7 @@ describe("ProjectsProvider homepage seed behavior", () => {
   });
 
   it("uses a fresh homepage seed without issuing an initial home refresh", async () => {
-    window.__litrevHomeBootstrap = {
+    injectTemplateBootstrap({
       authState: "authenticated",
       homeBootstrapState: "loaded_nonempty",
       initialProjects: [
@@ -78,7 +83,7 @@ describe("ProjectsProvider homepage seed behavior", () => {
       loadedAt: Date.now(),
       userName: "Alex Doe",
       error: null,
-    };
+    });
 
     render(
       <ProjectsProvider>
@@ -95,7 +100,7 @@ describe("ProjectsProvider homepage seed behavior", () => {
   });
 
   it("refreshes a stale homepage seed in the background", async () => {
-    window.__litrevHomeBootstrap = {
+    injectTemplateBootstrap({
       authState: "authenticated",
       homeBootstrapState: "loaded_empty",
       initialProjects: [],
@@ -103,7 +108,7 @@ describe("ProjectsProvider homepage seed behavior", () => {
       loadedAt: Date.now() - 20_000,
       userName: "Alex Doe",
       error: null,
-    };
+    });
     mocks.listHomeProjectsAction.mockResolvedValue({
       success: true,
       data: [
