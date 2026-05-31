@@ -94,6 +94,8 @@ jobs:
             --runs 9
         env:
           NEXT_PUBLIC_ENABLE_PERFORMANCE_TELEMETRY: "0"
+          VERCEL_ENV: preview
+          ENABLE_DEV_QUICK_LOGIN: "1"
 
       - name: Assert nightly artifacts exist
         run: |
