@@ -33,6 +33,8 @@ jobs:
       BETTER_AUTH_SECRET: ci-perf-probe-secret-0123456789abcdef0123456789abcdef
       NEXT_PUBLIC_APP_VERSION: perf-nightly
       NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA: ${{ github.sha }}
+      PERF_PROBE_BASE_URL: http://127.0.0.1:3201
+      PERF_PROBE_INSECURE_AUTH_COOKIES: "1"
       PERF_NIGHTLY_RUN_ID: nightly-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
@@ -86,7 +88,7 @@ jobs:
 
           npm run perf:generate-results -- \
             --matrix nightly \
-            --base-url "http://127.0.0.1:3201" \
+            --base-url "${PERF_PROBE_BASE_URL}" \
             --budget "../output/performance/baseline/budget-thresholds.json" \
             --output "../output/performance/nightly/${PERF_NIGHTLY_RUN_ID}/results-nightly.json" \
             --commit "${GITHUB_SHA}" \

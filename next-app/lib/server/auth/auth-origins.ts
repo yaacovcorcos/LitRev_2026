@@ -14,7 +14,11 @@ type AuthOriginEnv = {
   BETTER_AUTH_URL?: string | undefined;
   NEXT_PUBLIC_BETTER_AUTH_URL?: string | undefined;
   BETTER_AUTH_TRUSTED_ORIGINS?: string | undefined;
+  ENABLE_DEV_QUICK_LOGIN?: string | undefined;
+  PERF_PROBE_BASE_URL?: string | undefined;
+  PERF_PROBE_INSECURE_AUTH_COOKIES?: string | undefined;
   VERCEL_URL?: string | undefined;
+  VERCEL_ENV?: string | undefined;
   NODE_ENV?: string | undefined;
 } & Record<string, string | undefined>;
 
@@ -50,6 +54,18 @@ function isLocalAuthOrigin(origin: string | null): boolean {
   } catch {
     return false;
   }
+}
+
+export function getAuthCookieSecurityOverride(env: AuthOriginEnv = process.env): boolean | undefined {
+  if (env.PERF_PROBE_INSECURE_AUTH_COOKIES !== "1") return undefined;
+  if (env.NODE_ENV !== "production") return undefined;
+  if (env.VERCEL_ENV !== "preview") return undefined;
+  if (env.ENABLE_DEV_QUICK_LOGIN !== "1") return undefined;
+
+  const probeOrigin = normalizeOrigin(env.PERF_PROBE_BASE_URL);
+  if (!isLocalAuthOrigin(probeOrigin)) return undefined;
+
+  return false;
 }
 
 export function getAuthBaseURL(env: AuthOriginEnv = process.env): string {
