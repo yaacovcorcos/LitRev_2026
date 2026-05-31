@@ -119,6 +119,7 @@ function updateStudyMemoryData(
         ...(authority !== undefined ? { authority } : {}),
         ...(input.polarity !== undefined ? { polarity: normalizeMemoryPolarity(input.polarity) } : {}),
         ...(input.status === "archived" ? { archivedAt: new Date() } : {}),
+        ...(input.status === "active" ? { archivedAt: null } : {}),
     };
 
     if (
@@ -396,7 +397,7 @@ export async function batchCreateStudyMemories(
     memories: CreateStudyMemoryInput[]
 ) {
     return prisma.studyMemory.createMany({
-        data: memories,
+        data: memories.map(createStudyMemoryData),
     });
 }
 

@@ -84,6 +84,7 @@ function updateUserMemoryData(
         ...(authority !== undefined ? { authority } : {}),
         ...(input.polarity !== undefined ? { polarity: normalizeMemoryPolarity(input.polarity) } : {}),
         ...(input.status === "archived" ? { archivedAt: new Date() } : {}),
+        ...(input.status === "active" ? { archivedAt: null } : {}),
     };
 
     if (
@@ -120,6 +121,8 @@ export async function setUserMemoryWithDb(
         create: createUserMemoryData({ userId, key, ...data }),
         update: {
             ...updateUserMemoryData(data),
+            status: "active",
+            archivedAt: null,
             updatedAt: new Date(),
         },
     });

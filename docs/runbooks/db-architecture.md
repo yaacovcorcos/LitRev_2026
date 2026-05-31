@@ -142,6 +142,8 @@ These indexes protect major runtime paths. The operational gate owner and verifi
 | `StudyMemory_projectId_embeddingStatus_idx` | Study-memory embedding lifecycle scans |
 | `MemoryRetrievalItem_retrievalId_idx` | Per-retrieval item audit hydration |
 | `MemoryRetrievalItem_memoryType_memoryId_idx` | Memory-use audit lookup by source memory |
+| `MemoryRetrievalItem_source_idx` | Retrieval audit filtering by memory provenance |
+| `MemoryRetrievalItem_authority_idx` | Retrieval audit filtering by trust authority |
 | `MemoryEmbedding_embedding_hnsw_idx` | Vector similarity retrieval performance |
 | `AgentRun_parentRunId_startedAt_idx` | Child-run lineage lookups |
 | `AgentRun_rootRunId_startedAt_idx` | Root-run trace aggregation |

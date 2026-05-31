@@ -131,6 +131,7 @@ function updateProjectMemoryData(
         ...(authority !== undefined ? { authority } : {}),
         ...(input.polarity !== undefined ? { polarity: normalizeMemoryPolarity(input.polarity) } : {}),
         ...(input.status === "archived" ? { archivedAt: new Date() } : {}),
+        ...(input.status === "active" ? { archivedAt: null } : {}),
     };
 
     if (
