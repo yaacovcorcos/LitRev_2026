@@ -113,7 +113,7 @@ jobs:
 
       - name: Upload governance audit baseline
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: governance-audit
           path: next-app/governance-audit.json
