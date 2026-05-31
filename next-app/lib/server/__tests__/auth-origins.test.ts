@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getAuthBaseURL, getAuthTrustedOrigins } from "@/lib/server/auth/auth-origins";
+import {
+  getAuthBaseURL,
+  getAuthCookieSecurityOverride,
+  getAuthTrustedOrigins,
+} from "@/lib/server/auth/auth-origins";
 
 describe("auth origin configuration", () => {
   it("does not pin the server base URL to a local development port", () => {
@@ -58,5 +62,39 @@ describe("auth origin configuration", () => {
       "http://localhost:*",
       "http://127.0.0.1:*",
     ]));
+  });
+
+  it("disables secure cookies only for the local production performance probe", () => {
+    expect(getAuthCookieSecurityOverride({
+      NODE_ENV: "production",
+      VERCEL_ENV: "preview",
+      ENABLE_DEV_QUICK_LOGIN: "1",
+      PERF_PROBE_INSECURE_AUTH_COOKIES: "1",
+      PERF_PROBE_BASE_URL: "http://127.0.0.1:3201",
+    })).toBe(false);
+  });
+
+  it("keeps secure cookie defaults outside the local performance probe", () => {
+    const baseEnv = {
+      NODE_ENV: "production",
+      VERCEL_ENV: "preview",
+      ENABLE_DEV_QUICK_LOGIN: "1",
+      PERF_PROBE_INSECURE_AUTH_COOKIES: "1",
+    };
+
+    expect(getAuthCookieSecurityOverride({
+      ...baseEnv,
+      PERF_PROBE_BASE_URL: "https://preview.example.com",
+    })).toBeUndefined();
+    expect(getAuthCookieSecurityOverride({
+      ...baseEnv,
+      VERCEL_ENV: "production",
+      PERF_PROBE_BASE_URL: "http://127.0.0.1:3201",
+    })).toBeUndefined();
+    expect(getAuthCookieSecurityOverride({
+      ...baseEnv,
+      ENABLE_DEV_QUICK_LOGIN: "0",
+      PERF_PROBE_BASE_URL: "http://127.0.0.1:3201",
+    })).toBeUndefined();
   });
 });

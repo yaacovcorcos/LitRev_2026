@@ -7,9 +7,14 @@ import { magicLink } from "better-auth/plugins/magic-link";
 import { Resend } from "resend";
 import { prisma } from "@/lib/server/prisma";
 import { getBetterAuthSecret } from "@/lib/server/auth/auth-secret";
-import { getAuthBaseURL, getAuthTrustedOrigins } from "@/lib/server/auth/auth-origins";
+import {
+  getAuthBaseURL,
+  getAuthCookieSecurityOverride,
+  getAuthTrustedOrigins,
+} from "@/lib/server/auth/auth-origins";
 
 const baseURL = getAuthBaseURL() || undefined;
+const authCookieSecurityOverride = getAuthCookieSecurityOverride();
 const trustedOrigins = getAuthTrustedOrigins();
 
 const resend = process.env.RESEND_API_KEY
@@ -64,6 +69,11 @@ function createAuth() {
       expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24,
     },
+    advanced: authCookieSecurityOverride == null
+      ? undefined
+      : {
+          useSecureCookies: authCookieSecurityOverride,
+        },
   });
 }
 

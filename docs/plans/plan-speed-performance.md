@@ -34,6 +34,7 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
 - The nightly-only probe matrix is now materially implemented:
   - `next-app/scripts/generate-perf-results.ts` supports separate `mandatory` and `nightly` matrices and writes nightly artifacts under `output/performance/nightly/**`
   - `.github/workflows/perf-nightly.yml` builds a production app, captures nightly probe artifacts, and uploads them separately from the PR-gated results artifact
+  - the local `next start` performance job explicitly opts into non-secure Better Auth cookies only when `PERF_PROBE_INSECURE_AUTH_COOKIES=1`, `PERF_PROBE_BASE_URL` is a local HTTP origin, `VERCEL_ENV=preview`, and `ENABLE_DEV_QUICK_LOGIN=1`; deployed preview and production auth cookies remain secure by default
   - the follow-up nightly report workflow also exists, but end-to-end nightly reporting still depends on workflow-name alignment between the producer and report workflows and should not yet be treated as fully closed operationally
 - Project entry boot is now route-aware through the shared project shell boot contract:
   - root overview entry no longer boots provider data by default
