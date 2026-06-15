@@ -31,17 +31,17 @@ jobs:
 
       - name: Checkout repository
         if: ${{ github.event.workflow_run.conclusion == 'success' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
         if: ${{ github.event.workflow_run.conclusion == 'success' }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
 
       - name: Download current nightly artifact
         if: ${{ github.event.workflow_run.conclusion == 'success' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           run-id: ${{ github.event.workflow_run.id }}
           name: performance-nightly-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
@@ -51,7 +51,7 @@ jobs:
       - name: Resolve previous successful nightly run
         id: prev
         if: ${{ github.event.workflow_run.conclusion == 'success' }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const owner = context.repo.owner;
@@ -84,7 +84,7 @@ jobs:
       - name: Download previous nightly artifact
         if: ${{ github.event.workflow_run.conclusion == 'success' && steps.prev.outputs.run_id != '' }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           run-id: ${{ steps.prev.outputs.run_id }}
           name: performance-nightly-${{ steps.prev.outputs.run_id }}-${{ steps.prev.outputs.run_attempt }}
