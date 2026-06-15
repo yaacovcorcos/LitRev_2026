@@ -41,8 +41,8 @@ jobs:
       PERF_NIGHTLY_RUN_ID: nightly-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -107,7 +107,7 @@ jobs:
           test -f output/performance/nightly/${PERF_NIGHTLY_RUN_ID}/results-nightly.json || (echo "::error::missing nightly performance results artifact" && exit 1)
 
       - name: Upload nightly performance artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: performance-nightly-${{ github.run_id }}-${{ github.run_attempt }}
           path: output/performance/nightly/${{ env.PERF_NIGHTLY_RUN_ID }}/results-nightly.json
