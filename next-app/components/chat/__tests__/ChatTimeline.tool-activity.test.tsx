@@ -157,6 +157,26 @@ describe("ChatTimeline tool activity cards", () => {
     expect(screen.getAllByText("PDF parsing failed.").length).toBeGreaterThanOrEqual(1);
   });
 
+  it("labels interrupted tools as interrupted rather than pending or live", () => {
+    renderTimeline([{
+      type: "tool_activity",
+      id: "tool-interrupted",
+      callId: "call-interrupted",
+      toolName: "search_openalex",
+      status: "interrupted",
+      summary: "Stopped by you before this step finished.",
+      startedAt: "2026-03-02T12:30:00.000Z",
+      updatedAt: "2026-03-02T12:30:01.000Z",
+      completedAt: "2026-03-02T12:30:01.000Z",
+      createdAt: "2026-03-02T12:30:00.000Z",
+    }]);
+
+    expect(screen.getAllByText("Interrupted")).toHaveLength(2);
+    expect(screen.queryByText("Pending")).toBeNull();
+    expect(screen.queryByText("In progress")).toBeNull();
+    expect(screen.queryByText("Live")).toBeNull();
+  });
+
   it("groups adjacent PubMed searches into one compact search sequence card", () => {
     renderTimeline([
       {

@@ -15,6 +15,10 @@ const {
   mockGetConversation,
   mockListConversations,
   mockSummarizeConversationAction,
+  mockPush,
+  mockReplace,
+  mockUseProjects,
+  mockUseSearchParams,
 } = getAiViewMocks();
 
 const COMPRESSION_ACTION_FAILED_MESSAGE =
@@ -23,6 +27,103 @@ const COMPRESSION_LOAD_FAILED_MESSAGE =
   "LitRev compressed this conversation, but could not load the new summary. Your original chat is still here; open chat history or try again.";
 
 describe("/ai page history and hydration", () => {
+  it("hydrates the URL-addressed conversation after refresh", async () => {
+    mockUseSearchParams.mockReturnValue(new URLSearchParams("conversation=conv-1"));
+    mockGetConversation.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: "conv-1",
+        title: "First chat",
+        messages: [{
+          id: "msg-1",
+          role: "user",
+          content: "Restored from the URL",
+          createdAt: "2026-03-02T00:00:00.000Z",
+        }],
+        artifacts: [],
+      },
+    });
+
+    renderAiView();
+    fireEvent.click(screen.getByLabelText("Open chat history"));
+
+    await waitFor(() => {
+      expect(mockGetConversation).toHaveBeenCalledWith("conv-1");
+      expect(screen.getByText("Restored from the URL")).toBeTruthy();
+    });
+  });
+
+  it("restores a persisted cancelled run as a neutral stopped status", async () => {
+    mockUseSearchParams.mockReturnValue(new URLSearchParams("conversation=conv-1"));
+    mockGetConversation.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: "conv-1",
+        title: "First chat",
+        messages: [{
+          id: "msg-cancelled",
+          role: "user",
+          content: "Keep this cancelled prompt",
+          createdAt: "2026-03-02T00:00:00.000Z",
+        }],
+        artifacts: [],
+        latestRun: {
+          id: "run-cancelled",
+          status: "cancelled",
+          startedAt: "2026-03-02T00:00:01.000Z",
+          completedAt: "2026-03-02T00:00:02.000Z",
+        },
+      },
+    });
+
+    renderAiView();
+    fireEvent.click(screen.getByLabelText("Open chat history"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Keep this cancelled prompt")).toBeTruthy();
+      expect(screen.getByText("Stopped by you. Completed work is preserved.")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    });
+  });
+
+  it("writes selected conversation identity into browser history", async () => {
+    renderAiView();
+    fireEvent.click(screen.getByLabelText("Open chat history"));
+
+    await waitFor(() => {
+      expect(screen.getByText("First chat")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("First chat"));
+
+    expect(mockPush).toHaveBeenCalledWith("/ai?conversation=conv-1");
+    await waitFor(() => {
+      expect(mockGetConversation).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("normalizes an unknown project scope to the safe global route", async () => {
+    mockUseSearchParams.mockReturnValue(new URLSearchParams("project=missing-project"));
+
+    renderAiView();
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith("/ai");
+    });
+    expect(screen.getByRole("button", { name: "Global scope" })).toBeTruthy();
+  });
+
+  it("normalizes an unknown project scope when the account has no projects", async () => {
+    mockUseProjects.mockReturnValue({ projects: [], isLoadingProjects: false });
+    mockUseSearchParams.mockReturnValue(new URLSearchParams("project=missing-project"));
+
+    renderAiView();
+
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith("/ai");
+    });
+    expect(screen.getByRole("button", { name: "Global scope" })).toBeTruthy();
+  });
+
   it("does not load conversations until the history sidebar is opened", async () => {
     renderAiView();
 

@@ -41,6 +41,8 @@ This is the structured failure item in the timeline.
 In the UI, this is the canonical error surface for a failed run or failed step.
 It should appear once, clearly, with the right recovery affordance if one exists.
 
+`user_cancelled` is the neutral terminal variant used when the user explicitly presses Stop. It uses status semantics rather than alert semantics, preserves completed work, marks unfinished tool activity as interrupted, and offers retry without presenting cancellation as a system failure.
+
 ## Process Transparency
 
 ### Execution Trace

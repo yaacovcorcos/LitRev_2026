@@ -22,6 +22,54 @@ const {
 } = getAiViewMocks();
 
 describe("/ai page recovery truth and continuation", () => {
+  it("settles explicit user stop into truthful retryable timeline state", async () => {
+    let resolveStream: (() => void) | null = null;
+    mockProcessAIStream.mockImplementation(async ({ onChunk }: {
+      onChunk: (chunk: unknown) => void | Promise<void>;
+    }) => {
+      await onChunk({ type: "run_start", runId: "run-cancel", conversationId: "conv-new" });
+      await onChunk({
+        type: "checkpoint",
+        checkpointLabel: "PubMed found 105 results. Narrowing the search next.",
+      });
+      await new Promise<void>((resolve) => {
+        resolveStream = resolve;
+      });
+      return {
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "cancelled_by_user",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      };
+    });
+
+    renderAiView();
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("PubMed found 105 results. Narrowing the search next.")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "stop generation" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Stopped by you. Completed work is preserved.")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    });
+    expect(screen.getByText("Recover this run")).toBeTruthy();
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/ai/runs/run-cancel/cancel",
+      { method: "POST" },
+    );
+
+    await act(async () => {
+      resolveStream?.();
+      await Promise.resolve();
+    });
+  });
+
   it("does not append a false terminal failure after a recovered completed run", async () => {
     mockProcessAIStream.mockImplementation(async ({ onChunk }: {
       onChunk: (chunk: unknown) => void | Promise<void>;

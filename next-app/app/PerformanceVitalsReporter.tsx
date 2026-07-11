@@ -12,6 +12,10 @@ type PerformanceNetwork,
 import { resolvePerformanceRouteContext } from "@/lib/performance-route-context";
 import { getViewportClass } from "@/lib/mobile/tiers";
 import { isOperationalTelemetryE2EMode } from "@/lib/telemetry/e2e-mode";
+import {
+  canAttemptOperationalTelemetry,
+  noteOperationalTelemetryFailure,
+} from "@/lib/telemetry/client-operational-backoff";
 
 const TELEMETRY_ENDPOINT = "/api/telemetry/performance";
 type NavigatorWithConnection = Navigator & {
@@ -92,10 +96,11 @@ async function postMetric(input: PerformanceMetricInput): Promise<void> {
 }
 
 async function shipMetric(input: PerformanceMetricInput): Promise<void> {
+  if (!canAttemptOperationalTelemetry()) return;
   try {
     await postMetric(input);
-  } catch (error) {
-    console.warn("[performance-telemetry] failed to ship metric", error);
+  } catch {
+    noteOperationalTelemetryFailure();
   }
 }
 

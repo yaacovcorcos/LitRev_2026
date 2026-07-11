@@ -68,6 +68,7 @@ The agent should not merely "feel smart." It should be:
 ## Current Architecture
 
 - The main chat surfaces already share one runtime/reducer foundation for normalized stream events, tool lifecycle, checkpoints, structured terminal errors, and blocked clarification.
+- `/ai` now translates explicit user cancellation into truthful terminal presentation: transient progress and empty reserved output are removed, in-flight tool receipts become `interrupted`, completed work remains visible, and a neutral retryable `user_cancelled` status is shown while durable cancellation is confirmed or reconciled.
 - The known `FIX-011b` shared-runtime code delta is now closed on `main`:
   - stale replaced/cancelled workers fail closed on ownership loss
   - cancelled terminal truth converges across live stream, durable cancellation, recovery, and blocked-card dismissal

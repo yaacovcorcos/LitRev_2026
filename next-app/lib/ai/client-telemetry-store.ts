@@ -1,3 +1,9 @@
+import {
+  canAttemptOperationalTelemetry,
+  getOperationalTelemetryRetryDelayMs,
+  noteOperationalTelemetryFailure,
+} from "@/lib/telemetry/client-operational-backoff";
+
 type PendingMetric<TEvent> = {
   event: TEvent;
   attempt: number;
@@ -13,6 +19,7 @@ type ClientTelemetryStoreOptions<TEvent, TInput> = {
   flushDelayMs?: number;
   retryDelayMs?: number;
   maxDeliveryAttempts?: number;
+  failureCooldownMs?: number;
 };
 
 type ClientTelemetryStore<TEvent> = {
@@ -26,6 +33,7 @@ type ClientTelemetryStore<TEvent> = {
 const DEFAULT_FLUSH_DELAY_MS = 500;
 const DEFAULT_RETRY_DELAY_MS = 3000;
 const DEFAULT_MAX_DELIVERY_ATTEMPTS = 3;
+const DEFAULT_FAILURE_COOLDOWN_MS = 30_000;
 
 export function createClientTelemetryStore<TEvent extends object, TInput>({
   storageKey,
@@ -37,6 +45,7 @@ export function createClientTelemetryStore<TEvent extends object, TInput>({
   flushDelayMs = DEFAULT_FLUSH_DELAY_MS,
   retryDelayMs = DEFAULT_RETRY_DELAY_MS,
   maxDeliveryAttempts = DEFAULT_MAX_DELIVERY_ATTEMPTS,
+  failureCooldownMs = DEFAULT_FAILURE_COOLDOWN_MS,
 }: ClientTelemetryStoreOptions<TEvent, TInput>): ClientTelemetryStore<TEvent> {
   let pendingMetrics: PendingMetric<TEvent>[] = [];
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -44,7 +53,7 @@ export function createClientTelemetryStore<TEvent extends object, TInput>({
   let shippingInitialized = false;
   let shippingOverrideForTests: boolean | null = null;
 
-  function shouldShipToServer(): boolean {
+  function hasShippingTransport(): boolean {
     if (shippingOverrideForTests !== null) return shippingOverrideForTests;
     if (typeof window === "undefined") return false;
     if (typeof fetch !== "function") return false;
@@ -56,27 +65,34 @@ export function createClientTelemetryStore<TEvent extends object, TInput>({
   }
 
   async function postMetric(event: TEvent): Promise<void> {
-    const response = await fetch(telemetryEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      cache: "no-store",
-      keepalive: true,
-      body: JSON.stringify(toMetricInput(event)),
-    });
+    try {
+      const response = await fetch(telemetryEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        cache: "no-store",
+        keepalive: true,
+        body: JSON.stringify(toMetricInput(event)),
+      });
 
-    if (!response.ok) {
-      throw new Error(`Telemetry upload failed with status ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Telemetry upload failed with status ${response.status}`);
+      }
+    } catch (error) {
+      noteOperationalTelemetryFailure(Date.now(), failureCooldownMs);
+      throw error;
     }
   }
 
   function scheduleFlush(delayMs = flushDelayMs): void {
-    if (!shouldShipToServer()) return;
+    if (!hasShippingTransport()) return;
     if (flushTimer) return;
+    const backoffDelayMs = getOperationalTelemetryRetryDelayMs();
+    const effectiveDelayMs = Math.max(delayMs, backoffDelayMs);
     flushTimer = setTimeout(() => {
       flushTimer = null;
       void flushPendingMetrics();
-    }, delayMs);
+    }, effectiveDelayMs);
   }
 
   function flushPendingWithBeacon(): void {
@@ -113,7 +129,11 @@ export function createClientTelemetryStore<TEvent extends object, TInput>({
   }
 
   async function flushPendingMetrics(): Promise<void> {
-    if (!shouldShipToServer()) return;
+    if (!hasShippingTransport()) return;
+    if (!canAttemptOperationalTelemetry()) {
+      scheduleFlush(getOperationalTelemetryRetryDelayMs());
+      return;
+    }
     if (isFlushing) {
       if (pendingMetrics.length > 0) {
         scheduleFlush();
@@ -128,7 +148,8 @@ export function createClientTelemetryStore<TEvent extends object, TInput>({
     const retryQueue: PendingMetric<TEvent>[] = [];
 
     try {
-      for (const pending of queue) {
+      for (let index = 0; index < queue.length; index += 1) {
+        const pending = queue[index]!;
         try {
           await postMetric(pending.event);
         } catch {
@@ -136,6 +157,8 @@ export function createClientTelemetryStore<TEvent extends object, TInput>({
           if (nextAttempt < maxDeliveryAttempts) {
             retryQueue.push({ event: pending.event, attempt: nextAttempt });
           }
+          retryQueue.push(...queue.slice(index + 1));
+          break;
         }
       }
     } finally {
@@ -150,7 +173,7 @@ export function createClientTelemetryStore<TEvent extends object, TInput>({
   }
 
   function enqueueMetricForUpload(event: TEvent): void {
-    if (!shouldShipToServer()) return;
+    if (!hasShippingTransport()) return;
     ensureShippingLifecycleHooks();
     pendingMetrics.push({ event, attempt: 0 });
     scheduleFlush();

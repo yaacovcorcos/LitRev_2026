@@ -10,8 +10,9 @@ import { useProjects } from "@/contexts/ProjectsContext";
 import { useHydrated } from "@/hooks/useHydrated";
 import { useIdleTask } from "@/hooks/useIdleTask";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { EmptyStateSkeleton } from "@/components/ui/EmptyState";
 import type { AgentMode } from "@/types/agent";
 import type {
   AIErrorEnvelope,
@@ -55,7 +56,7 @@ import {
   type StreamTerminalReason,
 } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
-import { requestAgentRunCancellation } from "@/lib/ai/run-cancel-client";
+import { cancelAgentRun, requestAgentRunCancellation } from "@/lib/ai/run-cancel-client";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import {
   createRecoveryErrorEnvelope,
@@ -90,11 +91,13 @@ import {
   type SelectableModelId,
 } from "@/lib/ai/config";
 import { isProgressiveAnswerStreamingEnabled } from "@/lib/feature-flags";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { QueuedFollowUp } from "@/types/queued-followup";
+import { buildAiRouteHref, readAiRouteState, type AiRouteState } from "@/lib/ai/ai-route-state";
 import { type ChatConversation, groupConversationsByDate } from "./groupConversationsByDate";
 import {
   mapDbMessagesToTimeline,
+  markTimelineStoppedByUser,
   stripReservedAssistantTimelineItems,
 } from "./conversation-timeline";
 import styles from "./ai-view.module.css";
@@ -165,10 +168,19 @@ const makeId = (prefix: string) =>
 
 const AI_HISTORY_COLLAPSED_KEY = "litrev_ai_history_collapsed";
 
-export default function AIView() {
+function AIViewContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const routeSearch = searchParams.toString();
+  const routeState = useMemo(
+    () => readAiRouteState(new URLSearchParams(routeSearch)),
+    [routeSearch],
+  );
+  const previousRouteSearchRef = useRef(routeSearch);
+  const routeSearchChanged = previousRouteSearchRef.current !== routeSearch;
+  previousRouteSearchRef.current = routeSearch;
   const progressiveAnswerStreamingEnabled = isProgressiveAnswerStreamingEnabled();
-  const { projects } = useProjects();
+  const { projects, isLoadingProjects } = useProjects();
   const isHydrated = useHydrated();
   const [lastProjectId, setLastProjectId] = useState<string | null>(null);
   const [isHistoryCollapsed, setHistoryCollapsed] = useState<boolean>(() => {
@@ -182,7 +194,7 @@ export default function AIView() {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(routeState.projectId);
   const [isComposerReady, setComposerReady] = useState(false);
 
   const [workspaceContextText, setWorkspaceContextText] = useState("");
@@ -284,10 +296,26 @@ export default function AIView() {
     };
   }, []);
 
-  const activateConversation = useCallback((conversationId: string | null) => {
+  const navigateAiRoute = useCallback((nextState: AiRouteState, mode: "push" | "replace") => {
+    const currentHref = buildAiRouteHref(routeState);
+    const nextHref = buildAiRouteHref(nextState);
+    if (currentHref === nextHref) return;
+    router[mode](nextHref);
+  }, [routeState, router]);
+
+  const activateConversation = useCallback((
+    conversationId: string | null,
+    navigationMode: "none" | "push" | "replace" = "replace",
+  ) => {
     setActiveConversationId(conversationId);
     resetConversationPerfTracking(conversationId);
-  }, [resetConversationPerfTracking]);
+    if (navigationMode !== "none") {
+      navigateAiRoute({
+        conversationId,
+        projectId: selectedProjectId,
+      }, navigationMode);
+    }
+  }, [navigateAiRoute, resetConversationPerfTracking, selectedProjectId]);
 
   const markComposerReady = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -498,7 +526,10 @@ export default function AIView() {
     void loadConversationList();
   }, [isHistoryCollapsed, loadConversationList]);
 
-  const handleSelectProject = useCallback((nextProjectId: string | null) => {
+  const handleSelectProject = useCallback((
+    nextProjectId: string | null,
+    navigationMode: "none" | "push" | "replace" = "push",
+  ) => {
     if (selectedProjectId === nextProjectId) return;
 
     setSelectedProjectId(nextProjectId);
@@ -515,7 +546,43 @@ export default function AIView() {
     setPrefillCommand(null);
     setQueuedFollowUp(null);
     setIsConversationLoading(false);
-  }, [selectedProjectId]);
+    if (navigationMode !== "none") {
+      navigateAiRoute({ conversationId: null, projectId: nextProjectId }, navigationMode);
+    }
+  }, [navigateAiRoute, selectedProjectId]);
+
+  const clearActiveConversationPresentation = useCallback(() => {
+    activateConversation(null, "none");
+    setPendingChoices([]);
+    setPendingUserInput(null);
+    setPrefillCommand(null);
+  }, [activateConversation]);
+
+  useEffect(() => {
+    if (!routeSearchChanged) return;
+    if (routeState.projectId !== selectedProjectId) {
+      handleSelectProject(routeState.projectId, "none");
+      return;
+    }
+    if (!routeState.conversationId && activeConversationIdRef.current) {
+      clearActiveConversationPresentation();
+    }
+  }, [
+    clearActiveConversationPresentation,
+    handleSelectProject,
+    routeSearchChanged,
+    routeSearch,
+    routeState.conversationId,
+    routeState.projectId,
+    selectedProjectId,
+  ]);
+
+  useEffect(() => {
+    if (!routeState.projectId || isLoadingProjects) return;
+    if (projects.some((project) => project.id === routeState.projectId)) return;
+    handleSelectProject(null, "none");
+    navigateAiRoute({ conversationId: null, projectId: null }, "replace");
+  }, [handleSelectProject, isLoadingProjects, navigateAiRoute, projects, routeState.projectId]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const selectedScopeLabel = selectedProject
@@ -792,8 +859,11 @@ export default function AIView() {
     upsertConversationTitle,
   ]);
 
-  const cancelStream = useCallback(() => {
-    requestAgentRunCancellation(currentRunIdRef.current);
+  const cancelStream = useCallback((options?: { announce?: boolean }) => {
+    const shouldAnnounce = options?.announce ?? true;
+    const runId = currentRunIdRef.current;
+    const conversationId = activeConversationIdRef.current;
+
     streamGenRef.current++;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -802,7 +872,74 @@ export default function AIView() {
     setIsTyping(false);
     setPendingChoices([]);
     setPendingUserInput(null);
-  }, []);
+
+    if (!shouldAnnounce || !conversationId) {
+      requestAgentRunCancellation(runId);
+      return;
+    }
+
+    const stoppedAt = new Date().toISOString();
+    updateConversationTimeline(conversationId, (items) => markTimelineStoppedByUser(items, {
+      createdAt: stoppedAt,
+      runId,
+    }));
+
+    if (!runId) return;
+
+    void (async () => {
+      try {
+        const result = await cancelAgentRun(runId);
+        if (result === "cancelled" || result === "not_found") {
+          if (currentRunIdRef.current === runId) currentRunIdRef.current = null;
+          clearRecoverableAiEntry();
+          return;
+        }
+
+        updateConversationTimeline(conversationId, (items) => items.filter((item) => !(
+          item.type === "error" && item.errorMeta?.kind === "user_cancelled"
+        )));
+        const recoveryResult = await recoverConversationRun({
+          conversationId,
+          runId,
+          page: "ai",
+        });
+        if (recoveryResult.outcome === "recovered") {
+          if (recoveryResult.response?.runStatus === "cancelled") {
+            updateConversationTimeline(conversationId, (items) => markTimelineStoppedByUser(items, {
+              createdAt: new Date().toISOString(),
+              runId,
+            }));
+          }
+          return;
+        }
+
+        throw new Error("Run cancellation could not be confirmed.");
+      } catch {
+        updateConversationTimeline(conversationId, (items) => [
+          ...items.filter((item) => !(
+            item.type === "error" && item.errorMeta?.kind === "user_cancelled"
+          )),
+          {
+            type: "error",
+            id: `run-cancellation-unconfirmed-${runId}`,
+            message: "LitRev stopped this view but could not confirm the run ended. Reconnect before retrying.",
+            retryable: true,
+            errorMeta: {
+              kind: "runtime",
+              code: "RUN_CANCELLATION_UNCONFIRMED",
+              retryable: true,
+              source: "runtime",
+              message: "Run cancellation could not be confirmed.",
+              runId,
+              activeRunId: runId,
+              recoveryRecommendation: "reconnect",
+            },
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+      }
+    })();
+  }, [clearRecoverableAiEntry, recoverConversationRun, updateConversationTimeline]);
 
   const ensureConversation = useCallback(async (context: ConversationContext): Promise<string> => {
     if (activeConversationId) return activeConversationId;
@@ -831,11 +968,14 @@ export default function AIView() {
     return id;
   }, [activeConversationId, activateConversation, selectedProjectId, sortConversationsByUpdatedAt, updateConversationTimeline]);
 
-  const handleSelectConversation = useCallback(async (id: string) => {
+  const handleSelectConversation = useCallback(async (
+    id: string,
+    navigationMode: "none" | "push" | "replace" = "push",
+  ) => {
     if (isPhoneViewport) {
       setHistoryCollapsed(true);
     }
-    activateConversation(id);
+    activateConversation(id, navigationMode);
     setPendingChoices([]);
     setPendingUserInput(null);
     // Only show skeleton if we don't already have this conversation cached
@@ -847,7 +987,13 @@ export default function AIView() {
       const full = convResult.success ? convResult.data : null;
       if (!full) return;
       const mappedItems = mapDbMessagesToTimeline(full.messages, full.artifacts);
-      updateConversationTimeline(id, () => mappedItems);
+      const restoredItems = full.latestRun?.status === "cancelled"
+        ? markTimelineStoppedByUser(mappedItems, {
+            createdAt: full.latestRun.completedAt ?? full.latestRun.startedAt,
+            runId: full.latestRun.id,
+          })
+        : mappedItems;
+      updateConversationTimeline(id, () => restoredItems);
       setConversations((prev) => prev.map((conv) =>
         conv.id === id
           ? { ...conv, title: full.title ?? conv.title }
@@ -862,8 +1008,47 @@ export default function AIView() {
 
   useEffect(() => {
     if (historyLoadedScopeRef.current !== historyScopeKey) return;
-    if (aiEntryRestoreAttemptedScopeRef.current === historyScopeKey) return;
-    aiEntryRestoreAttemptedScopeRef.current = historyScopeKey;
+    const routeConversationId = routeState.conversationId;
+    const restoreAttemptKey = `${historyScopeKey}:${routeConversationId ?? "__recoverable__"}`;
+    if (aiEntryRestoreAttemptedScopeRef.current === restoreAttemptKey) return;
+    aiEntryRestoreAttemptedScopeRef.current = restoreAttemptKey;
+
+    if (routeConversationId) {
+      if (activeConversationIdRef.current === routeConversationId) return;
+      if (!conversations.some((conversation) => conversation.id === routeConversationId)) {
+        activateConversation(null, "none");
+        navigateAiRoute({ conversationId: null, projectId: selectedProjectId }, "replace");
+        return;
+      }
+
+      const restoreDecision = decideAiEntryRestore(
+        readAiEntryRestoreState(selectedProjectId),
+        Date.now(),
+        new Set(conversations.map((conversation) => conversation.id)),
+      );
+
+      void (async () => {
+        await handleSelectConversation(routeConversationId, "none");
+        if (!restoreDecision.shouldRestore || restoreDecision.conversationId !== routeConversationId) return;
+        const recoveryResult = await recoverConversationRun({
+          conversationId: routeConversationId,
+          runId: restoreDecision.runId,
+          page: "ai",
+        });
+        if (recoveryResult.outcome !== "recovered") {
+          clearRecoverableAiEntry();
+          return;
+        }
+        if (
+          recoveryResult.response?.runStatus === "completed"
+          || recoveryResult.response?.runStatus === "cancelled"
+        ) {
+          clearRecoverableAiEntry();
+        }
+      })();
+      return;
+    }
+
     if (activeConversationIdRef.current) return;
 
     const restoreDecision = decideAiEntryRestore(
@@ -885,7 +1070,7 @@ export default function AIView() {
     void (async () => {
       try {
         if (shouldAbortRestore()) return;
-        await handleSelectConversation(restoreDecision.conversationId);
+        await handleSelectConversation(restoreDecision.conversationId, "replace");
         if (shouldAbortRestore()) return;
         const recoveryResult = await recoverConversationRun({
           conversationId: restoreDecision.conversationId,
@@ -910,11 +1095,14 @@ export default function AIView() {
       }
     })();
   }, [
+    activateConversation,
     clearRecoverableAiEntry,
     conversations,
     handleSelectConversation,
     historyScopeKey,
+    navigateAiRoute,
     recoverConversationRun,
+    routeState.conversationId,
     selectedProjectId,
   ]);
 
@@ -957,9 +1145,9 @@ export default function AIView() {
     if (activeConversationId === id) {
       if (nextId) {
         // Load the next conversation's timeline (skeleton + DB fetch) to avoid a blank view
-        void handleSelectConversation(nextId);
+        void handleSelectConversation(nextId, "replace");
       } else {
-        activateConversation(null);
+        activateConversation(null, "replace");
       }
     }
   }, [activeConversationId, activateConversation, handleSelectConversation]);
@@ -967,7 +1155,7 @@ export default function AIView() {
   const handleBranchConversation = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (branchingConversationId || branchingMessageId) return;
-    if (isTyping) cancelStream();
+    if (isTyping) cancelStream({ announce: false });
     setBranchingConversationId(id);
     try {
       const { branchConversation, getConversation } = await loadConversationActions();
@@ -989,7 +1177,7 @@ export default function AIView() {
         sortConversationsByUpdatedAt([newConv, ...prev.filter((c) => c.id !== newConv.id)])
       );
       updateConversationTimeline(full.id, () => mappedItems);
-      activateConversation(full.id);
+      activateConversation(full.id, "push");
       setPendingChoices([]);
       setPendingUserInput(null);
       setPrefillCommand(null);
@@ -1003,7 +1191,7 @@ export default function AIView() {
   const handleBranchFromMessage = useCallback(async (messageId: string, createdAt: string) => {
     const sourceConversationId = activeConversationId;
     if (!sourceConversationId || branchingConversationId || branchingMessageId) return;
-    if (isTyping) cancelStream();
+    if (isTyping) cancelStream({ announce: false });
     setBranchingMessageId(messageId);
     try {
       const { branchConversation, getConversation } = await loadConversationActions();
@@ -1029,7 +1217,7 @@ export default function AIView() {
         sortConversationsByUpdatedAt([newConv, ...prev.filter((c) => c.id !== newConv.id)])
       );
       updateConversationTimeline(full.id, () => mappedItems);
-      activateConversation(full.id);
+      activateConversation(full.id, "push");
       setPendingChoices([]);
       setPendingUserInput(null);
       setPrefillCommand(null);
@@ -1117,7 +1305,7 @@ export default function AIView() {
   const handleCompressHistory = useCallback(async () => {
     const sourceId = activeConversationId;
     if (!sourceId || isCompressing || isPhoneViewport) return;
-    if (isTyping) cancelStream();
+    if (isTyping) cancelStream({ announce: false });
     setIsCompressing(true);
     try {
       const { summarizeConversationAction } = await loadSummarizeConversationActions();
@@ -1218,7 +1406,7 @@ export default function AIView() {
     };
 
     setConversations((prev) => sortConversationsByUpdatedAt([newConv, ...prev]));
-    activateConversation(id);
+    activateConversation(id, "push");
     updateConversationTimeline(id, () => []);
     if (isPhoneViewport) {
       setHistoryCollapsed(true);
@@ -1258,7 +1446,7 @@ export default function AIView() {
     const sendStartedAtMs = Date.now();
     let sendSucceeded = false;
     emitMobileActionTap("ai_send_message", 44);
-    if (isTyping) cancelStream();
+    if (isTyping) cancelStream({ announce: false });
     sendLockRef.current = true;
     setPendingChoices([]);
     setPendingUserInput(null);
@@ -1968,7 +2156,7 @@ export default function AIView() {
     if (selectedIndexes.length === 0 || isConversationLoading) return;
     let convId = activeConversationId;
     if (!convId) return;
-    if (isTyping) cancelStream();
+    if (isTyping) cancelStream({ announce: false });
     setPendingChoices([]);
     setPendingUserInput(null);
 
@@ -2729,5 +2917,25 @@ export default function AIView() {
       </div>
     </AppShell>
     </>
+  );
+}
+
+export default function AIView() {
+  return (
+    <Suspense
+      fallback={(
+        <AppShell activeNav="ai" noMainPadding initiallyCollapsed>
+          <div className={styles.layout} data-history-collapsed="true">
+            <section className={styles.chatInterface} role="region" aria-label="Loading chat">
+              <div className={styles.chatContent}>
+                <EmptyStateSkeleton />
+              </div>
+            </section>
+          </div>
+        </AppShell>
+      )}
+    >
+      <AIViewContent />
+    </Suspense>
   );
 }

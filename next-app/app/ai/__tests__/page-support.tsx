@@ -12,6 +12,8 @@ const aiViewMocks = vi.hoisted(() => ({
   mockGetGlobalWorkspaceContextAction: vi.fn(),
   mockUseProjects: vi.fn(),
   mockPush: vi.fn(),
+  mockReplace: vi.fn(),
+  mockUseSearchParams: vi.fn(),
   mockProcessAIStream: vi.fn(),
   mockPollRunRecovery: vi.fn(),
   mockFetch: vi.fn(),
@@ -27,6 +29,8 @@ const {
   mockGetGlobalWorkspaceContextAction,
   mockUseProjects,
   mockPush,
+  mockReplace,
+  mockUseSearchParams,
   mockProcessAIStream,
   mockPollRunRecovery,
   mockFetch,
@@ -38,7 +42,8 @@ const {
 let matchMediaMatches = false;
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace }),
+  useSearchParams: () => mockUseSearchParams(),
 }));
 
 vi.mock("next/dynamic", () => ({
@@ -250,6 +255,7 @@ vi.mock("@/components/chat/ChatComposerCoreClient", () => ({
     interactionLocked,
     hideModelControl,
     compactMobileChrome,
+    cancelStream,
     onCompress,
     canCompress,
     isCompressing,
@@ -262,6 +268,7 @@ vi.mock("@/components/chat/ChatComposerCoreClient", () => ({
     interactionLocked?: boolean;
     hideModelControl?: boolean;
     compactMobileChrome?: boolean;
+    cancelStream?: () => void;
     onCompress?: () => void | Promise<void>;
     canCompress?: boolean;
     isCompressing?: boolean;
@@ -283,6 +290,9 @@ vi.mock("@/components/chat/ChatComposerCoreClient", () => ({
       </button>
       <button type="button" onClick={() => void onQueueFollowUp?.({ text: "Queue this next", page: "ai" })}>
         queue next
+      </button>
+      <button type="button" onClick={() => cancelStream?.()}>
+        stop generation
       </button>
       {onCompress ? (
         <button type="button" onClick={() => void onCompress()}>
@@ -363,8 +373,10 @@ export function installAiViewTestLifecycle() {
     matchMediaMatches = false;
     installMatchMedia();
     window.localStorage.clear();
+    mockUseSearchParams.mockReturnValue(new URLSearchParams());
     vi.stubGlobal("fetch", mockFetch);
     mockUseProjects.mockReturnValue({
+      isLoadingProjects: false,
       projects: [
         { id: "proj-1", name: "Alpha" },
         { id: "proj-2", name: "Beta" },

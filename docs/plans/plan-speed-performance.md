@@ -6,6 +6,8 @@ Define the canonical implementation plan for app speed, responsiveness, and stab
 ## Current Architecture (Code-Verified)
 - Web Vitals reporting is active in the app shell through `next-app/app/PerformanceVitalsReporter.tsx` and `next-app/app/providers.tsx`.
 - Performance telemetry ingestion is active through `next-app/app/api/telemetry/performance/route.ts` and `next-app/lib/server/performance-metrics.ts`.
+- Browser operational telemetry now shares a module-wide failure cooldown: one unavailable ingestion endpoint suspends subsequent reliability, chat, and Web Vitals attempts for the cooldown window instead of producing request fan-out and console noise.
+- `/ai` conversation/project identity is URL-addressed while timeline hydration remains windowed; an initially empty client timeline derives visibility from hydrated items and does not render a false `Show earlier` state.
 - Performance budget tooling is active through:
   - `next-app/scripts/perf-budget-check.mjs`
   - `next-app/scripts/generate-perf-results.ts`

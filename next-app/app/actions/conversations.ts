@@ -52,6 +52,12 @@ export type ConversationWithMessages = ConversationSummary & {
         version: number;
         createdAt: string;
     }[];
+    latestRun?: {
+        id: string;
+        status: string;
+        startedAt: string;
+        completedAt: string | null;
+    } | null;
 };
 
 export type PaginatedMessages = {
@@ -156,30 +162,42 @@ export async function getConversation(
 
             if (!conversation) return null;
 
-            // Paginated message load: latest N messages (desc + reverse)
-            const rawMessages = await prisma.aIMessage.findMany({
-                where: { conversationId: conversation.id },
-                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-                take: messageLimit + 1,
-            });
+            const [rawMessages, artifacts, latestRun] = await Promise.all([
+                // Paginated message load: latest N messages (desc + reverse)
+                prisma.aIMessage.findMany({
+                    where: { conversationId: conversation.id },
+                    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                    take: messageLimit + 1,
+                }),
+                // Artifacts are few and remain fully loaded.
+                prisma.artifact.findMany({
+                    where: { conversationId: conversation.id },
+                    orderBy: { createdAt: "asc" },
+                    select: {
+                        id: true,
+                        type: true,
+                        status: true,
+                        title: true,
+                        payload: true,
+                        version: true,
+                        createdAt: true,
+                    },
+                }),
+                // The latest persisted run provides terminal truth after refresh.
+                prisma.agentRun.findFirst({
+                    where: { conversationId: conversation.id },
+                    orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+                    select: {
+                        id: true,
+                        status: true,
+                        startedAt: true,
+                        completedAt: true,
+                    },
+                }),
+            ]);
             const hasMore = rawMessages.length > messageLimit;
             const pageMessages = hasMore ? rawMessages.slice(0, messageLimit) : rawMessages;
             pageMessages.reverse(); // back to ascending chronological order
-
-            // Artifacts always loaded fully (few per conversation)
-            const artifacts = await prisma.artifact.findMany({
-                where: { conversationId: conversation.id },
-                orderBy: { createdAt: "asc" },
-                select: {
-                    id: true,
-                    type: true,
-                    status: true,
-                    title: true,
-                    payload: true,
-                    version: true,
-                    createdAt: true,
-                },
-            });
 
             return {
                 id: conversation.id,
@@ -210,6 +228,14 @@ export async function getConversation(
                     version: artifact.version,
                     createdAt: artifact.createdAt.toISOString(),
                 })),
+                latestRun: latestRun
+                    ? {
+                        id: latestRun.id,
+                        status: latestRun.status,
+                        startedAt: latestRun.startedAt.toISOString(),
+                        completedAt: latestRun.completedAt?.toISOString() ?? null,
+                    }
+                    : null,
             };
         }),
     );

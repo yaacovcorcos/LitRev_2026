@@ -223,6 +223,40 @@ describe("ChatTimeline action affordances", () => {
     expect(screen.queryByRole("button", { name: /resume/i })).toBeNull();
   });
 
+  it("renders user cancellation as a neutral status with a retry path", () => {
+    const onRetryLastMessage = vi.fn();
+    render(
+      <ChatTimeline
+        items={[{
+          type: "error",
+          id: "cancelled-1",
+          message: "Stopped by you. Completed work is preserved.",
+          retryable: true,
+          errorMeta: {
+            kind: "user_cancelled",
+            code: "USER_CANCELLED",
+            retryable: true,
+            source: "runtime",
+            message: "Stopped by you. Completed work is preserved.",
+            recoveryRecommendation: "retry",
+          },
+          createdAt: "2026-03-01T00:00:00.000Z",
+        }]}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onRetryLastMessage={onRetryLastMessage}
+      />,
+    );
+
+    const status = screen.getByRole("status");
+    expect(status.getAttribute("data-kind")).toBe("user-cancelled");
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetryLastMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("confirms destructive study exclusion before dispatching the review action", async () => {
     const onReviewArtifact = vi.fn();
     const items: TimelineItem[] = [

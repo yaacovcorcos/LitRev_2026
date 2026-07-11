@@ -48,6 +48,61 @@ export function stripReservedAssistantTimelineItems(items: TimelineItem[], assis
   ));
 }
 
+type StopTimelineOptions = {
+  createdAt: string;
+  runId: string | null;
+};
+
+export function markTimelineStoppedByUser(
+  items: TimelineItem[],
+  { createdAt, runId }: StopTimelineOptions,
+): TimelineItem[] {
+  const cancellationId = `run-cancelled-${runId ?? createdAt}`;
+  const settledItems = items
+    .filter((item) => item.type !== "progress")
+    .filter((item) => !(
+      item.type === "assistant_message"
+      && item.deliveryState === "reserved"
+      && !item.content
+      && !item.reasoning?.text
+    ))
+    .filter((item) => !(
+      item.type === "error"
+      && item.errorMeta?.kind === "user_cancelled"
+    ))
+    .map((item): TimelineItem => {
+      if (item.type !== "tool_activity") return item;
+      if (item.status !== "queued" && item.status !== "running") return item;
+      return {
+        ...item,
+        status: "interrupted",
+        summary: "Stopped by you before this step finished.",
+        updatedAt: createdAt,
+        completedAt: createdAt,
+      };
+    });
+
+  return [
+    ...settledItems,
+    {
+      type: "error",
+      id: cancellationId,
+      message: "Stopped by you. Completed work is preserved.",
+      retryable: true,
+      errorMeta: {
+        kind: "user_cancelled",
+        code: "USER_CANCELLED",
+        retryable: true,
+        source: "runtime",
+        message: "Stopped by you. Completed work is preserved.",
+        runId: runId ?? undefined,
+        recoveryRecommendation: "retry",
+      },
+      createdAt,
+    },
+  ];
+}
+
 export function mapDbMessagesToTimeline(
   messages: DbConversationMessage[],
   artifacts: DbConversationArtifact[] = [],

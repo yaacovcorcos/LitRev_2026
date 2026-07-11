@@ -13,6 +13,7 @@ import {
   normalizeCallbackUrl,
 } from "@/lib/server/auth/dev-quick-login";
 import { getBetterAuthSecret } from "@/lib/server/auth/auth-secret";
+import { classifyAIError } from "@/lib/server/ai/error-classification";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 
@@ -44,19 +45,31 @@ export async function POST(request: NextRequest) {
     seedKey?: string | null;
   };
   const callbackUrl = normalizeCallbackUrl(body.callbackUrl);
-  const identity = await ensureDevQuickLoginIdentity(body.seedKey);
-
+  let identity: Awaited<ReturnType<typeof ensureDevQuickLoginIdentity>>;
   const token = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000);
-  await prisma.session.create({
-    data: {
-      userId: identity.userId,
-      token,
-      expiresAt,
-      ipAddress: extractClientIp(request.headers),
-      userAgent: request.headers.get("user-agent") || undefined,
-    },
-  });
+  try {
+    identity = await ensureDevQuickLoginIdentity(body.seedKey);
+    const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000);
+    await prisma.session.create({
+      data: {
+        userId: identity.userId,
+        token,
+        expiresAt,
+        ipAddress: extractClientIp(request.headers),
+        userAgent: request.headers.get("user-agent") || undefined,
+      },
+    });
+  } catch (error) {
+    const classified = classifyAIError(error);
+    if (classified.kind !== "database_connection") throw error;
+    return NextResponse.json(
+      { error: "Local workspace database is unavailable. Start PostgreSQL and try again." },
+      {
+        status: 503,
+        headers: { "Retry-After": "5" },
+      },
+    );
+  }
 
   clearAuthFailures(extractClientIp(request.headers));
 

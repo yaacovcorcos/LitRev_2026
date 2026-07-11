@@ -25,12 +25,11 @@ export function useTimelineWindowing<T>({
     getItemId,
 }: UseTimelineWindowingOptions<T>) {
     const windowSize = initialVisibleCount && initialVisibleCount > 0 ? initialVisibleCount : null;
-    const [visibleCount, setVisibleCount] = useState<number>(() => {
-        if (!windowSize) return items.length;
-        return Math.min(windowSize, items.length);
-    });
+    const [revealedEarlierCount, setRevealedEarlierCount] = useState(0);
 
-    const effectiveVisibleCount = windowSize ? Math.min(visibleCount, items.length) : items.length;
+    const effectiveVisibleCount = windowSize
+        ? Math.min(windowSize + revealedEarlierCount, items.length)
+        : items.length;
     const hiddenItemCount = Math.max(0, items.length - effectiveVisibleCount);
     const visibleItems = hiddenItemCount > 0 ? items.slice(-effectiveVisibleCount) : items;
     const visibleFirstItemId = getItemId(visibleItems[0]);
@@ -60,8 +59,11 @@ export function useTimelineWindowing<T>({
         if (hiddenItemCount <= 0) return;
         capturePrependAnchor(firstItemRef.current);
         revealPendingRef.current = true;
-        setVisibleCount((current) => Math.min(items.length, current + Math.max(visibleStep, 1)));
-    }, [capturePrependAnchor, firstItemRef, hiddenItemCount, items.length, visibleStep]);
+        setRevealedEarlierCount((current) => {
+            const maximumRevealCount = Math.max(0, items.length - (windowSize ?? items.length));
+            return Math.min(maximumRevealCount, current + Math.max(visibleStep, 1));
+        });
+    }, [capturePrependAnchor, firstItemRef, hiddenItemCount, items.length, visibleStep, windowSize]);
 
     useLayoutEffect(() => {
         const pending = pendingPrependRef.current;
