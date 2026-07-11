@@ -162,6 +162,7 @@ function getToolActivityTimingText(item: Extract<TimelineItem, { type: "tool_act
     }
     if (item.status === "done") return "Completed";
     if (item.status === "failed") return "Failed";
+    if (item.status === "interrupted") return "Interrupted";
     return "Pending";
 }
 
@@ -1472,6 +1473,7 @@ function ChatTimelineInner({
 
             case "error": {
                 const recommendation = item.errorMeta?.recoveryRecommendation;
+                const isUserCancelled = item.errorMeta?.kind === "user_cancelled";
                 const showReconnect = recommendation === "reconnect" && onReconnectRun;
                 const showContinue = (
                     recommendation === "continue_from_durable_state"
@@ -1482,8 +1484,14 @@ function ChatTimelineInner({
                     || ((recommendation === "retry" || recommendation === "terminal") && onRetryLastMessage);
                 const showResume = item.errorMeta?.kind === "plan_execution" && onResumeRun;
                 return (
-                    <div key={item.id} className={artifactStyles.errorCard}>
-                        <span className="material-icons-round">error_outline</span>
+                    <div
+                        key={item.id}
+                        className={artifactStyles.errorCard}
+                        data-kind={isUserCancelled ? "user-cancelled" : "error"}
+                        role={isUserCancelled ? "status" : "alert"}
+                        aria-live="polite"
+                    >
+                        <span className="material-icons-round">{isUserCancelled ? "stop_circle" : "error_outline"}</span>
                         <span className={artifactStyles.errorMessage}>{item.message}</span>
                         {showRetry && (
                             <button type="button" className={artifactStyles.errorRetryBtn} onClick={onRetryLastMessage}>
@@ -1667,8 +1675,12 @@ function ChatTimelineInner({
             ? collapsedTraceByAssistantId[entry.anchorAssistantMessageId ?? ""] ?? entry.defaultCollapsed
             : false;
         const isLiveTrace = entry.mode === "live";
+        const hasInterruptedTool = entry.traceItems.some(
+            (item) => item.type === "tool_activity" && item.status === "interrupted",
+        );
         const canToggleCollapse = entry.mode === "anchored" && entry.canCollapse && !!entry.anchorAssistantMessageId;
-        const showLiveBadge = isLiveTrace || (!!entry.assistantMessage && entry.assistantMessage.id === streamingAssistantMessageId);
+        const showLiveBadge = (isLiveTrace && !hasInterruptedTool)
+            || (!!entry.assistantMessage && entry.assistantMessage.id === streamingAssistantMessageId);
 
         return (
             <div key={entry.id} className={styles.executionTraceGroup}>

@@ -1,17 +1,19 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthScreen } from "../AuthScreen";
 
 const {
   mockMagicLink,
   mockRouterReplace,
+  mockRouterRefresh,
   mockSocial,
   mockUseSearchParams,
   mockUseSession,
 } = vi.hoisted(() => ({
   mockMagicLink: vi.fn(),
   mockRouterReplace: vi.fn(),
+  mockRouterRefresh: vi.fn(),
   mockSocial: vi.fn(),
   mockUseSearchParams: vi.fn(),
   mockUseSession: vi.fn(),
@@ -25,6 +27,7 @@ vi.mock("next/link", async () => {
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     replace: mockRouterReplace,
+    refresh: mockRouterRefresh,
   }),
   useSearchParams: () => mockUseSearchParams(),
 }));
@@ -51,6 +54,30 @@ describe("AuthScreen", () => {
     mockUseSearchParams.mockReturnValue(new URLSearchParams());
     mockMagicLink.mockResolvedValue({ error: null });
     mockSocial.mockResolvedValue({ error: null });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("explains how to recover when Dev mode cannot reach the local database", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: vi.fn(async () => ({
+        error: "Local workspace database is unavailable. Start PostgreSQL and try again.",
+      })),
+    } as unknown as Response));
+
+    render(<AuthScreen mode="signin" />);
+    fireEvent.click(screen.getByRole("button", { name: "Dev mode" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain(
+        "Local workspace database is unavailable. Start PostgreSQL and try again.",
+      );
+    });
+    expect(mockRouterReplace).not.toHaveBeenCalled();
   });
 
   it("requests a magic link that can return new users to the protected callback", async () => {

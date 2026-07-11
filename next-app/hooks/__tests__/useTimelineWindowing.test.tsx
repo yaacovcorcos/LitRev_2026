@@ -97,4 +97,35 @@ describe("useTimelineWindowing", () => {
 
     expect(restorePrependAnchor).toHaveBeenCalledTimes(1);
   });
+
+  it("hydrates an initially empty timeline without inventing hidden messages", () => {
+    const capturePrependAnchor = vi.fn();
+    const restorePrependAnchor = vi.fn();
+    const firstItemRef = makeFirstItemRef();
+
+    const { result, rerender } = renderHook(
+      ({ items }) =>
+        useTimelineWindowing({
+          items,
+          initialVisibleCount: 80,
+          visibleStep: 80,
+          capturePrependAnchor,
+          restorePrependAnchor,
+          firstItemRef,
+          getItemId: (item) => item?.id ?? null,
+        }),
+      { initialProps: { items: makeItems() } },
+    );
+
+    expect(result.current.hiddenItemCount).toBe(0);
+    expect(result.current.visibleItems).toEqual([]);
+
+    rerender({ items: makeItems("user-1", "assistant-1") });
+
+    expect(result.current.hiddenItemCount).toBe(0);
+    expect(result.current.visibleItems.map((item) => item.id)).toEqual([
+      "user-1",
+      "assistant-1",
+    ]);
+  });
 });

@@ -63,14 +63,14 @@ Domain-specific execution plans remain canonical for their domains:
 - Shared shell-contained scroll ownership is active for homepage and library workspace surfaces:
   - `AppShell` now provides a viewport-bounded shell parent, `surface-root[data-surface-height="shell"]` acts as the bounded route root, and `surface-scroll-body` remains the sole inner scroll owner.
   - Homepage workspace and library now use separate route-local layout modules on top of that shared contract, and homepage tall-list wheel scrolling is covered by a dedicated smoke test.
-- Durable refresh/return-to-location behavior is still inconsistent across surfaces:
+- Durable refresh/return-to-location behavior is still inconsistent across surfaces, but `/ai` now has a URL-owned baseline:
   - unaffiliated login and exact unauthenticated root entry now default to `/ai`, while explicit callback URLs and deep links still win
   - `/ai` exposes a lightweight return affordance for the last opened project from the existing `litrev:lastProjectId` signal, without treating that fallback as URL-owned route identity
   - `/project/[id]` now renders as a full-width overview hub without the side-panel copilot or resize splitter; Conversation mode remains the overview-scoped AI entry, and side-panel copilot remains available on workspace subroutes.
   - draft already syncs route-meaningful workspace state through URL search params, but several other surfaces still keep exact location in client-only state or local restore helpers
   - ledger now uses URL-owned criteria filter state plus list-route `study` preview state, and canonical study-detail links preserve that filter context back to the ledger; deeper ledger route/detail execution remains owned by `docs/plans/plan-ledger.md`
   - project root conversation entry still depends on `project-entry` restore heuristics and localStorage-backed conversation fallback instead of a URL-addressable conversation identity
-  - `/ai` still keeps active conversation and attached project scope in route-local client state rather than the URL
+  - `/ai` binds active conversation and optional project scope through `conversation` and `project` query params; explicit URLs win over local recovery, history selection participates in browser history, and invalid route state normalizes to a safe unscoped `/ai` route
   - notes keeps the selected note in client state, memory keeps the active tab in client state, onboarding keeps the current step in client state, and protocol keeps the active section in context state
   - home resume still stores the last project id rather than the last meaningful in-app location URL
   - durable navigation ownership is now intentionally split: this plan owns the user-facing route contract, `plan-agentic.md` owns shared chat-runtime constraints, and `plan-speed-performance.md` owns route-boot/cache implications where restore semantics affect load behavior
@@ -152,6 +152,7 @@ Use this mapping for old PRs/comments referencing CLU IDs.
     - route identity no longer depends on heuristic local restore for exact refresh behavior
 
 - [ ] `CUX-039` Make chat surfaces refresh-safe with URL-addressable conversation identity.
+  - Shipped slice: `/ai` now owns conversation/project identity in the URL and restores it on refresh/back/forward without letting local recovery override an explicit route. Project main-conversation and side-panel routes remain open.
   - Scope:
     - project main conversation should move to a dedicated conversation route such as `/project/[id]/conversation/[conversationId]`
     - `/project/[id]` should become overview-only, while legacy local restore may redirect into the conversation route only when no explicit route identity is present

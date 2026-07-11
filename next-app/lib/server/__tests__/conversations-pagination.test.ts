@@ -11,6 +11,9 @@ vi.mock("@/lib/server/prisma", () => ({
     artifact: {
       findMany: vi.fn(),
     },
+    agentRun: {
+      findFirst: vi.fn(),
+    },
   },
 }));
 
@@ -18,6 +21,7 @@ const { prisma } = await import("@/lib/server/prisma");
 const mockConvoFindFirst = vi.mocked(prisma.aIConversation.findFirst);
 const mockMessageFindMany = vi.mocked(prisma.aIMessage.findMany);
 const mockArtifactFindMany = vi.mocked(prisma.artifact.findMany);
+const mockAgentRunFindFirst = vi.mocked(prisma.agentRun.findFirst);
 
 const { getConversation, getConversationMessages } =
   await import("@/app/actions/conversations");
@@ -209,7 +213,10 @@ describe("getConversationMessages", () => {
 // ── getConversation (paginated initial load) ─────────────────────────────────
 
 describe("getConversation — paginated initial load", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAgentRunFindFirst.mockResolvedValue(null);
+  });
 
   it("returns hasMore=true when conversation has more than messageLimit messages", async () => {
     mockConvoFindFirst.mockResolvedValue({
@@ -277,6 +284,39 @@ describe("getConversation — paginated initial load", () => {
     expect(result.data!.hasMore).toBe(false);
     expect(result.data!.messages).toHaveLength(2);
     expect(result.data!.messages.map((m) => m.id)).toEqual(["m1", "m2"]);
+  });
+
+  it("returns the latest persisted run so terminal state can be restored", async () => {
+    mockConvoFindFirst.mockResolvedValue({
+      id: "conv-1",
+      title: "Test",
+      context: "project",
+      page: "ai",
+      projectId: null,
+      studyId: null,
+      createdAt: new Date("2026-02-20T00:00:00Z"),
+      updatedAt: new Date("2026-02-20T12:00:00Z"),
+      _count: { messages: 1 },
+    } as never);
+    mockMessageFindMany.mockResolvedValue([makeMsg("m1", "2026-02-20T01:00:00Z", "user")] as never);
+    mockArtifactFindMany.mockResolvedValue([] as never);
+    mockAgentRunFindFirst.mockResolvedValue({
+      id: "run-cancelled",
+      status: "cancelled",
+      startedAt: new Date("2026-02-20T01:00:01Z"),
+      completedAt: new Date("2026-02-20T01:00:02Z"),
+    } as never);
+
+    const result = await getConversation("conv-1");
+
+    expect(result.success).toBe(true);
+    if (!result.success || !result.data) return;
+    expect(result.data.latestRun).toEqual({
+      id: "run-cancelled",
+      status: "cancelled",
+      startedAt: "2026-02-20T01:00:01.000Z",
+      completedAt: "2026-02-20T01:00:02.000Z",
+    });
   });
 
   it("returns null when conversation not found", async () => {
