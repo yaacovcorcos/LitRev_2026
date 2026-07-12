@@ -46,6 +46,7 @@ const {
   markRunDurabilityDegraded,
   markRunFinalizationFailed,
   markRunFinalizationState,
+  recordRunGenerationReceipt,
   settleClarificationDismissedRun,
 } = await import("@/lib/server/agent/run");
 
@@ -242,6 +243,29 @@ describe("run freshness lifecycle", () => {
         costTokensIn: 10,
         costTokensOut: 20,
       }),
+    });
+  });
+
+  it("records provider receipts only while the run still owns execution", async () => {
+    await recordRunGenerationReceipt("run-1", {
+      actualModel: "gpt-5.6-luna",
+      actualProvider: "openai",
+      actualReasoningEffort: "medium",
+      actualDeliveryMode: "standard",
+    });
+
+    expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: "run-1",
+        status: "running",
+        completedAt: null,
+      },
+      data: {
+        actualModel: "gpt-5.6-luna",
+        actualProvider: "openai",
+        actualReasoningEffort: "medium",
+        actualDeliveryMode: "standard",
+      },
     });
   });
 

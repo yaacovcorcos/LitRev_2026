@@ -46,7 +46,10 @@ const mocks = vi.hoisted(() => {
     markRunFinalizationState: vi.fn(),
     markRunFinalizationFailed: vi.fn(),
     markRunAbnormalEndClassification: vi.fn(),
+    recordRunGenerationReceipt: vi.fn(async () => {}),
     isRunOwnershipError: vi.fn(() => false),
+    validateRateLimits: vi.fn(async () => {}),
+    recordUsage: vi.fn(async () => {}),
     startRunTrace: vi.fn(() => trace),
     flushTracing: vi.fn(),
     addAssistantMessageToConversationForRun: vi.fn(async () => ({
@@ -68,11 +71,12 @@ vi.mock("@/lib/server/ai/providers", () => ({
   getAnthropicProvider: () => ({ isConfigured: () => false }),
   getXAIProvider: () => ({ isConfigured: () => false }),
   getGoogleProvider: () => ({ isConfigured: () => false }),
+  getGatewayProvider: () => ({ isConfigured: () => false }),
 }));
 
 vi.mock("@/lib/server/ai/rate-limiter", () => ({
-  validateRateLimits: vi.fn(async () => {}),
-  recordUsage: vi.fn(async () => {}),
+  validateRateLimits: mocks.validateRateLimits,
+  recordUsage: mocks.recordUsage,
 }));
 
 vi.mock("@/lib/server/ai/memory", () => ({
@@ -93,6 +97,8 @@ vi.mock("@/lib/server/memory", () => ({
 vi.mock("@/lib/ai/config", () => ({
   AI_CONFIG: { defaultProvider: "mock-provider", defaultModel: "gpt-5.2" },
   getProviderForModel: vi.fn(() => "mock-provider"),
+  getProviderModelId: vi.fn((modelId: string) => modelId),
+  getDefaultReasoningEffort: vi.fn(() => "medium"),
   getContextBudget: vi.fn(() => 8000),
 }));
 
@@ -120,6 +126,7 @@ vi.mock("@/lib/server/agent/run", () => ({
   markRunFinalizationState: mocks.markRunFinalizationState,
   markRunFinalizationFailed: mocks.markRunFinalizationFailed,
   markRunAbnormalEndClassification: mocks.markRunAbnormalEndClassification,
+  recordRunGenerationReceipt: mocks.recordRunGenerationReceipt,
   isRunOwnershipError: mocks.isRunOwnershipError,
 }));
 
@@ -552,6 +559,79 @@ describe("AIService run finalization", () => {
     );
 
     await iterator.return?.(undefined);
+  });
+
+  it("routes artifact generations through rate limits and durable usage attribution", async () => {
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+      reasoningEffort: "medium",
+      deliveryMode: "standard",
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(mocks.validateRateLimits).toHaveBeenCalledWith({
+      projectId: "project-1",
+      userId: "user-1",
+      workspaceId: null,
+    });
+    expect(mocks.recordUsage).toHaveBeenCalledWith(
+      "project-1",
+      "gpt-5.2",
+      1,
+      1,
+      expect.objectContaining({
+        provider: null,
+        requestedModel: "gpt-5.2",
+        requestedProvider: "mock-provider",
+        requestedReasoningEffort: "medium",
+        requestedDeliveryMode: "standard",
+        source: "project_copilot",
+        conversationId: "conv-1",
+      }),
+    );
+  });
+
+  it("does not persist requested routing as provider-observed generation metadata", async () => {
+    mocks.provider.streamChat.mockImplementationOnce(async function* () {
+      yield { type: "content", content: "provider content" };
+      yield {
+        type: "done",
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        actualModel: "",
+      };
+    });
+
+    const service = new AIService();
+    const chunks: Array<{
+      type?: string;
+      actualModel?: string;
+      actualModelSource?: string;
+    }> = [];
+    for await (const chunk of service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    })) {
+      chunks.push(chunk);
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(mocks.recordRunGenerationReceipt).toHaveBeenCalledWith("run-1", expect.objectContaining({
+      actualModel: null,
+      actualProvider: null,
+    }));
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      actualModel: "gpt-5.2",
+      actualModelSource: "requested",
+    });
   });
 
   it("continues with a checkpoint when memories degrade after authority succeeds", async () => {

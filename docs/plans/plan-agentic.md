@@ -116,6 +116,12 @@ The agent should not merely "feel smart." It should be:
   - the same request-scoped tool envelope is passed through parent runs, executable plans, and delegated search sub-agents
   - a pre-execution tool-availability middleware blocks hidden non-PubMed search calls before any OpenAlex or Semantic Scholar network request can start
 - Popup is now a truthful reduced subset of the shared runtime rather than a separate runtime model.
+- Generation configuration is now one typed cross-surface contract rather than shell-local model strings:
+  - the public portfolio is DeepSeek V4 Flash, GPT-5.6 Luna, DeepSeek V4 Pro, GPT-5.6 Terra, Qwen 3.7 Plus, Grok 4.5, and GPT-5.6 Sol, with Luna as the default
+  - model compute (`reasoningEffort`), capability-gated provider reasoning summaries (`reasoningMode`), and paid scheduling (`deliveryMode`) remain independent; no current direct OpenAI/xAI route advertises a no-op visibility control
+  - `/ai`, project conversation, side copilot, popup, plan execution, retries/continuations, delegated runs, and queued follow-ups preserve the same validated generation snapshot
+  - provider-private reasoning needed for a thinking-model tool continuation stays transient and is removed before client serialization or transcript persistence
+  - requested and provider-observed routing metadata are durable on runs and usage rows, so recovery and support do not infer execution from UI state
 - Study-scoped stream entry now canonicalizes owned `projectId` before runtime start, popup/context validation, and tool-scope selection, so `studyId`-only requests no longer degrade into accidental global-scope runs.
 - The remaining major platform debt is no longer "invent the architecture." It is:
   - finish convergence

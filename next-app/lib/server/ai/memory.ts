@@ -20,6 +20,7 @@ import type {
     ConversationMessageAttachment,
 } from "@/types/ai";
 import { COMPACTION_THRESHOLD_MESSAGES, COMPACTION_SUMMARY_PROMPT } from "@/lib/agent/compaction";
+import { getBackgroundModel } from "@/lib/server/ai/background-model-policy";
 
 export type SummaryData = {
     summary: string;
@@ -530,7 +531,13 @@ export async function autoSummarizeIfNeeded(
                     { id: "sys", role: "system", content: COMPACTION_SUMMARY_PROMPT, createdAt: new Date().toISOString() },
                     { id: "user", role: "user", content: userContent, createdAt: new Date().toISOString() },
                 ],
-                { model: "grok-4-1-fast", temperature: 0.2, maxTokens: 1500, projectId: conv.projectId ?? undefined }
+                {
+                    model: getBackgroundModel("fast"),
+                    reasoningEffort: "fast",
+                    temperature: 0.2,
+                    maxTokens: 1500,
+                    projectId: conv.projectId ?? undefined,
+                }
             );
 
             // Parse response

@@ -1,155 +1,173 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AIMessage, AIStreamChunk } from "@/types/ai";
+import type { AIMessage, AIStreamChunk, ChatImageInput } from "@/types/ai";
 import { OpenAIProvider } from "@/lib/server/ai/providers/openai";
 import { XAIProvider } from "@/lib/server/ai/providers/xai";
-import { GoogleProvider } from "@/lib/server/ai/providers/google";
-import { AnthropicProvider } from "@/lib/server/ai/providers/anthropic";
 
-function userMessage(content: string): AIMessage {
-    return {
-        id: "msg-1",
-        role: "user",
-        content,
-        createdAt: new Date().toISOString(),
-    };
+function message(id: string, role: "user" | "assistant", content: string): AIMessage {
+    return { id, role, content, createdAt: new Date().toISOString() };
 }
 
-function makeOpenAIStream(chunks: unknown[]): AsyncIterable<unknown> {
+function makeStream(chunks: unknown[]): AsyncIterable<unknown> {
     return {
         async *[Symbol.asyncIterator]() {
-            for (const chunk of chunks) {
-                yield chunk;
-            }
-        },
-    };
-}
-
-function makeAnthropicStream(events: unknown[]): AsyncIterable<unknown> {
-    return {
-        async *[Symbol.asyncIterator]() {
-            for (const event of events) {
-                yield event;
-            }
+            for (const chunk of chunks) yield chunk;
         },
     };
 }
 
 async function collectChunks(stream: AsyncIterable<AIStreamChunk>): Promise<AIStreamChunk[]> {
     const chunks: AIStreamChunk[] = [];
-    for await (const chunk of stream) {
-        chunks.push(chunk);
-    }
+    for await (const chunk of stream) chunks.push(chunk);
     return chunks;
 }
 
+const imageInputs: ChatImageInput[] = [{
+    fileAssetId: "asset-1",
+    filename: "figure.png",
+    mimeType: "image/png",
+    dataUrl: "data:image/png;base64,AAAA",
+}];
+
 describe("provider request policy wiring", () => {
-    it("OpenAI chat and stream both omit temperature for fixed-default models", async () => {
+    it("maps OpenAI effort and paid delivery and reports the returned tier", async () => {
         const create = vi.fn()
             .mockResolvedValueOnce({
                 id: "resp-1",
-                model: "gpt-5.2",
+                model: "gpt-5.6-luna-2026-06-01",
+                service_tier: "priority",
                 choices: [{ message: { content: "ok", tool_calls: [] } }],
-                usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-            })
-            .mockResolvedValueOnce(makeOpenAIStream([
-                {
-                    choices: [{ delta: { content: "ok" }, finish_reason: "stop" }],
-                    usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+                usage: {
+                    prompt_tokens: 6,
+                    completion_tokens: 1,
+                    total_tokens: 7,
+                    prompt_tokens_details: { cached_tokens: 2, cache_write_tokens: 3 },
                 },
-            ]));
+            })
+            .mockResolvedValueOnce(makeStream([{
+                model: "gpt-5.6-luna-2026-06-01",
+                service_tier: "priority",
+                choices: [{ delta: { content: "ok" }, finish_reason: "stop" }],
+                usage: {
+                    prompt_tokens: 8,
+                    completion_tokens: 1,
+                    total_tokens: 9,
+                    prompt_tokens_details: { cached_tokens: 3, cache_write_tokens: 4 },
+                },
+            }]));
         const provider = new OpenAIProvider();
-        ((provider as unknown) as { client: unknown }).client = { chat: { completions: { create } } };
+        (provider as unknown as { client: unknown }).client = { chat: { completions: { create } } };
 
-        await provider.chat([userMessage("hi")], { model: "gpt-5.2", temperature: 0.2 });
-        await collectChunks(provider.streamChat([userMessage("hi")], { model: "gpt-5.2", temperature: 0.2 }));
-
-        expect(create).toHaveBeenCalledTimes(2);
-        expect(create.mock.calls[0][0]).not.toHaveProperty("temperature");
-        expect(create.mock.calls[1][0]).not.toHaveProperty("temperature");
-    });
-
-    it("xAI and Google preserve temperature for full-support models", async () => {
-        const xaiCreate = vi.fn()
-            .mockResolvedValueOnce({
-                id: "resp-xai",
-                model: "grok-4.3",
-                choices: [{ message: { content: "ok", tool_calls: [] } }],
-                usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-            })
-            .mockResolvedValueOnce(makeOpenAIStream([
-                {
-                    choices: [{ delta: { content: "ok" }, finish_reason: "stop" }],
-                    usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-                },
-            ]));
-        const xaiProvider = new XAIProvider();
-        ((xaiProvider as unknown) as { client: unknown }).client = { chat: { completions: { create: xaiCreate } } };
-
-        await xaiProvider.chat([userMessage("hi")], { model: "grok-4.3", temperature: 0.4 });
-        await collectChunks(xaiProvider.streamChat([userMessage("hi")], { model: "grok-4.3", temperature: 0.4 }));
-
-        expect(xaiCreate.mock.calls[0][0].model).toBe("grok-4.3");
-        expect(xaiCreate.mock.calls[1][0].model).toBe("grok-4.3");
-        expect(xaiCreate.mock.calls[0][0].temperature).toBe(0.4);
-        expect(xaiCreate.mock.calls[1][0].temperature).toBe(0.4);
-
-        const googleCreate = vi.fn()
-            .mockResolvedValueOnce({
-                id: "resp-google",
-                model: "gemini-3-flash-preview",
-                choices: [{ message: { content: "ok", tool_calls: [] } }],
-                usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-            })
-            .mockResolvedValueOnce(makeOpenAIStream([
-                {
-                    choices: [{ delta: { content: "ok" }, finish_reason: "stop" }],
-                    usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-                },
-            ]));
-        const googleProvider = new GoogleProvider();
-        ((googleProvider as unknown) as { client: unknown }).client = { chat: { completions: { create: googleCreate } } };
-
-        await googleProvider.chat([userMessage("hi")], { model: "gemini-3-flash-preview", temperature: 0.6 });
-        await collectChunks(googleProvider.streamChat([userMessage("hi")], { model: "gemini-3-flash-preview", temperature: 0.6 }));
-
-        expect(googleCreate.mock.calls[0][0].temperature).toBe(0.6);
-        expect(googleCreate.mock.calls[1][0].temperature).toBe(0.6);
-    });
-
-    it("Anthropic reuses normalized options for chat and stream", async () => {
-        const create = vi.fn()
-            .mockResolvedValueOnce({
-                id: "resp-claude",
-                model: "claude-haiku-4-5",
-                content: [{ type: "text", text: "ok" }],
-                usage: { input_tokens: 1, output_tokens: 1 },
-            })
-            .mockResolvedValueOnce(makeAnthropicStream([
-                {
-                    type: "message_start",
-                    message: {
-                        model: "claude-haiku-4-5",
-                        usage: { input_tokens: 1 },
-                    },
-                },
-            ]));
-        const provider = new AnthropicProvider();
-        ((provider as unknown) as { client: unknown }).client = { messages: { create } };
-
-        await provider.chat([userMessage("hi")], {
-            model: "claude-haiku-4-5",
-            includeReasoning: true,
-            reasoningBudgetTokens: 4096,
+        const response = await provider.chat([message("u1", "user", "hi")], {
+            model: "gpt-5.6-luna",
+            reasoningEffort: "max",
+            deliveryMode: "priority",
         });
-        await collectChunks(provider.streamChat([userMessage("hi")], {
-            model: "claude-haiku-4-5",
-            includeReasoning: true,
-            reasoningBudgetTokens: 4096,
+        const chunks = await collectChunks(provider.streamChat([message("u1", "user", "hi")], {
+            model: "gpt-5.6-luna",
+            reasoningEffort: "max",
+            deliveryMode: "priority",
         }));
 
-        expect(create).toHaveBeenCalledTimes(2);
-        expect(create.mock.calls[0][0]).not.toHaveProperty("thinking");
-        expect(create.mock.calls[1][0].thinking).toMatchObject({ type: "enabled" });
-        expect(create.mock.calls[1][0].thinking.budget_tokens).toBeGreaterThan(0);
+        expect(create.mock.calls[0][0]).toMatchObject({
+            model: "gpt-5.6-luna",
+            reasoning_effort: "max",
+            service_tier: "priority",
+        });
+        expect(create.mock.calls[1][0]).toMatchObject({
+            model: "gpt-5.6-luna",
+            reasoning_effort: "max",
+            service_tier: "priority",
+        });
+        expect(response.actualDeliveryMode).toBe("priority");
+        expect(response.usage).toMatchObject({
+            cachedInputTokens: 2,
+            cacheWriteInputTokens: 3,
+        });
+        expect(chunks.at(-1)).toMatchObject({
+            type: "done",
+            actualProvider: "openai",
+            actualDeliveryMode: "priority",
+            usage: {
+                cachedInputTokens: 3,
+                cacheWriteInputTokens: 4,
+            },
+        });
+        expect(chunks.at(-1)).not.toHaveProperty("actualReasoningEffort");
+    });
+
+    it("maps OpenAI fast to native none", async () => {
+        const create = vi.fn().mockResolvedValue({
+            id: "resp-fast",
+            model: "gpt-5.6-luna",
+            choices: [{ message: { content: "ok", tool_calls: [] } }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        });
+        const provider = new OpenAIProvider();
+        (provider as unknown as { client: unknown }).client = { chat: { completions: { create } } };
+
+        await provider.chat([message("u1", "user", "hi")], {
+            model: "gpt-5.6-luna",
+            reasoningEffort: "fast",
+        });
+
+        expect(create.mock.calls[0][0].reasoning_effort).toBe("none");
+    });
+
+    it("maps xAI fast to native low and priority to its service tier", async () => {
+        const create = vi.fn().mockResolvedValue({
+            id: "resp-xai",
+            model: "grok-4.5",
+            service_tier: "priority",
+            choices: [{ message: { content: "ok", tool_calls: [] } }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        });
+        const provider = new XAIProvider();
+        (provider as unknown as { client: unknown }).client = { chat: { completions: { create } } };
+
+        const response = await provider.chat([message("u1", "user", "hi")], {
+            model: "grok-4.5",
+            reasoningEffort: "fast",
+            deliveryMode: "priority",
+            conversationId: "conv-stable-1",
+        });
+
+        expect(create.mock.calls[0][0]).toMatchObject({
+            model: "grok-4.5",
+            reasoning_effort: "low",
+            service_tier: "priority",
+        });
+        expect(create.mock.calls[0][1]).toMatchObject({
+            headers: { "x-grok-conv-id": "conv-stable-1" },
+        });
+        expect(response.actualDeliveryMode).toBe("priority");
+    });
+
+    it.each([
+        ["OpenAI", new OpenAIProvider(), "gpt-5.6-luna"],
+        ["xAI", new XAIProvider(), "grok-4.5"],
+    ])("attaches hydrated images only to the latest user message for %s", async (_name, provider, model) => {
+        const create = vi.fn().mockResolvedValue({
+            id: "resp-image",
+            model,
+            choices: [{ message: { content: "ok", tool_calls: [] } }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        });
+        (provider as unknown as { client: unknown }).client = { chat: { completions: { create } } };
+
+        await provider.chat([
+            message("u1", "user", "first"),
+            message("a1", "assistant", "answer"),
+            message("u2", "user", "inspect this"),
+        ], { model, imageInputs });
+
+        const sentMessages = create.mock.calls[0][0].messages as Array<{ role: string; content: unknown }>;
+        expect(sentMessages[0]?.content).toBe("first");
+        expect(sentMessages[2]?.content).toEqual([
+            { type: "text", text: "inspect this" },
+            {
+                type: "image_url",
+                image_url: { url: imageInputs[0].dataUrl, detail: "auto" },
+            },
+        ]);
     });
 });

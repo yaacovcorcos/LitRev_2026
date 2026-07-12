@@ -366,9 +366,20 @@ model AIUsage {
   conversationId String?
   source         String          @default("legacy_unknown")
   contextPage    String          @default("legacy_unknown")
-  model          String
-  inputTokens    Int
-  outputTokens   Int
+  model                    String // Provider-observed model when available
+  provider                 String? // Provider-observed upstream when available; null when unknown
+  requestedModel           String?
+  requestedProvider        String?
+  requestedReasoningEffort String?
+  requestedDeliveryMode    String?
+  actualReasoningEffort    String?
+  actualDeliveryMode       String?
+  inputTokens              Int
+  cachedInputTokens        Int             @default(0)
+  cacheWriteInputTokens    Int             @default(0)
+  outputTokens             Int
+  reasoningTokens          Int             @default(0)
+  estimatedCostUsd         Float?
   createdAt      DateTime        @default(now())
   conversation   AIConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
   project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -644,7 +655,14 @@ model AgentRun {
   trigger                   String // "user_message" | "proactive" | "event"
   agentMode                 String // "protocol" | "search" | "screening" | "drafting" | "qa" | "general"
   status                    String // "running" | "completed" | "failed" | "cancelled" | "paused"
-  model                     String?
+  model                     String? // Requested product model ID
+  provider                  String? // Requested provider route
+  reasoningEffort           String?
+  deliveryMode              String?
+  actualModel               String?
+  actualProvider            String?
+  actualReasoningEffort     String?
+  actualDeliveryMode        String?
   costTokensIn              Int       @default(0)
   costTokensOut             Int       @default(0)
   startedAt                 DateTime  @default(now())

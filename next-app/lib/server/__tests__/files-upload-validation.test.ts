@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   prisma: {
     fileAsset: {
       create: vi.fn(),
+      findMany: vi.fn(),
     },
   },
 }));
@@ -24,7 +25,7 @@ vi.mock("@/lib/server/ledger", () => ({
   listStudies: vi.fn(),
 }));
 
-const { uploadChatAttachment, uploadStudyFile } = await import("@/lib/server/files");
+const { loadChatImageInputs, uploadChatAttachment, uploadStudyFile } = await import("@/lib/server/files");
 
 const PDF_BYTES = "%PDF-1.7\n1 0 obj\n<<>>\nendobj\n";
 
@@ -145,6 +146,10 @@ const DOCX_BYTES = makeZip([
   { name: "[Content_Types].xml" },
   { name: "word/document.xml" },
 ]);
+const PNG_BYTES = Uint8Array.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  0x00, 0x00, 0x00, 0x0d,
+]);
 
 function createdFileAsset(overrides: Partial<{
   filename: string;
@@ -262,6 +267,34 @@ describe("uploadStudyFile server validation", () => {
     expect(mocks.prisma.fileAsset.create).not.toHaveBeenCalled();
   });
 
+  it("accepts a signature-validated PNG chat attachment with canonical MIME metadata", async () => {
+    const uploaded = await uploadChatAttachment(
+      { ownerId: "user-1", workspaceId: "workspace-1" },
+      "proj-1",
+      new File([blobPart(PNG_BYTES)], "figure.png", { type: "application/octet-stream" }),
+    );
+
+    expect(uploaded.extraction).toEqual({ status: "ready", text: "", mediaKind: "image" });
+    expect(mocks.prisma.fileAsset.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        format: "png",
+        mimeType: "image/png",
+        kind: "attachment",
+      }),
+    }));
+  });
+
+  it("rejects image extensions whose bytes do not match", async () => {
+    await expect(uploadChatAttachment(
+      { ownerId: "user-1", workspaceId: "workspace-1" },
+      "proj-1",
+      new File(["<svg><script>alert(1)</script></svg>"], "figure.png", { type: "image/png" }),
+    )).rejects.toThrow("does not match its declared file type");
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(mocks.prisma.fileAsset.create).not.toHaveBeenCalled();
+  });
+
   it("rejects DOCX chat attachments before reading file bytes", async () => {
     const file = new File([blobPart(DOCX_BYTES)], "paper.docx", {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -272,10 +305,83 @@ describe("uploadStudyFile server validation", () => {
       { ownerId: "user-1", workspaceId: "workspace-1" },
       "proj-1",
       file,
-    )).rejects.toThrow("Only PDF files can be attached to conversations.");
+    )).rejects.toThrow("Only PDF, PNG, JPEG, and WebP files can be attached to conversations.");
 
     expect(arrayBufferSpy).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
     expect(mocks.prisma.fileAsset.create).not.toHaveBeenCalled();
+  });
+
+  it("deduplicates repeated image references before loading provider bytes", async () => {
+    mocks.prisma.fileAsset.findMany.mockResolvedValue([
+      createdFileAsset({
+        filename: "figure.png",
+        format: "png",
+        mimeType: "image/png",
+        size: PNG_BYTES.byteLength,
+      }),
+    ]);
+    vi.mocked(fetch).mockResolvedValue(new Response(blobPart(PNG_BYTES), { status: 200 }));
+
+    const attachment = {
+      fileAssetId: "file-1",
+      filename: "figure.png",
+      mimeType: "image/png",
+      size: PNG_BYTES.byteLength,
+      isExisting: true,
+    };
+    const images = await loadChatImageInputs(
+      { ownerId: "user-1", workspaceId: "workspace-1" },
+      "proj-1",
+      [attachment, attachment, attachment],
+    );
+
+    expect(images).toHaveLength(1);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an excessive number of unique attachment references before querying storage", async () => {
+    const attachments = Array.from({ length: 9 }, (_, index) => ({
+      fileAssetId: `file-${index}`,
+      filename: `figure-${index}.png`,
+      mimeType: "image/png",
+      size: PNG_BYTES.byteLength,
+      isExisting: true,
+    }));
+
+    await expect(loadChatImageInputs(
+      { ownerId: "user-1", workspaceId: "workspace-1" },
+      "proj-1",
+      attachments,
+    )).rejects.toThrow("at most 8 files");
+    expect(mocks.prisma.fileAsset.findMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects image batches above the aggregate byte limit before loading blobs", async () => {
+    mocks.prisma.fileAsset.findMany.mockResolvedValue(
+      ["file-1", "file-2", "file-3"].map((id) => ({
+        ...createdFileAsset({
+          filename: `${id}.png`,
+          format: "png",
+          mimeType: "image/png",
+          size: 8 * 1024 * 1024,
+        }),
+        id,
+      })),
+    );
+    const attachments = ["file-1", "file-2", "file-3"].map((fileAssetId) => ({
+      fileAssetId,
+      filename: `${fileAssetId}.png`,
+      mimeType: "image/png",
+      size: 8 * 1024 * 1024,
+      isExisting: true,
+    }));
+
+    await expect(loadChatImageInputs(
+      { ownerId: "user-1", workspaceId: "workspace-1" },
+      "proj-1",
+      attachments,
+    )).rejects.toThrow("at most 20 MB in total");
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

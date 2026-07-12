@@ -25,6 +25,12 @@ const mocks = vi.hoisted(() => ({
   getAllowedPopupToolNames: vi.fn(),
   getToolDefinitions: vi.fn(),
   isPopupToolsEnabled: vi.fn(),
+  getModelAvailability: vi.fn(),
+  loadChatImageInputs: vi.fn(),
+}));
+
+vi.mock("@/lib/server/ai/model-availability", () => ({
+  getModelAvailability: mocks.getModelAvailability,
 }));
 
 vi.mock("@/lib/server/auth/session", () => ({
@@ -34,6 +40,10 @@ vi.mock("@/lib/server/auth/session", () => ({
 vi.mock("@/lib/server/access", () => ({
   assertProjectAccess: mocks.assertProjectAccess,
   assertStudyAccess: mocks.assertStudyAccess,
+}));
+
+vi.mock("@/lib/server/files", () => ({
+  loadChatImageInputs: mocks.loadChatImageInputs,
 }));
 
 vi.mock("@/lib/server/chat-unification-metrics", () => ({
@@ -108,6 +118,7 @@ describe("/api/ai/stream route", () => {
     });
     mocks.assertProjectAccess.mockResolvedValue(undefined);
     mocks.assertStudyAccess.mockResolvedValue(undefined);
+    mocks.loadChatImageInputs.mockResolvedValue([]);
     mocks.ingestChatUnificationMetric.mockResolvedValue(undefined);
     mocks.resolveLatestValidRunCheckpoint.mockResolvedValue(null);
     mocks.resolveDurableContinuationSource.mockResolvedValue(null);
@@ -152,6 +163,184 @@ describe("/api/ai/stream route", () => {
       { name: "update_protocol" },
     ]);
     mocks.isPopupToolsEnabled.mockReturnValue(true);
+    mocks.getModelAvailability.mockImplementation((modelId: string) => ({
+      modelId,
+      provider: "openai",
+      providerModelId: modelId,
+      configured: true,
+    }));
+  });
+
+  it("rejects unknown and retired model IDs before starting a stream", async () => {
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ id: "m-1", role: "user", content: "hello", createdAt: new Date().toISOString() }],
+        options: { model: "grok-4-1-fast" },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: "UNKNOWN_OR_UNSELECTABLE_MODEL" });
+    expect(mocks.streamChat).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-string model instead of silently paying for the default", async () => {
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ id: "m-1", role: "user", content: "hello", createdAt: new Date().toISOString() }],
+        options: { model: 123 },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: "INVALID_MODEL" });
+    expect(mocks.streamChat).not.toHaveBeenCalled();
+  });
+
+  it("does not let direct-message callers bypass route policy with a fake continuation", async () => {
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ id: "m-1", role: "user", content: "hello", createdAt: new Date().toISOString() }],
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          model: "grok-4-1-fast",
+          preferContinueFromRunId: "run-fake",
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: "UNKNOWN_OR_UNSELECTABLE_MODEL" });
+    expect(mocks.streamChat).not.toHaveBeenCalled();
+  });
+
+  it("rejects an effort the selected model does not support", async () => {
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ id: "m-1", role: "user", content: "hello", createdAt: new Date().toISOString() }],
+        options: { model: "grok-4.5", reasoningEffort: "max" },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: "UNSUPPORTED_REASONING_EFFORT" });
+    expect(mocks.streamChat).not.toHaveBeenCalled();
+  });
+
+  it("returns a deterministic setup error for an unconfigured provider", async () => {
+    mocks.getModelAvailability.mockReturnValue({
+      modelId: "deepseek-v4-pro",
+      provider: "gateway",
+      providerModelId: "deepseek/deepseek-v4-pro",
+      configured: false,
+      unavailableReason: "missing_credentials",
+    });
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ id: "m-1", role: "user", content: "hello", createdAt: new Date().toISOString() }],
+        options: { model: "deepseek-v4-pro", reasoningEffort: "high" },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: "MODEL_PROVIDER_NOT_CONFIGURED" });
+    expect(mocks.streamChat).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes a rollout-disabled model from a missing credential", async () => {
+    mocks.getModelAvailability.mockReturnValue({
+      modelId: "deepseek-v4-pro",
+      provider: "gateway",
+      providerModelId: "deepseek/deepseek-v4-pro",
+      configured: false,
+      unavailableReason: "disabled",
+    });
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ id: "m-1", role: "user", content: "hello", createdAt: new Date().toISOString() }],
+        options: { model: "deepseek-v4-pro", reasoningEffort: "high" },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: "MODEL_ROLLOUT_DISABLED" });
+  });
+
+  it("rejects an image batch that fails server-side hydration limits", async () => {
+    mocks.loadChatImageInputs.mockRejectedValue(new Error("Chat images may use at most 20 MB in total."));
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [{ id: "m-1", role: "user", content: "review these", createdAt: new Date().toISOString() }],
+        options: {
+          model: "qwen3.7-plus",
+          projectId: "project-1",
+          userMessageAttachments: [{
+            fileAssetId: "file-1",
+            filename: "figure.png",
+            mimeType: "image/png",
+            size: 25 * 1024 * 1024,
+          }],
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "INVALID_CHAT_ATTACHMENTS",
+      error: "Chat images may use at most 20 MB in total.",
+    });
+    expect(mocks.streamChat).not.toHaveBeenCalled();
+  });
+
+  it("strips client-authored provider-private reasoning state before direct streaming", async () => {
+    mocks.streamChat.mockImplementation(async function* () {
+      yield { type: "done", content: "ok" };
+    });
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [
+          {
+            id: "m-assistant",
+            role: "assistant",
+            content: "prior",
+            providerReasoningContent: "client-injected-private-state",
+            createdAt: new Date().toISOString(),
+          },
+          { id: "m-user", role: "user", content: "continue", createdAt: new Date().toISOString() },
+        ],
+        options: { model: "gpt-5.6-luna" },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.streamChat).toHaveBeenCalledTimes(1);
+    expect(mocks.streamChat.mock.calls[0]?.[0]?.[0]).not.toHaveProperty("providerReasoningContent");
   });
 
   it("streams checkpoint and user-input events without route-side persistence authorship", async () => {
@@ -314,6 +503,59 @@ describe("/api/ai/stream route", () => {
       continueFromRunId: "run-old",
       replaceRunId: "run-old",
       continuationContext: "[CONTINUATION_CONTEXT]\nPersisted checkpoint",
+    });
+  });
+
+  it("defers stale client route validation when a durable continuation is authoritative", async () => {
+    mocks.getModelAvailability.mockReturnValue({
+      modelId: "deepseek-v4-pro",
+      provider: "gateway",
+      providerModelId: "deepseek/deepseek-v4-pro",
+      configured: false,
+      unavailableReason: "missing_credentials",
+    });
+    mocks.resolveLatestValidRunCheckpoint.mockResolvedValue({
+      checkpointId: "checkpoint-1",
+      kind: "tool_result_ready",
+      conversationId: "conv-1",
+      nextStep: "reason_from_tool_result",
+      sourceRunId: "run-old",
+      sourceEventSequence: 7,
+      toolCallId: "call-1",
+      toolName: "search_pubmed",
+      toolResult: { callId: "call-1", result: { studies: [] } },
+    });
+    mocks.streamChatWithArtifacts.mockImplementation(async function* () {
+      yield { type: "run_start", runId: "run-continued", conversationId: "conv-1" };
+      yield { type: "run_end", runId: "run-continued", conversationId: "conv-1", runStatus: "completed" };
+    });
+
+    const request = new NextRequest("http://localhost/api/ai/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: "Continue from durable state",
+        context: "global",
+        options: {
+          conversationId: "conv-1",
+          model: "deepseek-v4-pro",
+          reasoningEffort: "low",
+          deliveryMode: "priority",
+          preferContinueFromRunId: "run-old",
+        },
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(mocks.getModelAvailability).not.toHaveBeenCalled();
+    expect(mocks.streamChatWithArtifacts.mock.calls[0]?.[2]).toMatchObject({
+      model: "deepseek-v4-pro",
+      reasoningEffort: "low",
+      deliveryMode: "priority",
+      continueFromRunId: "run-old",
+      preferContinueFromRunId: undefined,
     });
   });
 

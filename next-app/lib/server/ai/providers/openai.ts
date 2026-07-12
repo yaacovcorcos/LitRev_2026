@@ -5,7 +5,17 @@
  */
 
 import OpenAI from "openai";
-import type { AIMessage, AIModel, AIResponse, ChatOptions, AIStreamChunk, ToolCall } from "@/types/ai";
+import type {
+    AIMessage,
+    AIModel,
+    AIResponse,
+    ChatImageInput,
+    ChatOptions,
+    DeliveryMode,
+    AIStreamChunk,
+    ReasoningEffort,
+    ToolCall,
+} from "@/types/ai";
 import { BaseAIProvider } from "./base";
 import { AVAILABLE_MODELS } from "@/lib/ai/config";
 import { parseToolArgs } from "../json-repair";
@@ -13,10 +23,41 @@ import { AIErrorWithEnvelope, buildStreamErrorChunk } from "@/lib/ai/error-envel
 import { extractProviderErrorMetadata } from "./error-metadata";
 import { normalizeProviderMessages } from "./message-normalization";
 import { extractReasoningTextsFromDelta } from "./reasoning-delta";
-import { normalizeChatOptionsForModel } from "../request-policy";
+import {
+    normalizeChatOptionsForModel,
+    type NormalizedProviderChatOptions,
+} from "../request-policy";
 import { toAIErrorEnvelope } from "../error-classification";
 import { getToolCallDeltas } from "./tool-call-delta";
 import { isAbortLikeError } from "@/lib/abort";
+
+type ExtendedChatCompletionParams = OpenAI.Chat.Completions.ChatCompletionCreateParams & {
+    reasoning_effort?: "none" | "low" | "medium" | "high" | "max";
+    service_tier?: "default" | "priority";
+};
+
+function mapReasoningEffort(effort: ReasoningEffort): ExtendedChatCompletionParams["reasoning_effort"] {
+    return effort === "fast" ? "none" : effort;
+}
+
+function readActualDeliveryMode(value: unknown): DeliveryMode | undefined {
+    if (value === "priority") return "priority";
+    if (typeof value === "string" && value.length > 0) return "standard";
+    return undefined;
+}
+
+function readUsage(
+    usage: OpenAI.Completions.CompletionUsage | null | undefined,
+): AIResponse["usage"] {
+    return {
+        inputTokens: usage?.prompt_tokens ?? 0,
+        outputTokens: usage?.completion_tokens ?? 0,
+        totalTokens: usage?.total_tokens ?? 0,
+        cachedInputTokens: usage?.prompt_tokens_details?.cached_tokens,
+        cacheWriteInputTokens: usage?.prompt_tokens_details?.cache_write_tokens,
+        reasoningTokens: usage?.completion_tokens_details?.reasoning_tokens,
+    };
+}
 
 export class OpenAIProvider extends BaseAIProvider {
     readonly id = "openai";
@@ -70,13 +111,11 @@ export class OpenAIProvider extends BaseAIProvider {
             content: choice.message.content || "",
             model: response.model,
             toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-            usage: {
-                inputTokens: response.usage?.prompt_tokens || 0,
-                outputTokens: response.usage?.completion_tokens || 0,
-                totalTokens: response.usage?.total_tokens || 0,
-                cachedInputTokens: (response.usage as { prompt_tokens_details?: { cached_tokens?: number } } | undefined)
-                    ?.prompt_tokens_details?.cached_tokens,
-            },
+            actualProvider: this.id,
+            actualDeliveryMode: readActualDeliveryMode(
+                (response as unknown as { service_tier?: unknown }).service_tier,
+            ),
+            usage: readUsage(response.usage),
         };
     }
 
@@ -94,6 +133,7 @@ export class OpenAIProvider extends BaseAIProvider {
         let totalContent = "";
         let usage: AIStreamChunk["usage"] | undefined;
         let observedModel: string | undefined;
+        let observedDeliveryMode: DeliveryMode | undefined;
         const pendingToolCalls = new Map<number, { id: string; name: string; arguments: string }>();
         const includeReasoning = normalizedOptions.includeReasoning;
         let activeReasoningId: string | null = null;
@@ -101,6 +141,8 @@ export class OpenAIProvider extends BaseAIProvider {
 
         try {
             for await (const chunk of stream) {
+                const chunkServiceTier = (chunk as unknown as { service_tier?: unknown }).service_tier;
+                observedDeliveryMode = readActualDeliveryMode(chunkServiceTier) ?? observedDeliveryMode;
                 const chunkModel = (chunk as { model?: unknown }).model;
                 if (!observedModel && typeof chunkModel === "string" && chunkModel.trim().length > 0) {
                     observedModel = chunkModel;
@@ -181,26 +223,14 @@ export class OpenAIProvider extends BaseAIProvider {
                         }
                         // Capture usage before yielding done
                         if (chunk.usage) {
-                            usage = {
-                                inputTokens: chunk.usage.prompt_tokens,
-                                outputTokens: chunk.usage.completion_tokens,
-                                totalTokens: chunk.usage.total_tokens,
-                                cachedInputTokens: (chunk.usage as { prompt_tokens_details?: { cached_tokens?: number } })
-                                    .prompt_tokens_details?.cached_tokens,
-                            };
+                            usage = readUsage(chunk.usage);
                         }
                     }
                 }
 
                 // Capture usage data from the final chunk (may come in a separate chunk)
                 if (chunk.usage) {
-                    usage = {
-                        inputTokens: chunk.usage.prompt_tokens,
-                        outputTokens: chunk.usage.completion_tokens,
-                        totalTokens: chunk.usage.total_tokens,
-                        cachedInputTokens: (chunk.usage as { prompt_tokens_details?: { cached_tokens?: number } })
-                            .prompt_tokens_details?.cached_tokens,
-                    };
+                    usage = readUsage(chunk.usage);
                 }
             }
 
@@ -216,6 +246,8 @@ export class OpenAIProvider extends BaseAIProvider {
                 usage,
                 actualModel: observedModel,
                 actualModelSource: observedModel ? "provider" : undefined,
+                actualProvider: this.id,
+                actualDeliveryMode: observedDeliveryMode,
             };
         } catch (error) {
             if (normalizedOptions.signal?.aborted || isAbortLikeError(error)) {
@@ -237,10 +269,15 @@ export class OpenAIProvider extends BaseAIProvider {
 
     private convertMessages(
         messages: AIMessage[],
-        systemPrompt?: string
+        systemPrompt?: string,
+        imageInputs: ChatImageInput[] = [],
     ): OpenAI.Chat.ChatCompletionMessageParam[] {
         const result: OpenAI.Chat.ChatCompletionMessageParam[] = [];
         const normalizedMessages = normalizeProviderMessages(messages).messages;
+        let latestUserIndex = -1;
+        normalizedMessages.forEach((message, index) => {
+            if (message.role === "user") latestUserIndex = index;
+        });
 
         // Add system prompt if provided
         if (systemPrompt) {
@@ -248,11 +285,24 @@ export class OpenAIProvider extends BaseAIProvider {
         }
 
         // Convert messages
-        for (const msg of normalizedMessages) {
+        for (const [messageIndex, msg] of normalizedMessages.entries()) {
             if (msg.role === "system") {
                 result.push({ role: "system", content: msg.content });
             } else if (msg.role === "user") {
-                result.push({ role: "user", content: msg.content });
+                if (messageIndex === latestUserIndex && imageInputs.length > 0) {
+                    result.push({
+                        role: "user",
+                        content: [
+                            { type: "text", text: msg.content },
+                            ...imageInputs.map((image) => ({
+                                type: "image_url" as const,
+                                image_url: { url: image.dataUrl, detail: "auto" as const },
+                            })),
+                        ],
+                    });
+                } else {
+                    result.push({ role: "user", content: msg.content });
+                }
             } else if (msg.role === "assistant" && msg.toolCalls?.length) {
                 // Assistant message with tool calls
                 result.push({
@@ -283,23 +333,25 @@ export class OpenAIProvider extends BaseAIProvider {
 
     private buildRequestParams(
         messages: AIMessage[],
-        options: ChatOptions & { model: string; maxTokens: number; includeReasoning: boolean },
+        options: NormalizedProviderChatOptions,
         stream: true,
     ): OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
     private buildRequestParams(
         messages: AIMessage[],
-        options: ChatOptions & { model: string; maxTokens: number; includeReasoning: boolean },
+        options: NormalizedProviderChatOptions,
         stream: false,
     ): OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
     private buildRequestParams(
         messages: AIMessage[],
-        options: ChatOptions & { model: string; maxTokens: number; includeReasoning: boolean },
+        options: NormalizedProviderChatOptions,
         stream: boolean,
     ): OpenAI.Chat.ChatCompletionCreateParams {
-        const params: OpenAI.Chat.ChatCompletionCreateParams = {
-            model: options.model,
-            messages: this.convertMessages(messages, options.systemPrompt),
+        const params: ExtendedChatCompletionParams = {
+            model: options.providerModelId,
+            messages: this.convertMessages(messages, options.systemPrompt, options.imageInputs),
             max_completion_tokens: options.maxTokens,
+            reasoning_effort: mapReasoningEffort(options.reasoningEffort),
+            service_tier: options.deliveryMode === "priority" ? "priority" : "default",
             ...(stream ? { stream: true as const, stream_options: { include_usage: true } } : {}),
         };
 

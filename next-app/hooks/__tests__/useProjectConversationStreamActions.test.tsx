@@ -15,6 +15,7 @@ const {
     mockCreateConversation,
     mockProcessAIStream,
     mockRequestAgentRunCancellation,
+    mockResetDeliveryMode,
 } = vi.hoisted(() => ({
     mockReviewArtifactAction: vi.fn(),
     mockUndoArtifactAction: vi.fn(),
@@ -22,6 +23,7 @@ const {
     mockCreateConversation: vi.fn(),
     mockProcessAIStream: vi.fn(),
     mockRequestAgentRunCancellation: vi.fn(),
+    mockResetDeliveryMode: vi.fn(),
 }));
 
 vi.mock("@/app/actions/agent", () => ({
@@ -87,7 +89,11 @@ function buildArtifact(status: ArtifactData["status"] = "proposed"): ArtifactDat
     };
 }
 
-function useHarness() {
+function useHarness(generation: {
+    selectedModel?: "gpt-5.6-luna" | "gpt-5.6-terra";
+    reasoningEffort?: "medium" | "high";
+    deliveryMode?: "standard" | "priority";
+} = {}) {
     const initialArtifact = buildArtifact();
     const [state, setState] = useState<ProjectConversationState>({
         ...createDefaultProjectConversationState(),
@@ -118,6 +124,7 @@ function useHarness() {
     const [, setPendingChoices] = useState<ChoiceOption[]>([]);
     const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null);
     const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+    const resetDeliveryMode = mockResetDeliveryMode;
 
     const hook = useProjectConversationStreamActions({
         projectId: "project-1",
@@ -143,6 +150,10 @@ function useHarness() {
         pendingAttachment,
         setPendingAttachment,
         reasoningMode: "full",
+        selectedModel: generation.selectedModel ?? "gpt-5.6-luna",
+        reasoningEffort: generation.reasoningEffort ?? "medium",
+        deliveryMode: generation.deliveryMode ?? "standard",
+        resetDeliveryMode,
         convo: {
             currentConversationId: "conv-1",
             currentConversationIdRef: { current: "conv-1" },
@@ -163,6 +174,7 @@ function useHarness() {
         pendingAttachment,
         setPendingAttachment,
         setCurrentRunId,
+        resetDeliveryMode,
     };
 }
 
@@ -335,7 +347,7 @@ describe("useProjectConversationStreamActions artifact review path", () => {
         });
 
         await act(async () => {
-            await result.current.sendMessage("Please summarize this", "overview", undefined, "gpt-5.2");
+            await result.current.sendMessage("Please summarize this", "overview", undefined, "gpt-5.6-luna");
         });
 
         const fetchMock = vi.mocked(fetch);
@@ -349,7 +361,9 @@ describe("useProjectConversationStreamActions artifact review path", () => {
         expect(body.options).toMatchObject({
             conversationId: "conv-1",
             projectId: "project-1",
-            model: "gpt-5.2",
+            model: "gpt-5.6-luna",
+            reasoningEffort: "medium",
+            deliveryMode: "standard",
             page: "overview",
         });
         expect(body.options.userMessageAttachments).toEqual([
@@ -376,5 +390,170 @@ describe("useProjectConversationStreamActions artifact review path", () => {
                 },
             ],
         });
+    });
+
+    it("keeps image bytes out of the prompt while forwarding attachment metadata for server hydration", async () => {
+        const { result } = renderHook(() => useHarness());
+
+        act(() => {
+            result.current.setPendingAttachment({
+                fileAssetId: "image-1",
+                filename: "figure.webp",
+                size: 4096,
+                mimeType: "image/webp",
+                isExisting: false,
+                extraction: {
+                    status: "ready",
+                    text: "",
+                    mediaKind: "image",
+                },
+            });
+        });
+
+        await act(async () => {
+            await result.current.sendMessage("Interpret this forest plot", "overview", undefined, "qwen3.7-plus");
+        });
+
+        const fetchMock = vi.mocked(fetch);
+        const [, requestInit] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+        const body = JSON.parse(String(requestInit.body));
+
+        expect(body.userMessage).toBe("Interpret this forest plot");
+        expect(body.userMessage).not.toContain("<attached_document");
+        expect(body.options).toMatchObject({
+            model: "qwen3.7-plus",
+            reasoningEffort: "high",
+            deliveryMode: "standard",
+            userMessageAttachments: [{
+                fileAssetId: "image-1",
+                filename: "figure.webp",
+                size: 4096,
+                mimeType: "image/webp",
+                isExisting: false,
+            }],
+        });
+    });
+
+    it("rejects an image on a non-vision model before side effects and keeps it attached", async () => {
+        const { result } = renderHook(() => useHarness());
+
+        act(() => {
+            result.current.setPendingAttachment({
+                fileAssetId: "image-unsupported",
+                filename: "figure.png",
+                size: 4096,
+                mimeType: "image/png",
+                isExisting: false,
+                extraction: {
+                    status: "ready",
+                    text: "",
+                    mediaKind: "image",
+                },
+            });
+        });
+
+        await act(async () => {
+            await result.current.sendMessage(
+                "Interpret this figure",
+                "overview",
+                undefined,
+                "deepseek-v4-flash",
+            );
+        });
+
+        expect(fetch).not.toHaveBeenCalled();
+        expect(result.current.pendingAttachment?.fileAssetId).toBe("image-unsupported");
+        expect(result.current.state.messages).toHaveLength(1);
+        expect(mockResetDeliveryMode).not.toHaveBeenCalled();
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            "Blocking send because deepseek-v4-flash does not support image input.",
+        );
+    });
+
+    it("retains an attachment when the server rejects the request before admission", async () => {
+        vi.stubGlobal("fetch", vi.fn(async () => ({
+            ok: false,
+            statusText: "Conflict",
+        })));
+        const { result } = renderHook(() => useHarness());
+
+        act(() => {
+            result.current.setPendingAttachment({
+                fileAssetId: "file-rejected",
+                filename: "paper.pdf",
+                size: 2048,
+                mimeType: "application/pdf",
+                isExisting: false,
+                extraction: {
+                    status: "ready",
+                    text: "Extracted text",
+                },
+            });
+        });
+
+        await act(async () => {
+            await result.current.sendMessage("Summarize", "overview");
+        });
+
+        expect(result.current.pendingAttachment?.fileAssetId).toBe("file-rejected");
+    });
+
+    it("snapshots one-shot priority delivery and resets the control after capture", async () => {
+        const { result } = renderHook(() => useHarness());
+
+        await act(async () => {
+            await result.current.sendMessage(
+                "Run this quickly",
+                "overview",
+                undefined,
+                "gpt-5.6-luna",
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {
+                    model: "gpt-5.6-luna",
+                    reasoningEffort: "high",
+                    deliveryMode: "priority",
+                },
+            );
+        });
+
+        const fetchMock = vi.mocked(fetch);
+        const [, requestInit] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+        expect(JSON.parse(String(requestInit.body)).options).toMatchObject({
+            model: "gpt-5.6-luna",
+            reasoningEffort: "high",
+            deliveryMode: "priority",
+        });
+        expect(result.current.resetDeliveryMode).toHaveBeenCalledTimes(1);
+    });
+
+    it("propagates the selected generation settings into plan execution", async () => {
+        const { result } = renderHook(() => useHarness({
+            selectedModel: "gpt-5.6-terra",
+            reasoningEffort: "high",
+            deliveryMode: "priority",
+        }));
+
+        await act(async () => {
+            await result.current.executePlan("artifact-1", [0]);
+        });
+
+        const fetchMock = vi.mocked(fetch);
+        const [, requestInit] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+        const body = JSON.parse(String(requestInit.body));
+        expect(body).toMatchObject({
+            planId: "artifact-1",
+            selectedSteps: [0],
+            options: {
+                model: "gpt-5.6-terra",
+                reasoningEffort: "high",
+                deliveryMode: "priority",
+                reasoningMode: "off",
+            },
+        });
+        expect(result.current.resetDeliveryMode).toHaveBeenCalledTimes(1);
     });
 });

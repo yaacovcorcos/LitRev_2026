@@ -39,6 +39,7 @@ const mocks = vi.hoisted(() => {
     markRunFinalizationState: vi.fn(),
     markRunFinalizationFailed: vi.fn(),
     markRunAbnormalEndClassification: vi.fn(),
+    recordRunGenerationReceipt: vi.fn(async () => {}),
     isRunOwnershipError: vi.fn(() => false),
     resolveAuthenticatedIdentity: vi.fn(),
     getAutonomyConfig: vi.fn(),
@@ -63,6 +64,7 @@ vi.mock("@/lib/server/ai/providers", () => ({
   getAnthropicProvider: () => ({ isConfigured: () => false }),
   getXAIProvider: () => ({ isConfigured: () => false }),
   getGoogleProvider: () => ({ isConfigured: () => false }),
+  getGatewayProvider: () => ({ isConfigured: () => false }),
 }));
 
 vi.mock("@/lib/server/ai/rate-limiter", () => ({
@@ -88,6 +90,8 @@ vi.mock("@/lib/server/memory", () => ({
 vi.mock("@/lib/ai/config", () => ({
   AI_CONFIG: { defaultProvider: "openai", defaultModel: "gpt-5.2" },
   getProviderForModel: vi.fn(() => "openai"),
+  getProviderModelId: vi.fn((modelId: string) => modelId),
+  getDefaultReasoningEffort: vi.fn(() => "medium"),
   getContextBudget: vi.fn(() => 8000),
 }));
 
@@ -114,6 +118,7 @@ vi.mock("@/lib/server/agent/run", () => ({
   markRunFinalizationState: mocks.markRunFinalizationState,
   markRunFinalizationFailed: mocks.markRunFinalizationFailed,
   markRunAbnormalEndClassification: mocks.markRunAbnormalEndClassification,
+  recordRunGenerationReceipt: mocks.recordRunGenerationReceipt,
   isRunOwnershipError: mocks.isRunOwnershipError,
 }));
 

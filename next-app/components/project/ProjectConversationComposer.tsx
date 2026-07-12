@@ -59,6 +59,13 @@ export function ProjectConversationComposer({
         isSummarizing,
         selectedModel,
         setSelectedModel,
+        reasoningEffort,
+        setReasoningEffort,
+        deliveryMode,
+        setDeliveryMode,
+        modelAvailability,
+        modelAvailabilityStatus,
+        retryModelAvailability,
         currentConversationId,
         queuedFollowUp,
         queueQueuedFollowUp,
@@ -82,6 +89,9 @@ export function ProjectConversationComposer({
             onQueueFollowUp={(payload) => {
                 queueQueuedFollowUp(createQueuedFollowUp({
                     ...payload,
+                    model: selectedModel,
+                    reasoningEffort,
+                    deliveryMode,
                     conversationId: currentConversationId ?? null,
                     source: "draft",
                 }));
@@ -107,6 +117,13 @@ export function ProjectConversationComposer({
             onAnswerUserInput={answerUserInput}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
+            modelAvailability={modelAvailability}
+            modelAvailabilityStatus={modelAvailabilityStatus}
+            onRetryModelAvailability={retryModelAvailability}
+            reasoningEffort={reasoningEffort}
+            onReasoningEffortChange={setReasoningEffort}
+            deliveryMode={deliveryMode}
+            onDeliveryModeChange={setDeliveryMode}
             showAutonomyPreset
             showAttachments
             showVoice

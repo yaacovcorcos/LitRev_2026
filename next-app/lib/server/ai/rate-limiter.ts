@@ -4,7 +4,8 @@
  */
 
 import { prisma } from "@/lib/server/prisma";
-import { AI_CONFIG } from "@/lib/ai/config";
+import { AI_CONFIG, getModelCapabilityRecord } from "@/lib/ai/config";
+import type { DeliveryMode, ReasoningEffort } from "@/types/ai";
 import type { UsageStats } from "@/types/ai";
 
 type CacheMetricAccumulator = {
@@ -15,6 +16,55 @@ type CacheMetricAccumulator = {
     lastModel: string;
     updatedAt: string;
 };
+
+export function estimateUsageCostUsd(params: {
+    modelId: string;
+    inputTokens: number;
+    cachedInputTokens?: number;
+    cacheWriteInputTokens?: number;
+    outputTokens: number;
+    confirmedDeliveryMode?: DeliveryMode | null;
+}): number | undefined {
+    const model = getModelCapabilityRecord(params.modelId);
+    const pricing = model?.pricing;
+    if (!model || !pricing) return undefined;
+
+    // OpenAI priority processing is account/product specific. Persisting a
+    // base-tier estimate here would look exact while knowingly undercounting.
+    if (model.providerDialect === "openai" && params.confirmedDeliveryMode === "priority") {
+        return undefined;
+    }
+
+    const inputTokens = Math.max(0, params.inputTokens);
+    const cachedInputTokens = Math.max(0, Math.min(inputTokens, params.cachedInputTokens ?? 0));
+    const cacheWriteInputTokens = Math.max(0, Math.min(inputTokens, params.cacheWriteInputTokens ?? 0));
+    if (cachedInputTokens + cacheWriteInputTokens > inputTokens) return undefined;
+    if (cacheWriteInputTokens > 0 && pricing.cacheWriteInputPerMillion === undefined) return undefined;
+    const ordinaryInputTokens = inputTokens - cachedInputTokens - cacheWriteInputTokens;
+    const outputTokens = Math.max(0, params.outputTokens);
+
+    let inputMultiplier = 1;
+    let outputMultiplier = 1;
+    if (model.providerDialect === "openai" && inputTokens > 272_000) {
+        inputMultiplier = 2;
+        outputMultiplier = 1.5;
+    } else if (model.providerDialect === "qwen" && inputTokens > 256_000) {
+        inputMultiplier = 3;
+        outputMultiplier = 3;
+    }
+
+    if (model.providerDialect === "xai" && params.confirmedDeliveryMode === "priority") {
+        inputMultiplier *= 2;
+        outputMultiplier *= 2;
+    }
+
+    return (
+        (ordinaryInputTokens * pricing.inputPerMillion * inputMultiplier)
+        + (cachedInputTokens * (pricing.cachedInputPerMillion ?? pricing.inputPerMillion) * inputMultiplier)
+        + (cacheWriteInputTokens * (pricing.cacheWriteInputPerMillion ?? pricing.inputPerMillion) * inputMultiplier)
+        + (outputTokens * pricing.outputPerMillion * outputMultiplier)
+    ) / 1_000_000;
+}
 
 export interface CacheMetricSummary {
     requestCount: number;
@@ -236,6 +286,15 @@ export async function recordUsage(
     outputTokens: number,
     options?: {
         cachedInputTokens?: number;
+        cacheWriteInputTokens?: number;
+        reasoningTokens?: number;
+        provider?: string | null;
+        requestedModel?: string | null;
+        requestedProvider?: string | null;
+        requestedReasoningEffort?: ReasoningEffort | null;
+        requestedDeliveryMode?: DeliveryMode | null;
+        actualReasoningEffort?: ReasoningEffort | null;
+        actualDeliveryMode?: DeliveryMode | null;
         userId?: string | null;
         workspaceId?: string | null;
         source?: string | null;
@@ -248,6 +307,16 @@ export async function recordUsage(
         userId: options?.userId ?? null,
         workspaceId: options?.workspaceId ?? null,
     });
+    const cachedInputTokens = Math.max(0, Math.min(inputTokens, options?.cachedInputTokens ?? 0));
+    const cacheWriteInputTokens = Math.max(0, Math.min(inputTokens, options?.cacheWriteInputTokens ?? 0));
+    const estimatedCostUsd = estimateUsageCostUsd({
+        modelId: options?.requestedModel ?? model,
+        inputTokens,
+        cachedInputTokens,
+        cacheWriteInputTokens,
+        outputTokens,
+        confirmedDeliveryMode: options?.actualDeliveryMode,
+    });
 
     await prisma.aIUsage.create({
         data: {
@@ -258,8 +327,19 @@ export async function recordUsage(
             contextPage: normalizeUsageContextPage(options?.contextPage),
             conversationId: options?.conversationId ?? null,
             model,
+            provider: options?.provider ?? null,
+            requestedModel: options?.requestedModel ?? null,
+            requestedProvider: options?.requestedProvider ?? null,
+            requestedReasoningEffort: options?.requestedReasoningEffort ?? null,
+            requestedDeliveryMode: options?.requestedDeliveryMode ?? null,
+            actualReasoningEffort: options?.actualReasoningEffort ?? null,
+            actualDeliveryMode: options?.actualDeliveryMode ?? null,
             inputTokens,
+            cachedInputTokens,
+            cacheWriteInputTokens,
             outputTokens,
+            reasoningTokens: Math.max(0, options?.reasoningTokens ?? 0),
+            estimatedCostUsd,
         },
     });
 
@@ -268,7 +348,7 @@ export async function recordUsage(
             projectId,
             model,
             inputTokens,
-            options?.cachedInputTokens ?? 0,
+            cachedInputTokens,
         );
     }
 }

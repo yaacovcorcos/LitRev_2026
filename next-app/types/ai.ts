@@ -26,6 +26,12 @@ export type AIMessage = {
     content: string;
     toolCalls?: ToolCall[];
     toolResultId?: string;
+    /**
+     * Provider-private continuation state used by thinking models during a
+     * tool loop. It must never be persisted as transcript content or exposed
+     * on the client wire.
+     */
+    providerReasoningContent?: string;
     createdAt: string;
 };
 
@@ -345,8 +351,20 @@ export type ConversationContextAttachment = {
 
 export type ConversationMessageAttachment = ConversationFileAttachment | ConversationContextAttachment;
 
+/** Server-hydrated image input. Raw bytes are never accepted from the client request body. */
+export type ChatImageInput = {
+    fileAssetId: string;
+    filename: string;
+    mimeType: "image/png" | "image/jpeg" | "image/webp";
+    dataUrl: string;
+};
+
 export type AITone = "standard" | "deep";
 export type ReasoningMode = "off" | "summary" | "full";
+/** Controls model compute. This is intentionally separate from ReasoningMode. */
+export type ReasoningEffort = "fast" | "low" | "medium" | "high" | "max";
+/** Controls paid request scheduling. This is intentionally separate from reasoning effort. */
+export type DeliveryMode = "standard" | "priority";
 export type StreamPhase = "idle" | "streaming" | "tool_running" | "completing";
 
 // Chat options
@@ -357,6 +375,10 @@ export type ChatOptions = {
     maxTokens?: number;
     /** User-facing reasoning visibility mode. */
     reasoningMode?: ReasoningMode;
+    /** User-selected model compute intensity. */
+    reasoningEffort?: ReasoningEffort;
+    /** Optional paid provider delivery tier. Defaults to standard. */
+    deliveryMode?: DeliveryMode;
     /** Request provider-native reasoning/thinking parts when supported. */
     includeReasoning?: boolean;
     /** Optional provider reasoning budget (tokens), when supported. */
@@ -376,6 +398,8 @@ export type ChatOptions = {
     userId?: string;
     workspaceId?: string;
     userMessageAttachments?: ConversationMessageAttachment[];
+    /** Internal-only, access-checked image payloads hydrated from FileAsset rows. */
+    imageInputs?: ChatImageInput[];
     contextTargets?: ContextCaptureTarget[];
     /**
      * Correlation key for retry telemetry continuity checks.
@@ -432,11 +456,18 @@ export type AIResponse = {
     content: string;
     model: string;
     toolCalls?: ToolCall[];
+    actualProvider?: string;
+    actualReasoningEffort?: ReasoningEffort;
+    actualDeliveryMode?: DeliveryMode;
+    /** Provider-private continuation state for a subsequent tool-result turn. */
+    providerReasoningContent?: string;
     usage: {
         inputTokens: number;
         outputTokens: number;
         totalTokens: number;
         cachedInputTokens?: number;
+        cacheWriteInputTokens?: number;
+        reasoningTokens?: number;
     };
 };
 
@@ -493,6 +524,15 @@ export type AIStreamChunk = {
     /** Provider-observed model ID when available (falls back upstream as needed). */
     actualModel?: string;
     actualModelSource?: "provider" | "requested" | "unknown";
+    actualProvider?: string;
+    actualReasoningEffort?: ReasoningEffort;
+    actualDeliveryMode?: DeliveryMode;
+    /**
+     * Provider-private tool-loop continuation state. Runtime collectors may
+     * read it, but chat-runtime normalization deliberately drops it before
+     * any chunk is serialized to a client.
+     */
+    providerReasoningContent?: string;
     // Loop control metadata (Phase 3)
     stopReason?: string;
     iterationCount?: number;

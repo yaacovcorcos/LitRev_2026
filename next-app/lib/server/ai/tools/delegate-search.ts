@@ -179,6 +179,9 @@ export const delegateSearchTool: AITool = {
             systemContexts: context?.systemContexts,
             signal: context?.signal,
             sourcePolicyText: task,
+            model: context?.model,
+            reasoningEffort: context?.reasoningEffort,
+            deliveryMode: context?.deliveryMode,
         });
 
         return {

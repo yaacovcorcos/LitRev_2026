@@ -1,14 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AIMessage, AIModel, AIResponse, AIStreamChunk, ChatOptions } from "@/types/ai";
-vi.mock("@/lib/server/ai/rate-limiter", () => ({
+const mocks = vi.hoisted(() => ({
   validateRateLimits: vi.fn(async () => {}),
   recordUsage: vi.fn(async () => {}),
+}));
+vi.mock("@/lib/server/ai/rate-limiter", () => ({
+  validateRateLimits: mocks.validateRateLimits,
+  recordUsage: mocks.recordUsage,
 }));
 import { AIService } from "@/lib/server/ai/ai-service";
 import { BaseAIProvider } from "@/lib/server/ai/providers/base";
 
 class MockReasoningProvider extends BaseAIProvider {
-  readonly id = "mock-reasoning";
+  readonly id = "openai";
   readonly name = "Mock Reasoning";
   readonly models: AIModel[] = [
     { id: "mock-model", name: "Mock", contextWindow: 8_192, capabilities: ["chat", "tools"] },
@@ -47,6 +51,10 @@ function userMessage(content: string): AIMessage {
 }
 
 describe("AIService reasoning policy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("keeps summary mode provider-independent", async () => {
     const service = new AIService();
     const provider = new MockReasoningProvider();
@@ -87,5 +95,34 @@ describe("AIService reasoning policy", () => {
 
     expect(provider.lastOptions?.includeReasoning).toBe(false);
     expect(provider.lastOptions?.reasoningMode).toBe("off");
+  });
+
+  it("persists usage when a consumer closes immediately after the provider done chunk", async () => {
+    const service = new AIService();
+    const provider = new MockReasoningProvider();
+    service.registerProvider(provider);
+    service.setActiveProvider(provider.id);
+    const iterator = service.streamChat([userMessage("hello")], {
+      model: "gpt-5.6-luna",
+      conversationId: "conv-1",
+    })[Symbol.asyncIterator]();
+
+    const first = await iterator.next();
+    expect(first.value?.type).toBe("done");
+    await iterator.return?.(undefined);
+
+    expect(mocks.recordUsage).toHaveBeenCalledTimes(1);
+    expect(mocks.recordUsage).toHaveBeenCalledWith(
+      null,
+      "gpt-5.6-luna",
+      2,
+      3,
+      expect.objectContaining({
+        conversationId: "conv-1",
+        requestedModel: "gpt-5.6-luna",
+        requestedDeliveryMode: "standard",
+        actualDeliveryMode: undefined,
+      }),
+    );
   });
 });

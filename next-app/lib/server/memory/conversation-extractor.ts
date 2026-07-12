@@ -9,6 +9,7 @@ import { normalizeAssistantContent } from "@/lib/ai/normalize-assistant-content"
 import { prisma } from "@/lib/server/prisma";
 import { getAIService } from "@/lib/server/ai";
 import type { AIMessage } from "@/types/ai";
+import { getBackgroundModel } from "@/lib/server/ai/background-model-policy";
 import type { MemoryProposalPayload } from "@/types/artifacts";
 import type { ProjectMemoryCategory, ProjectMemoryType } from "./project-memory";
 import { createArtifact } from "@/lib/server/agent/artifacts";
@@ -155,7 +156,8 @@ export async function extractMemoriesFromConversation(
     ];
 
     const response = await aiService.chat(aiMessages, {
-        model: "grok-4-1-fast",
+        model: getBackgroundModel("analysis"),
+        reasoningEffort: "fast",
         temperature: 0.1,
         maxTokens: 1500,
         projectId,

@@ -47,6 +47,7 @@ vi.mock("@/lib/server/agent/run", () => ({
   startRun: mocks.startRun,
   endRun: mocks.endRun,
   startRunHeartbeat: mocks.startRunHeartbeat,
+  recordRunGenerationReceipt: vi.fn(async () => {}),
 }));
 
 vi.mock("@/lib/server/agent/run-event-recorder", () => ({

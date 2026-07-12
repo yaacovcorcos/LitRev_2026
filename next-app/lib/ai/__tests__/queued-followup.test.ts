@@ -15,7 +15,9 @@ describe("queued follow-up helpers", () => {
             conversationId: "conv-1",
             page: "overview",
             section: "eligibility",
-            model: "gpt-5.2",
+            model: "gpt-5.6-luna",
+            reasoningEffort: "high",
+            deliveryMode: "priority",
             agentMode: "general",
             source: "draft",
         });
@@ -24,7 +26,9 @@ describe("queued follow-up helpers", () => {
         expect(queued.conversationId).toBe("conv-1");
         expect(queued.page).toBe("overview");
         expect(queued.section).toBe("eligibility");
-        expect(queued.model).toBe("gpt-5.2");
+        expect(queued.model).toBe("gpt-5.6-luna");
+        expect(queued.reasoningEffort).toBe("high");
+        expect(queued.deliveryMode).toBe("priority");
         expect(queued.agentMode).toBe("general");
     });
 

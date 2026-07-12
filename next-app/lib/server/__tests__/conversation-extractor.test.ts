@@ -70,14 +70,14 @@ describe("extractMemoriesFromConversation", () => {
         expect(getAIService).not.toHaveBeenCalled();
     });
 
-    it("calls AI with grok-4-1-fast model", async () => {
+    it("uses Luna until the analysis gateway is configured", async () => {
         mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
 
         await extractMemoriesFromConversation("conv-1", "proj-1", "run-1", "user-1");
 
         expect(mockChat).toHaveBeenCalledWith(
             expect.any(Array),
-            expect.objectContaining({ model: "grok-4-1-fast" }),
+            expect.objectContaining({ model: "gpt-5.6-luna" }),
         );
     });
 

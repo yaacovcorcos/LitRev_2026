@@ -263,6 +263,7 @@ export async function quickExtractWithAI(
     try {
         const response = await aiService.chat(messages, {
             model: quickExtractModel,
+            reasoningEffort: "fast",
             temperature: 0.2,
             maxTokens: 2000,
             projectId,
@@ -355,6 +356,7 @@ export async function deepAnalyzeWithAI(
     try {
         const response = await aiService.chat(messages, {
             model: deepAnalysisModel,
+            reasoningEffort: "fast",
             temperature: 0.3,
             maxTokens: 2000,
             projectId,

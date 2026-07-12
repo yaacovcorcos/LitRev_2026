@@ -19,14 +19,14 @@
 
 import "server-only";
 
-import type { AIMessage, ToolBlockedReason, ToolCall, ToolResultArtifact, UserInputRequest, ChatOptions } from "@/types/ai";
+import type { AIMessage, DeliveryMode, ReasoningEffort, ToolBlockedReason, ToolCall, ToolResultArtifact, UserInputRequest, ChatOptions } from "@/types/ai";
 import type { AgentMode, RunStatus } from "@/types/agent";
 import { LoopState, type LoopBudget, type StopReason } from "@/lib/agent/loop-controller";
 import { getToolDefinitions } from "./tools/base";
 import { buildModelVisibleToolResultForTool, compactToolResult, type ToolResultWithArtifactState } from "@/lib/agent/compaction";
 import { assembleSystemPrompt } from "@/lib/ai/prompts/assistant-prompts";
 import { getAIService } from "./ai-service";
-import { startRun, endRun, startRunHeartbeat, type RunHeartbeatController } from "@/lib/server/agent/run";
+import { startRun, endRun, recordRunGenerationReceipt, startRunHeartbeat, type RunHeartbeatController } from "@/lib/server/agent/run";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import { deriveRunOutcome, type RunFacts } from "@/lib/ai/run-outcome";
 import { dropShadowedInvalidToolCalls, getToolCallRepeatKey } from "./tool-helpers";
@@ -37,6 +37,7 @@ import {
     deriveSearchSourcePolicy,
     filterToolDefinitionsBySearchSourcePolicy,
 } from "@/lib/agent/search-source-policy";
+import { getProviderForModel } from "@/lib/ai/config";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,6 +77,8 @@ export interface SubAgentParams {
     signal?: AbortSignal;
     /** Optional model ID used for run metadata. */
     model?: string;
+    reasoningEffort?: ReasoningEffort;
+    deliveryMode?: DeliveryMode;
     /**
      * Original parent request text used for source-gating search tools.
      * This keeps delegated search PubMed-only unless the parent user explicitly
@@ -240,6 +243,9 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             trigger: "event",
             agentMode: mode,
             model: params.model,
+            provider: params.model ? getProviderForModel(params.model) : undefined,
+            reasoningEffort: params.reasoningEffort,
+            deliveryMode: params.deliveryMode,
         });
         childRunId = childRun.id;
         childRootRunId = childRun.rootRunId ?? params.rootRunId ?? childRun.id;
@@ -288,6 +294,9 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
         ];
 
         const chatOptions: ChatOptions = {
+            model: params.model,
+            reasoningEffort: params.reasoningEffort,
+            deliveryMode: params.deliveryMode,
             tools: toolDefs,
             projectId,
             userId,
@@ -307,12 +316,23 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             // Stream from AI, collect tool calls and content
             const collectedToolCalls: ToolCall[] = [];
             let contentSoFar = "";
+            let providerReasoningContent: string | undefined;
 
             for await (const chunk of aiService.streamChat(currentMessages, chatOptions)) {
                 if (chunk.type === "tool_call" && chunk.toolCall) {
                     collectedToolCalls.push(chunk.toolCall);
                 } else if (chunk.type === "content") {
                     contentSoFar += chunk.content || "";
+                } else if (chunk.type === "done") {
+                    providerReasoningContent = chunk.providerReasoningContent;
+                    if (childRunId) {
+                        await recordRunGenerationReceipt(childRunId, {
+                            actualModel: chunk.actualModel,
+                            actualProvider: chunk.actualProvider,
+                            actualReasoningEffort: chunk.actualReasoningEffort,
+                            actualDeliveryMode: chunk.actualDeliveryMode,
+                        });
+                    }
                 } else if (chunk.type === "error") {
                     childRunStatus = "failed";
                     // Sub-agent doesn't retry — fail fast back to parent
@@ -383,6 +403,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                 role: "assistant",
                 content: contentSoFar,
                 toolCalls: collectedToolCalls,
+                providerReasoningContent,
                 createdAt: new Date().toISOString(),
             };
             currentMessages.push(assistantMsg);

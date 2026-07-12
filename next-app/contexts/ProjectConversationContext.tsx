@@ -24,11 +24,14 @@ import { useProjectConversationManager } from "@/hooks/useProjectConversationMan
 import { useProjectConversationStreamActions } from "@/hooks/useProjectConversationStreamActions";
 import { useProjectAutonomyConfig } from "@/hooks/useProjectAutonomyConfig";
 import { useQueuedFollowUpController } from "@/hooks/useQueuedFollowUpController";
+import { useModelAvailability } from "@/hooks/useModelAvailability";
 import type { ArtifactData } from "@/types/artifacts";
 import type { AgentMode } from "@/types/agent";
 import type {
     ChoiceOption,
     CopilotPage,
+    DeliveryMode,
+    ReasoningEffort,
     ReasoningMode,
     RuntimeSendOverrides,
     StreamPhase,
@@ -42,14 +45,22 @@ import {
 } from "@/lib/ai/reasoning-visibility";
 import {
     DEFAULT_SELECTABLE_MODEL_ID,
-    USER_SELECTABLE_MODELS,
     getReasoningSupportTier,
+    getReasoningVisibilitySupport,
+    SELECTABLE_MODEL_IDS,
     type SelectableModelId,
     type ReasoningSupportTier,
+    type ReasoningVisibilitySupport,
 } from "@/lib/ai/config";
 import { recordChatUnificationMetric } from "@/lib/ai/chat-unification-telemetry";
 import {
-} from "@/lib/ai/queued-followup";
+    createGenerationPreferenceSnapshot,
+    readStoredReasoningEffort,
+    readStoredSelectableModel,
+    resolveDeliveryMode,
+    resolveReasoningEffort,
+    writeStoredReasoningEffort,
+} from "@/lib/ai/generation-preferences";
 import {
     clearContextCaptureHistory,
     loadContextCaptureHistory,
@@ -64,7 +75,7 @@ import type {
 } from "@/types/project-conversation-context";
 import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
 import type { RetryModelExpectation } from "@/types/chat-unification";
-import type { QueuedFollowUp } from "@/types/queued-followup";
+import type { GenerationPreferenceSnapshot, QueuedFollowUp } from "@/types/queued-followup";
 
 // Keep the legacy key so saved model preference survives the naming migration.
 const LEGACY_COPILOT_MODEL_STORAGE_KEY = "litrev_copilot_model";
@@ -124,6 +135,14 @@ function ProjectConversationRuntime({
     const [streamPhase, setStreamPhase] = useState<StreamPhase>("idle");
     const [reasoningMode, setReasoningModeState] = useState<ReasoningMode>(() => getReasoningModePreference());
     const [selectedModel, setSelectedModelState] = useState<SelectableModelId>(DEFAULT_MODEL);
+    const [reasoningEffort, setReasoningEffortState] = useState<ReasoningEffort>(() => (
+        resolveReasoningEffort(DEFAULT_MODEL)
+    ));
+    const [deliveryMode, setDeliveryModeState] = useState<DeliveryMode>("standard");
+    const modelAvailabilityState = useModelAvailability();
+    const modelAvailability = modelAvailabilityState?.availability;
+    const modelAvailabilityStatus = modelAvailabilityState?.status;
+    const retryModelAvailability = modelAvailabilityState?.retry;
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const streamGenRef = useRef(0);
@@ -171,19 +190,24 @@ function ProjectConversationRuntime({
     // Load model preference from localStorage on mount
     useEffect(() => {
         if (typeof window === "undefined") return;
-        const stored = window.localStorage.getItem(LEGACY_COPILOT_MODEL_STORAGE_KEY);
-        const isValid = USER_SELECTABLE_MODELS.some((m) => m.id === stored);
-        if (isValid) {
-            setSelectedModelState((current) => (
-                current === stored ? current : stored as SelectableModelId
-            ));
-        }
+        const storedModel = readStoredSelectableModel(
+            window.localStorage,
+            LEGACY_COPILOT_MODEL_STORAGE_KEY,
+        );
+        const storedEffort = readStoredReasoningEffort(window.localStorage, storedModel);
+        setSelectedModelState((current) => current === storedModel ? current : storedModel);
+        setReasoningEffortState((current) => current === storedEffort ? current : storedEffort);
+        setDeliveryModeState("standard");
     }, []);
 
     // Compute reasoning support tier from current model
     const reasoningSupport: ReasoningSupportTier = useMemo(
         () => getReasoningSupportTier(selectedModel),
         [selectedModel]
+    );
+    const reasoningVisibilitySupport: ReasoningVisibilitySupport = useMemo(
+        () => getReasoningVisibilitySupport(selectedModel),
+        [selectedModel],
     );
 
     /**
@@ -193,15 +217,45 @@ function ProjectConversationRuntime({
      */
     const setSelectedModel = useCallback((modelId: SelectableModelId) => {
         setSelectedModelState(modelId);
+        setReasoningEffortState(
+            typeof window === "undefined"
+                ? resolveReasoningEffort(modelId)
+                : readStoredReasoningEffort(window.localStorage, modelId),
+        );
+        setDeliveryModeState("standard");
         if (typeof window !== "undefined") {
             window.localStorage.setItem(LEGACY_COPILOT_MODEL_STORAGE_KEY, modelId);
         }
         // State guard: force reasoning off when model doesn't support it
-        const newTier = getReasoningSupportTier(modelId);
-        if (newTier === "none") {
+        if (getReasoningVisibilitySupport(modelId) === "none") {
             setReasoningModeState("off");
             setReasoningModePreference("off");
         }
+    }, []);
+
+    const setReasoningEffort = useCallback((effort: ReasoningEffort) => {
+        const resolved = resolveReasoningEffort(selectedModel, effort);
+        setReasoningEffortState(resolved);
+        if (typeof window !== "undefined") {
+            writeStoredReasoningEffort(window.localStorage, selectedModel, resolved);
+        }
+    }, [selectedModel]);
+
+    const setDeliveryMode = useCallback((mode: DeliveryMode) => {
+        setDeliveryModeState(resolveDeliveryMode(selectedModel, mode));
+    }, [selectedModel]);
+
+    useEffect(() => {
+        if (modelAvailabilityStatus && modelAvailabilityStatus !== "ready") return;
+        if (!modelAvailability || modelAvailability[selectedModel] !== false) return;
+        const fallbackModel = modelAvailability[DEFAULT_MODEL]
+            ? DEFAULT_MODEL
+            : SELECTABLE_MODEL_IDS.find((modelId) => modelAvailability[modelId] === true);
+        if (fallbackModel) setSelectedModel(fallbackModel);
+    }, [modelAvailability, modelAvailabilityStatus, selectedModel, setSelectedModel]);
+
+    const resetDeliveryMode = useCallback(() => {
+        setDeliveryModeState((current) => current === "standard" ? current : "standard");
     }, []);
 
     // Save panel state with debounce (messages are saved via conversation system)
@@ -311,6 +365,10 @@ function ProjectConversationRuntime({
         pendingAttachment,
         setPendingAttachment,
         reasoningMode,
+        selectedModel,
+        reasoningEffort,
+        deliveryMode,
+        resetDeliveryMode,
         convo,
         onNavigate: router.push,
     });
@@ -419,8 +477,12 @@ function ProjectConversationRuntime({
     }, []);
 
     const queueQueuedFollowUp = useCallback((nextQueuedFollowUp: QueuedFollowUp) => {
-        setQueuedFollowUp(nextQueuedFollowUp);
-    }, []);
+        setQueuedFollowUp({
+            ...nextQueuedFollowUp,
+            ...createGenerationPreferenceSnapshot(nextQueuedFollowUp),
+        });
+        resetDeliveryMode();
+    }, [resetDeliveryMode]);
 
     const clearQueuedFollowUp = useCallback(() => {
         setQueuedFollowUp(null);
@@ -549,6 +611,7 @@ function ProjectConversationRuntime({
             retryModelExpectation?: RetryModelExpectation,
             contextTargets?: ContextCaptureTarget[],
             runtimeOverrides?: RuntimeSendOverrides,
+            generationPreferences?: GenerationPreferenceSnapshot,
         ) => {
             if (contextTargets?.length) {
                 recordContextHistory(contextTargets);
@@ -563,6 +626,7 @@ function ProjectConversationRuntime({
                 retryModelExpectation,
                 contextTargets,
                 runtimeOverrides,
+                generationPreferences,
             );
         },
         [recordContextHistory, stream],
@@ -584,6 +648,10 @@ function ProjectConversationRuntime({
             nextQueuedFollowUp.model,
             nextQueuedFollowUp.agentMode,
             nextQueuedFollowUp.studyId,
+            undefined,
+            undefined,
+            undefined,
+            nextQueuedFollowUp,
         ),
     });
 
@@ -598,8 +666,16 @@ function ProjectConversationRuntime({
             canAct: !isLoading,
             reasoningMode,
             selectedModel,
+            reasoningEffort,
+            deliveryMode,
+            modelAvailability,
+            modelAvailabilityStatus,
+            retryModelAvailability,
             reasoningSupport,
+            reasoningVisibilitySupport,
             setSelectedModel,
+            setReasoningEffort,
+            setDeliveryMode,
             toggleCollapsed,
             setCollapsed,
             setPanelWidth,
@@ -679,8 +755,16 @@ function ProjectConversationRuntime({
             streamPhase,
             reasoningMode,
             selectedModel,
+            reasoningEffort,
+            deliveryMode,
+            modelAvailability,
+            modelAvailabilityStatus,
+            retryModelAvailability,
             reasoningSupport,
+            reasoningVisibilitySupport,
             setSelectedModel,
+            setReasoningEffort,
+            setDeliveryMode,
             toggleCollapsed,
             setCollapsed,
             setPanelWidth,

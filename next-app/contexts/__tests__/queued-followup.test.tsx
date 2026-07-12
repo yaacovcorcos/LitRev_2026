@@ -72,11 +72,16 @@ vi.mock("@/hooks/useProjectConversationManager", () => ({
     }),
 }));
 
+vi.mock("@/hooks/useModelAvailability", () => ({
+    useModelAvailability: () => undefined,
+}));
+
 vi.mock("@/hooks/useProjectConversationStreamActions", () => ({
     useProjectConversationStreamActions: () => ({
         sendMessage: mockSendMessage,
         cancelStream: vi.fn(),
         handleReviewArtifact: vi.fn(),
+        handleUndoArtifact: vi.fn(),
         approveArtifactsBatch: vi.fn(),
         executePlan: vi.fn(),
         reconnectRun: vi.fn(),
@@ -139,7 +144,7 @@ describe("ProjectConversation queued follow-up behavior", () => {
                 conversationId: "conv-1",
                 page: "overview",
                 section: "results",
-                model: "gpt-5.2",
+                model: "gpt-5.6-luna",
                 source: "draft",
             }));
         });
@@ -149,12 +154,17 @@ describe("ProjectConversation queued follow-up behavior", () => {
                 "Find one more trial",
                 "overview",
                 "results",
-                "gpt-5.2",
+                "gpt-5.6-luna",
                 undefined,
                 undefined,
                 undefined,
                 undefined,
                 undefined,
+                expect.objectContaining({
+                    model: "gpt-5.6-luna",
+                    reasoningEffort: "medium",
+                    deliveryMode: "standard",
+                }),
             );
         });
 
@@ -219,12 +229,17 @@ describe("ProjectConversation queued follow-up behavior", () => {
                 "Queue before the first conversation exists",
                 "overview",
                 undefined,
+                "gpt-5.6-luna",
                 undefined,
                 undefined,
                 undefined,
                 undefined,
                 undefined,
-                undefined,
+                expect.objectContaining({
+                    model: "gpt-5.6-luna",
+                    reasoningEffort: "medium",
+                    deliveryMode: "standard",
+                }),
             );
         });
 

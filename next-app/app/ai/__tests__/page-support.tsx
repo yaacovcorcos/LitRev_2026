@@ -308,6 +308,10 @@ vi.mock("@/contexts/ProjectsContext", () => ({
   useProjects: () => mockUseProjects(),
 }));
 
+vi.mock("@/hooks/useModelAvailability", () => ({
+  useModelAvailability: () => undefined,
+}));
+
 vi.mock("@/app/actions/conversations", () => ({
   listConversations: (...args: unknown[]) => mockListConversations(...args),
   createConversation: (...args: unknown[]) => mockCreateConversation(...args),

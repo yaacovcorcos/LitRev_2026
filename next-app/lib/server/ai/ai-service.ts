@@ -25,7 +25,14 @@ import {
     envelopeFromStreamChunk,
 } from "@/lib/ai/error-envelope";
 import { buildFailureFallbackMessage, deriveRunOutcome, type RunFacts } from "@/lib/ai/run-outcome";
-import { BaseAIProvider, getOpenAIProvider, getAnthropicProvider, getXAIProvider, getGoogleProvider } from "./providers";
+import {
+    BaseAIProvider,
+    getAnthropicProvider,
+    getGatewayProvider,
+    getGoogleProvider,
+    getOpenAIProvider,
+    getXAIProvider,
+} from "./providers";
 import {
     getOrCreateConversation,
     addAssistantMessageToConversationForRun,
@@ -36,7 +43,13 @@ import {
 } from "./memory";
 import { validateRateLimits, recordUsage } from "./rate-limiter";
 import { retrieveMemories, formatMemoriesForContext, markMemoriesUsedInAnswer, type RetrievedMemory } from "@/lib/server/memory";
-import { AI_CONFIG, getProviderForModel, getContextBudget } from "@/lib/ai/config";
+import {
+    AI_CONFIG,
+    getContextBudget,
+    getDefaultReasoningEffort,
+    getProviderForModel,
+    getProviderModelId,
+} from "@/lib/ai/config";
 import {
     buildModelVisibleToolResultForTool,
     compactToolResult,
@@ -56,6 +69,7 @@ import {
     markRunAbnormalEndClassification,
     markRunFinalizationFailed,
     markRunFinalizationState,
+    recordRunGenerationReceipt,
     type RunHeartbeatController,
 } from "@/lib/server/agent/run";
 import {
@@ -109,7 +123,10 @@ import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
 import { computeLedgerCounts, computeStudyLedger } from "@/lib/server/ledger-utils";
 import { logServerError, logServerInfo, logServerWarn } from "@/lib/server/logging";
 import { ingestChatUnificationMetric } from "@/lib/server/chat-unification-metrics";
-import { deriveChatUnificationSurface } from "./chat-unification-runtime-metrics";
+import {
+    buildRetryModelContinuityPayload,
+    deriveChatUnificationSurface,
+} from "./chat-unification-runtime-metrics";
 import {
     dropShadowedInvalidToolCalls,
     getToolCallRepeatKey,
@@ -150,6 +167,8 @@ import {
     type DurableRunCancellationMonitor,
 } from "@/lib/server/agent/run-cancellation";
 import { deriveSearchSourcePolicy } from "@/lib/agent/search-source-policy";
+import { getBackgroundModel } from "./background-model-policy";
+import { pinContinuationRoutingOptions } from "./continuation-routing";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
@@ -354,7 +373,9 @@ function resolveRunActualModelMeta(
     }
     if (invokedModel) {
         return {
-            actualModel: requestedModel ?? AI_CONFIG.defaultModel,
+            actualModel: getProviderModelId(requestedModel ?? AI_CONFIG.defaultModel)
+                ?? requestedModel
+                ?? AI_CONFIG.defaultModel,
             actualModelSource: "requested",
         };
     }
@@ -395,6 +416,9 @@ export type ToolRuntimeContext = {
         toolOverrides: Record<string, unknown>;
     };
     allowedToolNames?: string[];
+    model?: string;
+    reasoningEffort?: ChatOptions["reasoningEffort"];
+    deliveryMode?: ChatOptions["deliveryMode"];
 };
 
 function latestUserMessageContent(messages: AIMessage[]): string {
@@ -424,6 +448,9 @@ class AIService {
 
         const google = getGoogleProvider();
         if (google.isConfigured()) this.registerProvider(google);
+
+        const gateway = getGatewayProvider();
+        if (gateway.isConfigured()) this.registerProvider(gateway);
     }
 
     registerToolMiddleware(middleware: ToolMiddleware): void {
@@ -476,27 +503,32 @@ class AIService {
     }
 
     /**
-     * Resolve the correct provider for a model ID.
-     * Falls back to the active provider if model is unspecified or unknown.
+     * Resolve the correct provider for a model ID. Unknown model IDs fail
+     * closed so request metadata can never silently diverge from execution.
      */
     resolveProvider(modelId?: string): BaseAIProvider {
-        if (modelId) {
-            const providerId = getProviderForModel(modelId);
-            if (providerId) {
-                const provider = this.providers.get(providerId);
-                if (!provider) {
-                    const envVar = providerId === "anthropic" ? "ANTHROPIC_API_KEY"
-                        : providerId === "xai" ? "XAI_API_KEY"
-                        : providerId === "google" ? "GEMINI_API_KEY"
-                        : "OPENAI_API_KEY";
-                    throw new Error(
-                        `Provider "${providerId}" is not configured. Set the ${envVar} environment variable.`
-                    );
-                }
-                return provider;
-            }
+        const resolvedModel = modelId ?? AI_CONFIG.defaultModel;
+        const providerId = getProviderForModel(resolvedModel);
+        if (!providerId) {
+            throw new AIErrorWithEnvelope({
+                kind: "model_capability",
+                code: "UNKNOWN_MODEL",
+                retryable: false,
+                source: "request_policy",
+                message: `Unknown model: ${resolvedModel}`,
+            });
         }
-        return this.getActiveProvider();
+        const provider = this.providers.get(providerId);
+        if (!provider) {
+            throw new AIErrorWithEnvelope({
+                kind: "provider_request",
+                code: "PROVIDER_NOT_CONFIGURED",
+                retryable: false,
+                source: "provider_request",
+                message: `The provider for ${resolvedModel} is not configured yet. Add its server API key and try again.`,
+            });
+        }
+        return provider;
     }
 
     /**
@@ -569,7 +601,8 @@ class AIService {
                 ],
                 {
                     projectId,
-                    model: "grok-4-1-fast",
+                    model: getBackgroundModel("fast"),
+                    reasoningEffort: "fast",
                     temperature: 0.2,
                     maxTokens: 24,
                 }
@@ -627,6 +660,15 @@ class AIService {
             response.usage.outputTokens,
             {
                 cachedInputTokens: response.usage.cachedInputTokens,
+                cacheWriteInputTokens: response.usage.cacheWriteInputTokens,
+                reasoningTokens: response.usage.reasoningTokens,
+                provider: response.actualProvider ?? null,
+                requestedModel: effectiveOptions.model ?? AI_CONFIG.defaultModel,
+                requestedProvider: provider.id,
+                requestedReasoningEffort: effectiveOptions.reasoningEffort,
+                requestedDeliveryMode: effectiveOptions.deliveryMode ?? "standard",
+                actualReasoningEffort: response.actualReasoningEffort,
+                actualDeliveryMode: response.actualDeliveryMode,
                 userId: identity.userId,
                 workspaceId: identity.workspaceId ?? null,
                 source: projectId ? "project_copilot" : "ai_page",
@@ -662,39 +704,73 @@ class AIService {
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
         let totalCachedInputTokens = 0;
+        let totalCacheWriteInputTokens = 0;
+        let totalReasoningTokens = 0;
         let observedModel: string | null = null;
+        let observedProvider: string | null = null;
+        let observedReasoningEffort: ChatOptions["reasoningEffort"];
+        let observedDeliveryMode: ChatOptions["deliveryMode"];
 
-        for await (const chunk of provider.streamChat(messages, effectiveOptions)) {
-            if (chunk.type === "done") {
-                if (chunk.usage) {
-                    totalInputTokens = chunk.usage.inputTokens;
-                    totalOutputTokens = chunk.usage.outputTokens;
-                    totalCachedInputTokens = chunk.usage.cachedInputTokens ?? 0;
+        try {
+            for await (const chunk of provider.streamChat(messages, effectiveOptions)) {
+                if (chunk.type === "done") {
+                    if (chunk.usage) {
+                        totalInputTokens = chunk.usage.inputTokens;
+                        totalOutputTokens = chunk.usage.outputTokens;
+                        totalCachedInputTokens = chunk.usage.cachedInputTokens ?? 0;
+                        totalCacheWriteInputTokens = chunk.usage.cacheWriteInputTokens ?? 0;
+                        totalReasoningTokens = chunk.usage.reasoningTokens ?? 0;
+                    }
+                    if (typeof chunk.actualModel === "string" && chunk.actualModel.trim().length > 0) {
+                        observedModel = chunk.actualModel;
+                    }
+                    observedProvider = chunk.actualProvider ?? observedProvider;
+                    observedReasoningEffort = chunk.actualReasoningEffort ?? observedReasoningEffort;
+                    observedDeliveryMode = chunk.actualDeliveryMode ?? observedDeliveryMode;
                 }
-                if (typeof chunk.actualModel === "string" && chunk.actualModel.trim().length > 0) {
-                    observedModel = chunk.actualModel;
-                }
+                yield chunk;
             }
-            yield chunk;
+        } finally {
+            const usageModel = observedModel ?? effectiveOptions.model ?? AI_CONFIG.defaultModel;
+            try {
+                // A provider attempt is billable even when the consumer closes
+                // early or the upstream stream fails before its final usage chunk.
+                // In those cases token counts remain truthfully unknown (zero),
+                // while the admitted request is still durably attributable.
+                await recordUsage(
+                    projectId,
+                    usageModel,
+                    totalInputTokens,
+                    totalOutputTokens,
+                    {
+                        cachedInputTokens: totalCachedInputTokens,
+                        cacheWriteInputTokens: totalCacheWriteInputTokens,
+                        reasoningTokens: totalReasoningTokens,
+                        provider: observedProvider,
+                        requestedModel: effectiveOptions.model ?? AI_CONFIG.defaultModel,
+                        requestedProvider: provider.id,
+                        requestedReasoningEffort: effectiveOptions.reasoningEffort,
+                        requestedDeliveryMode: effectiveOptions.deliveryMode ?? "standard",
+                        actualReasoningEffort: observedReasoningEffort,
+                        actualDeliveryMode: observedDeliveryMode,
+                        userId: identity.userId,
+                        workspaceId: identity.workspaceId ?? null,
+                        source: projectId ? "project_copilot" : "ai_page",
+                        contextPage: optionsWithAttribution.page ?? (projectId ? "legacy_unknown" : "ai"),
+                        conversationId: options?.conversationId ?? null,
+                    },
+                );
+            } catch (error) {
+                // Usage telemetry must not replace an upstream stream error or
+                // turn an already-delivered answer into a client-visible failure.
+                logServerWarn("ai-service", "failed to persist streaming usage", {
+                    model: usageModel,
+                    provider: observedProvider ?? provider.id,
+                    conversationId: options?.conversationId ?? null,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
         }
-
-        const usageModel = observedModel ?? effectiveOptions?.model ?? AI_CONFIG.defaultModel;
-
-        // Record usage after streaming completes
-        await recordUsage(
-            projectId,
-            usageModel,
-            totalInputTokens,
-            totalOutputTokens,
-            {
-                cachedInputTokens: totalCachedInputTokens,
-                userId: identity.userId,
-                workspaceId: identity.workspaceId ?? null,
-                source: projectId ? "project_copilot" : "ai_page",
-                contextPage: optionsWithAttribution.page ?? (projectId ? "legacy_unknown" : "ai"),
-                conversationId: options?.conversationId ?? null,
-            },
-        );
     }
 
     /**
@@ -757,12 +833,14 @@ class AIService {
 
             let collectedToolCalls: ToolCall[] = [];
             let contentSoFar = "";
+            let providerReasoningContent: string | undefined;
             let retryCount = 0;
             let overflowRecoveryCount = 0;
 
             while (true) {
                 collectedToolCalls = [];
                 contentSoFar = "";
+                providerReasoningContent = undefined;
                 let hadVisibleOutput = false;
                 let retryAfterMs: number | undefined;
                 let shouldRetry = false;
@@ -787,6 +865,7 @@ class AIService {
                             contentSoFar += chunk.content || "";
                             yield chunk;
                         } else if (chunk.type === "done") {
+                            providerReasoningContent = chunk.providerReasoningContent;
                             if (collectedToolCalls.length === 0) {
                                 loop.markStopped("natural");
                                 yield chunk;
@@ -901,6 +980,7 @@ class AIService {
                 role: "assistant",
                 content: contentSoFar,
                 toolCalls: collectedToolCalls,
+                providerReasoningContent,
                 createdAt: new Date().toISOString(),
             };
             currentMessages.push(assistantMsg);
@@ -915,6 +995,9 @@ class AIService {
                         studyId: options?.studyId,
                         userId: identity.userId,
                         allowedToolNames,
+                        model: optionsWithTools.model,
+                        reasoningEffort: optionsWithTools.reasoningEffort,
+                        deliveryMode: optionsWithTools.deliveryMode,
                     },
                 });
                 yield { type: "tool_result", toolName: tc.name, toolResult: result };
@@ -990,11 +1073,13 @@ class AIService {
         const contextBranchRecords: ContextBranchRecord[] = [];
         let preparedPlanExecution: PreparedPlanExecution | null = null;
         if (executionMode && options?.planId && options?.selectedSteps) {
+            const planId = options.planId;
+            const selectedSteps = options.selectedSteps;
             const planExecutionResult = await runCriticalContextBranch({
                     branch: "plan_execution",
                     operation: () => preparePlanExecution(
-                        options.planId!,
-                        options.selectedSteps!,
+                        planId,
+                        selectedSteps,
                         projectId,
                     ),
                     meta: {
@@ -1046,6 +1131,7 @@ class AIService {
         // Canonical ownership: conversation's stored scope is source of truth
         projectId = conversation.projectId;
         studyId = conversation.studyId;
+        options = await pinContinuationRoutingOptions(options, conversation.id);
         const budget = getContextBudget(options?.model);
 
         // Coarse conversation-level lock: block overlapping fresh runs and
@@ -1084,6 +1170,30 @@ class AIService {
                 sourceRunId: options?.parentRunId ?? options?.continueFromRunId ?? null,
             });
         const surface = deriveChatUnificationSurface(options);
+        if (workspaceId && options?.telemetryRequestKey) {
+            try {
+                await ingestChatUnificationMetric(
+                    { userId, workspaceId, role: "member" },
+                    {
+                        eventId: crypto.randomUUID(),
+                        type: "retry_model_continuity",
+                        surface,
+                        conversationId: conversation.id,
+                        projectId: projectId ?? null,
+                        payload: buildRetryModelContinuityPayload({
+                            requestKey: options.telemetryRequestKey,
+                            model: options.model ?? AI_CONFIG.defaultModel,
+                        }),
+                    },
+                );
+            } catch (error) {
+                logServerWarn("ai-service", "failed to ingest retry model continuity metric", {
+                    conversationId: conversation.id,
+                    projectId: projectId ?? null,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+        }
         const emitClarificationRuntimeMetric = async (
             type: ChatUnificationMetricType,
             payload: ClarificationRuntimePayload,
@@ -1258,7 +1368,11 @@ class AIService {
                 parentRunId: options?.parentRunId ?? options?.continueFromRunId,
                 trigger: "user_message",
                 agentMode,
-                model: options?.model,
+                model: options?.model ?? AI_CONFIG.defaultModel,
+                provider: getProviderForModel(options?.model ?? AI_CONFIG.defaultModel),
+                reasoningEffort: options?.reasoningEffort
+                    ?? getDefaultReasoningEffort(options?.model ?? AI_CONFIG.defaultModel),
+                deliveryMode: options?.deliveryMode ?? "standard",
                 initialPhase: options?.continuationContext ? "verify" : "plan",
             });
             const activeRun = run;
@@ -1809,12 +1923,16 @@ class AIService {
             const baseChatOptions: ChatOptions = {
                 ...options,
                 projectId: projectId ?? undefined,
+                conversationId: conversation.id,
             };
 
             const currentMessages = [...historyMessages];
             let totalTokensIn = 0;
             let totalTokensOut = 0;
             let observedRunModel: string | null = null;
+            let observedRunProvider: string | null = null;
+            let observedRunReasoningEffort: ChatOptions["reasoningEffort"];
+            let observedRunDeliveryMode: ChatOptions["deliveryMode"];
             let invokedModel = false;
             const loop = new LoopState();
             let forcedClarificationStop: {
@@ -1874,12 +1992,14 @@ class AIService {
 
                 let collectedToolCalls: ToolCall[] = [];
                 let contentSoFar = "";
+                let providerReasoningContent: string | undefined;
                 let retryCount = 0;
                 let overflowRecoveryCount = 0;
 
                 while (true) {
                     collectedToolCalls = [];
                     contentSoFar = "";
+                    providerReasoningContent = undefined;
                     let hadVisibleOutput = false;
                     let retryAfterMs: number | undefined;
                     let shouldRetry = false;
@@ -1919,6 +2039,7 @@ class AIService {
                                 hadVisibleOutput = true;
                                 yield { type: "choices", choices: chunk.choices, conversationId: conversation.id };
                             } else if (chunk.type === "done") {
+                                providerReasoningContent = chunk.providerReasoningContent;
                                 if (chunk.usage) {
                                     totalTokensIn += chunk.usage.inputTokens;
                                     totalTokensOut += chunk.usage.outputTokens;
@@ -1927,6 +2048,18 @@ class AIService {
                                 if (typeof chunk.actualModel === "string" && chunk.actualModel.trim().length > 0) {
                                     observedRunModel = chunk.actualModel;
                                 }
+                                observedRunProvider = chunk.actualProvider ?? observedRunProvider;
+                                observedRunReasoningEffort = chunk.actualReasoningEffort ?? observedRunReasoningEffort;
+                                observedRunDeliveryMode = chunk.actualDeliveryMode ?? observedRunDeliveryMode;
+                                await recordRunGenerationReceipt(activeRun.id, {
+                                    // Requested routing already lives on AgentRun. Only
+                                    // persist fields the provider actually reported so
+                                    // recovery never upgrades a fallback into observed truth.
+                                    actualModel: observedRunModel,
+                                    actualProvider: observedRunProvider,
+                                    actualReasoningEffort: observedRunReasoningEffort,
+                                    actualDeliveryMode: observedRunDeliveryMode,
+                                });
                             } else if (chunk.type === "error") {
                                 const errorMeta = envelopeFromStreamChunk(chunk);
                                 const classified = classifyAIError(errorMeta);
@@ -2086,6 +2219,7 @@ class AIService {
                     role: "assistant",
                     content: contentSoFar,
                     toolCalls: collectedToolCalls,
+                    providerReasoningContent,
                     createdAt: new Date().toISOString(),
                 };
                 currentMessages.push(assistantMsg);
@@ -2149,6 +2283,9 @@ class AIService {
                             rootRunId: activeRun.rootRunId ?? activeRun.id,
                             protocolData: (protocolRow?.data as ProtocolData | null) ?? null,
                             allowedToolNames: iterationToolNames,
+                            model: iterationChatOptions.model,
+                            reasoningEffort: iterationChatOptions.reasoningEffort,
+                            deliveryMode: iterationChatOptions.deliveryMode,
                             systemContexts: {
                                 projectContext,
                                 protocolContext,
@@ -2555,6 +2692,9 @@ class AIService {
                 conversationId: conversation.id,
                 actualModel: runModelMeta.actualModel ?? undefined,
                 actualModelSource: runModelMeta.actualModelSource,
+                actualProvider: observedRunProvider ?? undefined,
+                actualReasoningEffort: observedRunReasoningEffort,
+                actualDeliveryMode: observedRunDeliveryMode,
             };
         } catch (error) {
             const isAbortError =

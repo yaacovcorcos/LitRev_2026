@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildRetryModelContinuityPayload,
   buildRunEndObservedPayload,
   deriveChatUnificationStreamPhase,
   deriveChatUnificationSurface,
@@ -37,6 +38,17 @@ describe("chat-unification-runtime-metrics", () => {
       actualModel: "gpt-5.2",
       actualModelSource: "provider",
       firstProviderContentMs: null,
+    });
+  });
+
+  it("derives retry expectations from the server-pinned provider model", () => {
+    expect(buildRetryModelContinuityPayload({
+      requestKey: "request-1",
+      model: "deepseek-v4-pro",
+    })).toEqual({
+      requestKey: "request-1",
+      expectedModel: "deepseek/deepseek-v4-pro",
+      source: "retry_action",
     });
   });
 });

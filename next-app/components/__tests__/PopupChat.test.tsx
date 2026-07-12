@@ -13,6 +13,7 @@ const {
     mockCreateNoteAction,
     mockCreateConversation,
     mockAddMessage,
+    mockSetDeliveryMode,
 } = vi.hoisted(() => ({
     mockUsePopupChat: vi.fn(),
     mockUseProjectConversation: vi.fn(),
@@ -20,6 +21,7 @@ const {
     mockCreateNoteAction: vi.fn(),
     mockCreateConversation: vi.fn(async () => ({ success: true, data: { id: "conv-1" } })),
     mockAddMessage: vi.fn(async () => ({ success: true })),
+    mockSetDeliveryMode: vi.fn(),
 }));
 
 vi.mock("@/contexts/PopupChatContext", () => ({
@@ -104,6 +106,11 @@ describe("PopupChat failure handling", () => {
             selectConversation: vi.fn(),
             setCollapsed: vi.fn(),
             refreshConversations: vi.fn(),
+            selectedModel: "gpt-5.6-terra",
+            reasoningEffort: "high",
+            deliveryMode: "priority",
+            reasoningMode: "summary",
+            setDeliveryMode: mockSetDeliveryMode,
         });
         vi.stubGlobal("fetch", vi.fn(async () => ({
             ok: true,
@@ -153,6 +160,17 @@ describe("PopupChat failure handling", () => {
         expect(screen.getByText("Partial answer")).toBeTruthy();
         expect(screen.getAllByText("Protocol update failed validation.")).toHaveLength(1);
         expect(screen.getByText("Request not completed")).toBeTruthy();
+        const fetchMock = vi.mocked(fetch);
+        const [, requestInit] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+        expect(JSON.parse(String(requestInit.body)).options).toMatchObject({
+            model: "gpt-5.6-terra",
+            reasoningEffort: "high",
+            deliveryMode: "standard",
+            reasoningMode: "off",
+            includeReasoning: false,
+        });
+        expect(mockSetDeliveryMode).not.toHaveBeenCalled();
+        expect(screen.getByText("standard delivery")).toBeTruthy();
     });
 
     it("renders popup-supported progress, checkpoints, and blocking clarification from the shared reducer subset", async () => {

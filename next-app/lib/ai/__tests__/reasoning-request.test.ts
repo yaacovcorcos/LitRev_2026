@@ -2,40 +2,40 @@ import { describe, expect, it } from "vitest";
 import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
 
 describe("resolveReasoningRequest", () => {
-  it("keeps summary mode provider-independent for explicit-support models", () => {
+  it("turns raw gateway reasoning off when no safe summary is available", () => {
     const resolved = resolveReasoningRequest({
       preferredMode: "summary",
-      modelId: "claude-haiku-4-5",
+      modelId: "deepseek-v4-pro",
     });
 
     expect(resolved).toEqual({
-      reasoningMode: "summary",
+      reasoningMode: "off",
       includeReasoning: false,
       reasoningBudgetTokens: undefined,
     });
   });
 
-  it("omits explicit budgets for best-effort models", () => {
+  it("turns visible reasoning off for direct models without changing compute effort", () => {
     const resolved = resolveReasoningRequest({
       preferredMode: "full",
-      modelId: "gpt-5.2",
+      modelId: "gpt-5.6-luna",
     });
 
     expect(resolved).toEqual({
-      reasoningMode: "full",
-      includeReasoning: true,
+      reasoningMode: "off",
+      includeReasoning: false,
       reasoningBudgetTokens: undefined,
     });
   });
 
-  it("degrades full mode to summary for no-support models", () => {
+  it("fails closed for unknown visible-reasoning contracts", () => {
     const resolved = resolveReasoningRequest({
       preferredMode: "full",
       modelId: "gpt-5-mini",
     });
 
     expect(resolved).toEqual({
-      reasoningMode: "summary",
+      reasoningMode: "off",
       includeReasoning: false,
       reasoningBudgetTokens: undefined,
     });

@@ -319,6 +319,8 @@
 .mobileIconButton:focus-visible,
 .mobileTitlePill:focus-visible,
 .mobileSheetOption:focus-visible,
+.mobileReasoningOption:focus-visible,
+.mobileSheetClose:focus-visible,
 .mobileMoreItem:focus-visible,
 .returnProjectLink:focus-visible {
     outline: none;
@@ -372,7 +374,6 @@
     position: relative;
 }
 
-.mobileOptionsSheet,
 .mobileMoreMenu {
     position: absolute;
     z-index: var(--z-overlay);
@@ -382,15 +383,85 @@
     box-shadow: var(--shadow-xl);
 }
 
-.mobileOptionsSheet {
-    top: calc(100% + 10px);
-    left: 50%;
-    width: min(360px, calc(100vw - 32px));
-    max-height: min(560px, calc(100vh - 190px));
+.mobileOptionsOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay);
+    background: rgba(var(--rgb-ui-scrim), 0.42);
+}
+
+.mobileOptionsDialog {
+    position: fixed;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    z-index: calc(var(--z-overlay) + 1);
+    display: flex;
+    flex-direction: column;
+    width: auto;
+    max-height: calc(var(--app-height, 100vh) - 24px);
+    max-height: min(82dvh, calc(var(--app-height, 100vh) - 24px));
+    overflow: hidden;
+    border: 1px solid rgba(var(--rgb-ui-contrast), 0.1);
+    border-radius: 22px;
+    background: rgba(var(--rgb-ui-surface), 0.98);
+    box-shadow: var(--shadow-xl);
+}
+
+.mobileSheetHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 14px 12px 18px;
+    border-bottom: 1px solid rgba(var(--rgb-ui-contrast), 0.07);
+}
+
+.mobileSheetTitle {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.mobileSheetDescription {
+    max-width: 300px;
+    margin: 3px 0 0;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.mobileSheetClose {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    margin: -8px -6px 0 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.mobileSheetClose:hover {
+    background: rgba(var(--rgb-ui-contrast), 0.055);
+    color: var(--text-primary);
+}
+
+.mobileSheetClose :global(.material-icons-round) {
+    font-size: 20px;
+}
+
+.mobileSheetScroll {
+    min-height: 0;
     overflow-y: auto;
-    transform: translateX(-50%);
-    padding: 10px;
-    border-radius: 18px;
+    overscroll-behavior: contain;
+    padding: 10px 10px calc(14px + env(safe-area-inset-bottom, 0px));
 }
 
 .mobileSheetGroup {
@@ -416,7 +487,7 @@
 
 .mobileSheetOption {
     width: 100%;
-    min-height: 42px;
+    min-height: 44px;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -430,6 +501,63 @@
     font-weight: 600;
     text-align: left;
     cursor: pointer;
+}
+
+.mobileReasoningOption {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    min-height: 52px;
+    gap: 10px;
+    padding: 9px 8px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.mobileReasoningOption:hover {
+    background: rgba(var(--rgb-ui-contrast), 0.045);
+    color: var(--text-primary);
+}
+
+.mobileReasoningCopy {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.mobileReasoningCopy span:first-child {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.mobileReasoningCopy span:last-child {
+    margin-top: 2px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.mobileReasoningOption > :global(.material-icons-round) {
+    flex: 0 0 auto;
+    color: var(--accent-primary);
+    font-size: 17px;
+}
+
+.mobileDeliveryUnavailable {
+    margin: 0;
+    padding: 8px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.45;
 }
 
 .mobileSheetOption :global(.material-icons-round) {

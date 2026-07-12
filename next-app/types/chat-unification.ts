@@ -28,7 +28,6 @@ export type RetryModelContinuitySource = "retry_action";
 
 export type RetryModelExpectation = {
   requestKey: string;
-  expectedModel: string | null;
   source: RetryModelContinuitySource;
 };
 

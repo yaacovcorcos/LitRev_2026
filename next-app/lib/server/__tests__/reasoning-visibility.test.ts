@@ -60,15 +60,16 @@ describe("reasoning visibility helpers", () => {
     expect(getReasoningBudgetTokens("full")).toBe(1024);
   });
 
-  it("preserves summary mode for non-reasoning models without mutating preference", () => {
+  it("clamps direct-provider visible reasoning off without mutating preference", () => {
     withMockWindow();
     setReasoningModePreference("summary");
 
-    expect(resolveRequestReasoningMode("summary", "gpt-5-mini")).toBe("summary");
+    expect(resolveRequestReasoningMode("summary", "gpt-5.6-luna")).toBe("off");
     expect(getReasoningModePreference()).toBe("summary");
   });
 
-  it("degrades full mode to summary for non-reasoning models", () => {
-    expect(resolveRequestReasoningMode("full", "gpt-5-mini")).toBe("summary");
+  it("hides raw gateway reasoning because it is not a safe provider summary", () => {
+    expect(resolveRequestReasoningMode("full", "deepseek-v4-pro")).toBe("off");
+    expect(resolveRequestReasoningMode("summary", "deepseek-v4-pro")).toBe("off");
   });
 });

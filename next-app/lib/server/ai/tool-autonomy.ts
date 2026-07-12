@@ -324,6 +324,9 @@ export async function executeToolWithAutonomyCore(
             signal: runtimeContext?.signal,
             autonomyLevel: level,
             allowedToolNames: runtimeContext?.allowedToolNames,
+            model: runtimeContext?.model,
+            reasoningEffort: runtimeContext?.reasoningEffort,
+            deliveryMode: runtimeContext?.deliveryMode,
         },
     });
     const durationMs = Date.now() - startTime;
