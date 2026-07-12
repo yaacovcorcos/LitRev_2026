@@ -38,7 +38,12 @@ test.describe("compact project shell foundation", () => {
     await expect(conversationModeBtn).toBeVisible();
     await expect(workspaceModeBtn).toBeVisible();
     await conversationModeBtn.click();
-    await expect(conversationModeBtn).toHaveAttribute("aria-checked", "true");
+    // Entering conversation mode may need to create the project's first
+    // durable conversation before the shell can switch. Under parallel cold
+    // compilation that is intentionally asynchronous, so wait for its route
+    // contract instead of treating it as a synchronous radio toggle.
+    await expect(page).toHaveURL(/\/project\/[^/]+\/conversation\/[^/]+$/, { timeout: 30_000 });
+    await expect(conversationModeBtn).toHaveAttribute("aria-checked", "true", { timeout: 30_000 });
     await expect(page.getByRole("heading", { name: /project not found/i })).not.toBeVisible();
   });
 });

@@ -3,13 +3,17 @@ import {
   fulfillAIStream,
   openAuthenticatedAi,
   sendAgentPrompt,
+  seedGlobalConversation,
 } from "./helpers/agent-runtime";
 
 test("ai offline stream smoke: a real authenticated chat exits loading and offers recovery", async ({ page, context }, testInfo) => {
   const pageErrors: Error[] = [];
   page.on("pageerror", (error) => pageErrors.push(error));
 
-  await openAuthenticatedAi(page, testInfo);
+  const seedKey = await openAuthenticatedAi(page, testInfo);
+  const conversationId = await seedGlobalConversation(seedKey);
+  await page.goto(`/ai?conversation=${encodeURIComponent(conversationId)}`, { waitUntil: "load" });
+  await expect(page.getByLabel("Copilot prompt")).toBeVisible();
 
   await page.route("**/api/ai/stream", async (route) => {
     await fulfillAIStream(route, [

@@ -98,6 +98,28 @@ function getFixtureUserId(seedKey: string): string {
   return `preview-dev-user-${seedHash}`;
 }
 
+export async function seedGlobalConversation(seedKey: string): Promise<string> {
+  const userId = getFixtureUserId(seedKey);
+  const workspaceId = `workspace-${userId}`;
+  const conversationId = stableFixtureId(seedKey, "global-conversation");
+
+  await withLocalDatabase(async (client) => {
+    await client.query(
+      `INSERT INTO "AIConversation"
+        ("id", "userId", "workspaceId", "title", "context", "page", "archived", "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, 'Offline recovery proof', 'global', 'ai', false, NOW(), NOW())
+       ON CONFLICT ("id") DO UPDATE SET
+        "userId" = EXCLUDED."userId",
+        "workspaceId" = EXCLUDED."workspaceId",
+        "archived" = false,
+        "updatedAt" = NOW()`,
+      [conversationId, userId, workspaceId],
+    );
+  });
+
+  return conversationId;
+}
+
 function getLocalDatabaseUrl(): string {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
