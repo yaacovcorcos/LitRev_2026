@@ -17,6 +17,7 @@ import {
   ALLOWED_STUDY_FILE_EXTENSIONS,
 } from "@/lib/file-validation";
 import { deleteFileAssetBlob, fetchFileAssetBytes, getClientFileAssetUrls } from "@/lib/server/file-storage";
+import type { ChatImageInput, ConversationFileAttachment } from "@/types/ai";
 
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -28,6 +29,21 @@ const ZIP_CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
 const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 const ZIP_END_OF_CENTRAL_DIRECTORY_MIN_SIZE = 22;
 const ZIP_MAX_COMMENT_LENGTH = 0xffff;
+const MAX_CHAT_IMAGE_SIZE = 10 * 1024 * 1024;
+const MAX_CHAT_ATTACHMENT_REFERENCES = 8;
+const MAX_CHAT_IMAGE_ATTACHMENTS = 4;
+const MAX_CHAT_IMAGE_TOTAL_BYTES = 20 * 1024 * 1024;
+const CHAT_IMAGE_MIME_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
+
+type ChatImageMimeType = typeof CHAT_IMAGE_MIME_TYPES[number];
+
+type ValidatedChatAttachmentUpload =
+  | ValidatedStudyFileUpload
+  | {
+      bytes: Uint8Array;
+      format: "png" | "jpg" | "webp";
+      mimeType: ChatImageMimeType;
+    };
 
 export type GeneratedProjectFileInput = {
   directory: string;
@@ -300,7 +316,7 @@ export async function deleteFileAsset(
 }
 
 /**
- * Upload a PDF attachment for a project conversation.
+ * Upload a PDF or image attachment for a project conversation.
  * Uploads to Supabase, creates a FileAsset with kind="attachment",
  * and extracts text for AI injection.
  */
@@ -310,14 +326,7 @@ export async function uploadChatAttachment(
   file: File
 ): Promise<{ fileAsset: FileAsset; extraction: PendingAttachmentExtraction }> {
   const scope = await assertProjectAccess(scopeInput, projectId);
-  if (getFileExtension(file.name) !== ".pdf") {
-    throw new Error("Only PDF files can be attached to conversations.");
-  }
-  const validated = await readValidatedStudyFileUpload(file);
-
-  if (validated.format !== "pdf") {
-    throw new Error("Only PDF files can be attached to conversations.");
-  }
+  const validated = await readValidatedChatAttachmentUpload(file);
 
   const safeName = sanitizeFilename(file.name);
   const objectPath = `projects/${projectId}/conversations/${randomUUID()}-${safeName}`;
@@ -327,21 +336,29 @@ export async function uploadChatAttachment(
     validated.mimeType
   );
 
-  // Extract text from the uploaded PDF
-  const { extractTextFromPdf } = await import("./pdf-extraction");
   let extraction: PendingAttachmentExtraction;
-  try {
-    const buffer = Buffer.from(validated.bytes);
+  if (validated.mimeType.startsWith("image/")) {
     extraction = {
       status: "ready",
-      text: await extractTextFromPdf(buffer),
+      text: "",
+      mediaKind: "image",
     };
-  } catch {
-    extraction = {
-      status: "failed",
-      reason: "pdf_parse_failed",
-      message: "LitRev uploaded the PDF, but could not read usable text from it. Remove it or attach a different PDF.",
-    };
+  } else {
+    const { extractTextFromPdf } = await import("./pdf-extraction");
+    try {
+      const buffer = Buffer.from(validated.bytes);
+      extraction = {
+        status: "ready",
+        text: await extractTextFromPdf(buffer),
+        mediaKind: "document",
+      };
+    } catch {
+      extraction = {
+        status: "failed",
+        reason: "pdf_parse_failed",
+        message: "LitRev uploaded the PDF, but could not read usable text from it. Remove it or attach a different PDF.",
+      };
+    }
   }
 
   const created = await prisma.fileAsset.create({
@@ -357,6 +374,7 @@ export async function uploadChatAttachment(
       metadata: {
         extractionStatus: extraction.status,
         extractionReason: extraction.status === "failed" ? extraction.reason : undefined,
+        mediaKind: extraction.status === "ready" ? extraction.mediaKind : undefined,
         extractedTextLength: extraction.status === "ready" ? extraction.text.length : 0,
       },
     },
@@ -366,7 +384,7 @@ export async function uploadChatAttachment(
 }
 
 /**
- * Extract text from an existing FileAsset's PDF (for referencing study PDFs in chat).
+ * Prepare an existing PDF or image FileAsset for chat.
  */
 export async function extractTextFromExistingFile(
   scopeInput: ScopeInput,
@@ -381,8 +399,14 @@ export async function extractTextFromExistingFile(
   if (!file) {
     throw new Error("File not found.");
   }
+  if (isChatImageMimeType(file.mimeType)) {
+    return {
+      fileAsset: toFileAsset(file),
+      extraction: { status: "ready", text: "", mediaKind: "image" },
+    };
+  }
   if (file.format !== "pdf" && !file.mimeType.includes("pdf")) {
-    throw new Error("Only PDF files can be attached to conversations.");
+    throw new Error("Only PDF, PNG, JPEG, and WebP files can be attached to conversations.");
   }
 
   const { extractTextFromPdf } = await import("./pdf-extraction");
@@ -392,6 +416,7 @@ export async function extractTextFromExistingFile(
     extraction = {
       status: "ready",
       text: await extractTextFromPdf(buffer),
+      mediaKind: "document",
     };
   } catch (error) {
     const reason = error instanceof Error && /supabase|storage|download|fetch/i.test(error.message)
@@ -407,6 +432,116 @@ export async function extractTextFromExistingFile(
   }
 
   return { fileAsset: toFileAsset(file), extraction };
+}
+
+/**
+ * Hydrate access-checked image bytes for provider requests. Client requests
+ * supply FileAsset identities only; stored MIME metadata and canonical blob
+ * ownership remain authoritative here.
+ */
+export async function loadChatImageInputs(
+  scopeInput: ScopeInput,
+  projectId: string,
+  attachments: readonly ConversationFileAttachment[],
+): Promise<ChatImageInput[]> {
+  await assertProjectAccess(scopeInput, projectId);
+  const requestedIds = [...new Set(attachments.map((attachment) => attachment.fileAssetId))];
+  if (requestedIds.length === 0) return [];
+  if (requestedIds.length > MAX_CHAT_ATTACHMENT_REFERENCES) {
+    throw new Error(`A chat message can reference at most ${MAX_CHAT_ATTACHMENT_REFERENCES} files.`);
+  }
+
+  const files = await prisma.fileAsset.findMany({
+    where: { id: { in: requestedIds }, projectId },
+  });
+  const filesById = new Map(files.map((file) => [file.id, file]));
+  const unavailableFileId = requestedIds.find((fileId) => !filesById.has(fileId));
+  if (unavailableFileId) {
+    throw new Error("One or more attached files are unavailable or outside this project.");
+  }
+  const imageFiles = requestedIds
+    .map((fileId) => filesById.get(fileId))
+    .filter((file): file is (typeof files)[number] & { mimeType: ChatImageMimeType } => (
+      Boolean(file && isChatImageMimeType(file.mimeType))
+    ));
+  if (imageFiles.length > MAX_CHAT_IMAGE_ATTACHMENTS) {
+    throw new Error(`A chat message can include at most ${MAX_CHAT_IMAGE_ATTACHMENTS} images.`);
+  }
+  const totalImageBytes = imageFiles.reduce((total, file) => total + Math.max(0, file.size), 0);
+  if (totalImageBytes > MAX_CHAT_IMAGE_TOTAL_BYTES) {
+    throw new Error("Chat images may use at most 20 MB in total.");
+  }
+  const imageInputs: ChatImageInput[] = [];
+
+  for (const file of imageFiles) {
+    if (file.size > MAX_CHAT_IMAGE_SIZE) {
+      throw new Error(`Image ${file.filename} is too large. Maximum size is 10 MB.`);
+    }
+    const bytes = await fetchFileAssetBytes(file, { projectId, studyId: file.studyId });
+    if (!hasImageSignature(bytes, file.mimeType)) {
+      throw new Error(`Image ${file.filename} failed file validation.`);
+    }
+    imageInputs.push({
+      fileAssetId: file.id,
+      filename: file.filename,
+      mimeType: file.mimeType,
+      dataUrl: `data:${file.mimeType};base64,${bytes.toString("base64")}`,
+    });
+  }
+
+  return imageInputs;
+}
+
+async function readValidatedChatAttachmentUpload(file: File): Promise<ValidatedChatAttachmentUpload> {
+  const ext = getFileExtension(file.name);
+  if (ext === ".pdf") {
+    const validated = await readValidatedStudyFileUpload(file);
+    if (validated.format !== "pdf") {
+      throw new Error("Only PDF, PNG, JPEG, and WebP files can be attached to conversations.");
+    }
+    return validated;
+  }
+
+  if (file.size > MAX_CHAT_IMAGE_SIZE) {
+    throw new Error("Image too large. Maximum size is 10 MB.");
+  }
+  const mimeType = normalizeChatImageMimeType(file.type, ext);
+  if (!mimeType) {
+    throw new Error("Only PDF, PNG, JPEG, and WebP files can be attached to conversations.");
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (!hasImageSignature(bytes, mimeType)) {
+    throw new Error("The selected image does not match its declared file type.");
+  }
+  return {
+    bytes,
+    format: mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg",
+    mimeType,
+  };
+}
+
+function normalizeChatImageMimeType(mimeType: string, extension: string): ChatImageMimeType | null {
+  if (mimeType === "image/png" || extension === ".png") return "image/png";
+  if (mimeType === "image/jpeg" || extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
+  if (mimeType === "image/webp" || extension === ".webp") return "image/webp";
+  return null;
+}
+
+function isChatImageMimeType(mimeType: string): mimeType is ChatImageMimeType {
+  return (CHAT_IMAGE_MIME_TYPES as readonly string[]).includes(mimeType);
+}
+
+function hasImageSignature(bytes: Uint8Array, mimeType: ChatImageMimeType): boolean {
+  if (mimeType === "image/png") {
+    const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    return bytes.byteLength >= signature.length && signature.every((byte, index) => bytes[index] === byte);
+  }
+  if (mimeType === "image/jpeg") {
+    return bytes.byteLength >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  return bytes.byteLength >= 12
+    && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF"
+    && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
 }
 
 async function readValidatedStudyFileUpload(file: File): Promise<ValidatedStudyFileUpload> {

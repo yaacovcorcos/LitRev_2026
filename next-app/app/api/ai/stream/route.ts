@@ -42,6 +42,15 @@ import {
 import { logServerError, logServerWarn } from "@/lib/server/logging";
 import { resolveRequestedContinuation } from "@/lib/server/agent/requested-continuation";
 import { settleClarificationDismissedRun } from "@/lib/server/agent/run";
+import { loadChatImageInputs } from "@/lib/server/files";
+import { getModelAvailability } from "@/lib/server/ai/model-availability";
+import {
+    AI_CONFIG,
+    getDefaultReasoningEffort,
+    getSupportedReasoningEfforts,
+    isSelectableModelId,
+    modelSupportsDeliveryMode,
+} from "@/lib/ai/config";
 import {
     buildClarificationResolutionUserMessage,
     buildUserInputResolutionContinuationContext,
@@ -81,6 +90,14 @@ function normalizeOptionalRunId(value: string | undefined): string | undefined {
     return normalized ? normalized : undefined;
 }
 
+function stripClientProviderState(messages: AIMessage[] | undefined): AIMessage[] | undefined {
+    return messages?.map((message) => {
+        const sanitized = { ...message };
+        delete sanitized.providerReasoningContent;
+        return sanitized;
+    });
+}
+
 export async function POST(request: NextRequest) {
     try {
         const progressiveStreaming = getProgressiveAnswerStreamingConfig();
@@ -108,6 +125,102 @@ export async function POST(request: NextRequest) {
             selectedSteps?: number[];
             popupContext?: PopupChatContext;
         };
+        const safeMessages = stripClientProviderState(messages);
+
+        const rawRequestedModel = options?.model;
+        if (
+            rawRequestedModel !== undefined
+            && (typeof rawRequestedModel !== "string" || rawRequestedModel.trim().length === 0)
+        ) {
+            return new Response(
+                JSON.stringify({
+                    error: "model must be a non-empty string when provided.",
+                    code: "INVALID_MODEL",
+                }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+        }
+        const requestedModel = typeof rawRequestedModel === "string"
+            ? rawRequestedModel.trim()
+            : AI_CONFIG.defaultModel;
+        const routesThroughArtifactService = Boolean(context && (
+            (typeof userMessage === "string" && userMessage.trim().length > 0)
+            || planId
+            || options?.planId
+            || options?.userInputResolution
+        ));
+        const hasContinuationRouteAuthority = routesThroughArtifactService && [
+            options?.continueFromRunId,
+            options?.preferContinueFromRunId,
+            options?.userInputResolution?.sourceRunId,
+        ].some((value) => typeof value === "string" && value.trim().length > 0);
+
+        if (!hasContinuationRouteAuthority && !isSelectableModelId(requestedModel)) {
+            return new Response(
+                JSON.stringify({
+                    error: "The selected model is not available in this application.",
+                    code: "UNKNOWN_OR_UNSELECTABLE_MODEL",
+                }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+        }
+
+        const requestedReasoningEffort = options?.reasoningEffort ?? getDefaultReasoningEffort(requestedModel);
+        const requestedDeliveryMode = options?.deliveryMode ?? "standard";
+
+        if (!hasContinuationRouteAuthority) {
+            const modelAvailability = getModelAvailability(requestedModel);
+            if (!modelAvailability?.configured) {
+                const unavailable = modelAvailability?.unavailableReason;
+                const response = unavailable === "disabled"
+                    ? {
+                        error: "The selected model is staged but not rollout-enabled yet.",
+                        code: "MODEL_ROLLOUT_DISABLED",
+                    }
+                    : unavailable === "missing_model_route"
+                        ? {
+                            error: "The selected model has no configured route on the custom gateway.",
+                            code: "MODEL_ROUTE_NOT_CONFIGURED",
+                        }
+                        : {
+                            error: "The selected model is not configured yet. Ask an administrator to add its provider credential.",
+                            code: "MODEL_PROVIDER_NOT_CONFIGURED",
+                        };
+                return new Response(
+                    JSON.stringify(response),
+                    { status: 409, headers: { "Content-Type": "application/json" } },
+                );
+            }
+        }
+
+        if (
+            !hasContinuationRouteAuthority
+            && !getSupportedReasoningEfforts(requestedModel).includes(requestedReasoningEffort)
+        ) {
+            return new Response(
+                JSON.stringify({
+                    error: `Reasoning effort "${String(requestedReasoningEffort)}" is not supported by ${requestedModel}.`,
+                    code: "UNSUPPORTED_REASONING_EFFORT",
+                }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+        }
+
+        if (
+            !hasContinuationRouteAuthority
+            && (
+            (requestedDeliveryMode !== "standard" && requestedDeliveryMode !== "priority")
+            || !modelSupportsDeliveryMode(requestedModel, requestedDeliveryMode)
+            )
+        ) {
+            return new Response(
+                JSON.stringify({
+                    error: `Delivery mode "${String(requestedDeliveryMode)}" is not supported by ${requestedModel}.`,
+                    code: "UNSUPPORTED_DELIVERY_MODE",
+                }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+        }
 
         if (options?.replaceRunId !== undefined && typeof options.replaceRunId !== "string") {
             return new Response(
@@ -267,12 +380,48 @@ export async function POST(request: NextRequest) {
             ? buildContextCapturePromptBlock(rehydratedContextTargets)
             : "";
 
+        const fileAttachments = Array.isArray(options?.userMessageAttachments)
+            ? options.userMessageAttachments.filter((attachment): attachment is Extract<typeof attachment, { fileAssetId: string }> => (
+                typeof attachment === "object"
+                && attachment !== null
+                && "fileAssetId" in attachment
+                && typeof attachment.fileAssetId === "string"
+            ))
+            : [];
+        if (fileAttachments.length > 0 && !scopedProjectId) {
+            return new Response(
+                JSON.stringify({ error: "File attachments require a project scope" }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+            );
+        }
+        let imageInputs: Awaited<ReturnType<typeof loadChatImageInputs>> = [];
+        if (scopedProjectId && fileAttachments.length > 0) {
+            try {
+                imageInputs = await loadChatImageInputs(
+                    { ownerId: authResult.context.userId, workspaceId: authResult.context.workspaceId },
+                    scopedProjectId,
+                    fileAttachments,
+                );
+            } catch (error) {
+                return new Response(
+                    JSON.stringify({
+                        error: error instanceof Error ? error.message : "The attached images could not be prepared.",
+                        code: "INVALID_CHAT_ATTACHMENTS",
+                    }),
+                    { status: 400, headers: { "Content-Type": "application/json" } },
+                );
+            }
+        }
+
         const service = getAIService();
         const scopedOptions: StreamRouteOptions = {
             ...options,
             // Lineage is server-owned. A client may request a validated durable
             // continuation, but it may never attach itself to an arbitrary run.
             parentRunId: undefined,
+            model: requestedModel,
+            reasoningEffort: requestedReasoningEffort,
+            deliveryMode: requestedDeliveryMode,
             projectId: scopedProjectId,
             studyId: scopedStudyId,
             replaceRunId: normalizedReplaceRunId,
@@ -281,6 +430,7 @@ export async function POST(request: NextRequest) {
             additionalContext: [options?.additionalContext, contextCapturePrompt].filter(Boolean).join("\n\n") || undefined,
             userId: authResult.context.userId,
             workspaceId: authResult.context.workspaceId,
+            imageInputs,
         };
 
         // Create a readable stream
@@ -665,9 +815,9 @@ export async function POST(request: NextRequest) {
                             }
                         }
                         // Direct message streaming
-                        else if (messages && messages.length > 0) {
+                        else if (safeMessages && safeMessages.length > 0) {
                             if (isPopupRequest && popupContext && runtimeOptions.projectId && popupContext.projectId === runtimeOptions.projectId) {
-                                const latestUserMessage = [...messages].reverse().find((msg) => msg.role === "user")?.content ?? "";
+                                const latestUserMessage = [...safeMessages].reverse().find((msg) => msg.role === "user")?.content ?? "";
                                 const popupSystemPrompt = await buildPopupSystemPrompt({
                                     popupContext,
                                     userId: authResult.context.userId,
@@ -683,7 +833,7 @@ export async function POST(request: NextRequest) {
                                         content: popupSystemPrompt,
                                         createdAt: new Date().toISOString(),
                                     },
-                                    ...messages.filter((msg) => msg.role !== "system"),
+                                    ...safeMessages.filter((msg) => msg.role !== "system"),
                                 ];
 
                                 if (isPopupToolsEnabled()) {
@@ -728,7 +878,7 @@ export async function POST(request: NextRequest) {
                                     }
                                 }
                             } else {
-                                for await (const chunk of service.streamChat(messages, { ...runtimeOptions, signal: request.signal })) {
+                                for await (const chunk of service.streamChat(safeMessages, { ...runtimeOptions, signal: request.signal })) {
                                     const normalized = normalizeStreamChunk(chunk);
                                     if (!normalized) continue;
                                     if (firstProviderContentMs === null && normalized.type === "content" && normalized.content) {

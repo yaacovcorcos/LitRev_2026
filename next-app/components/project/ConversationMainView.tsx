@@ -15,6 +15,7 @@ import { ProjectConversationComposer } from "@/components/project/ProjectConvers
 import { ChatComposerActiveProgressBar } from "@/components/chat/ChatComposerActiveProgressBar";
 import { ChatComposerPendingApprovalBar } from "@/components/chat/ChatComposerPendingApprovalBar";
 import { ChatComposerQueuedFollowUpBar } from "@/components/chat/ChatComposerQueuedFollowUpBar";
+import { ChatReasoningModeDropdown } from "@/components/chat/ChatReasoningModeDropdown";
 import { useChatPendingApprovalBarState } from "@/components/chat/useChatPendingApprovalBarState";
 import { ProjectConversationAutonomySettings } from "@/components/project/ProjectConversationAutonomySettings";
 import { ConversationPicker } from "@/components/ui/ConversationPicker";
@@ -71,6 +72,9 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
         reconnectRun,
         answerUserInput,
         selectedModel,
+        reasoningMode,
+        setReasoningMode,
+        reasoningVisibilitySupport,
         hasMore,
         isLoadingOlder,
         loadOlderMessages,
@@ -186,7 +190,6 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
             undefined,
             {
                 requestKey: generateChatUnificationRequestKey(),
-                expectedModel: selectedModel ?? null,
                 source: "retry_action",
             },
             undefined,
@@ -247,7 +250,6 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
             undefined,
             {
                 requestKey: generateChatUnificationRequestKey(),
-                expectedModel: selectedModel ?? null,
                 source: "retry_action",
             },
             undefined,
@@ -309,6 +311,25 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                     </div>
 
                     <div className={styles.headerActions}>
+                        {reasoningVisibilitySupport !== "none" ? (
+                            <ChatReasoningModeDropdown
+                                reasoningMode={reasoningMode}
+                                onReasoningModeChange={setReasoningMode}
+                                reasoningVisibilitySupport={reasoningVisibilitySupport}
+                            >
+                                <button
+                                    type="button"
+                                    className={styles.newBtn}
+                                    data-state={reasoningMode}
+                                    aria-label={`Reasoning visibility: ${reasoningMode}`}
+                                    title={`Reasoning visibility: ${reasoningMode}`}
+                                >
+                                    <span className="material-icons-round" style={{ fontSize: 16 }} aria-hidden="true">
+                                        psychology
+                                    </span>
+                                </button>
+                            </ChatReasoningModeDropdown>
+                        ) : null}
                         <button
                             type="button"
                             className={styles.newBtn}
@@ -358,6 +379,7 @@ export function ConversationMainView({ projectId }: ConversationMainViewProps) {
                     <ChatTimeline
                         variant="page"
                         items={timelineItems}
+                        reasoningMode={reasoningMode}
                         isLoading={isLoading}
                         isConversationLoading={isConversationLoading}
                         conversationId={currentConversationId ?? undefined}

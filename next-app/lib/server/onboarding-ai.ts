@@ -3,8 +3,9 @@ import "server-only";
 import type { ProtocolData, PICOData, EligibilityData } from "@/types/protocol";
 import type { AIMessage } from "@/types/ai";
 import { getAIService } from "@/lib/server/ai/ai-service";
+import { getBackgroundModel } from "@/lib/server/ai/background-model-policy";
 
-const ONBOARDING_MODEL = "grok-4-1-fast";
+const ONBOARDING_MODEL = () => getBackgroundModel("fast");
 
 export type OnboardingDerivedProfile = {
   strictness: "low" | "moderate" | "high";
@@ -170,7 +171,8 @@ async function runStructuredPrompt<T>(params: {
 
   try {
     const response = await aiService.chat(messages, {
-      model: ONBOARDING_MODEL,
+      model: ONBOARDING_MODEL(),
+      reasoningEffort: "fast",
       temperature: 0.2,
       maxTokens: 700,
     });

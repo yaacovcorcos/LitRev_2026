@@ -492,6 +492,55 @@
     pointer-events: none;
 }
 
+.popupGenerationSummary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    padding: 0 2px 6px;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.popupReadiness {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 7px;
+    padding: 7px 9px;
+    border-radius: 8px;
+    background: var(--color-info-bg);
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.popupReadinessError {
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
+}
+
+.popupReadiness button {
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.popupReadiness button:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-ring);
+}
+
 .inputRow {
     display: flex;
     align-items: flex-end;

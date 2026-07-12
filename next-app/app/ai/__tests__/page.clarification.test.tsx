@@ -106,6 +106,9 @@ describe("/ai page clarification handling", () => {
     const parsedBody = readFetchRequestBody(secondStreamCallIndex);
     expect(parsedBody.userMessage).toBe("");
     expect(parsedBody.options).toMatchObject({
+      model: "gpt-5.6-luna",
+      reasoningEffort: "medium",
+      deliveryMode: "standard",
       continueFromRunId: "run-ask",
       replaceRunId: "run-ask",
       persistUserMessage: false,

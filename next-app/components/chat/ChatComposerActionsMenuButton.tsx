@@ -23,6 +23,33 @@ type ChatComposerActionsMenuButtonProps = {
 };
 
 const FILE_LIST_TTL_MS = 30_000;
+const SUPPORTED_CHAT_FILE_EXTENSIONS = [".pdf", ".png", ".jpg", ".jpeg", ".webp"] as const;
+
+function hasSupportedChatFileExtension(filename: string): boolean {
+    const normalizedFilename = filename.toLowerCase();
+    return SUPPORTED_CHAT_FILE_EXTENSIONS.some((extension) => normalizedFilename.endsWith(extension));
+}
+
+function isSupportedChatFile(file: Pick<FileAsset, "filename" | "format" | "mimeType">): boolean {
+    const format = file.format?.toLowerCase();
+    const mimeType = file.mimeType.toLowerCase();
+    return hasSupportedChatFileExtension(file.filename)
+        || format === "pdf"
+        || format === "png"
+        || format === "jpg"
+        || format === "jpeg"
+        || format === "webp"
+        || mimeType === "application/pdf"
+        || mimeType === "image/png"
+        || mimeType === "image/jpeg"
+        || mimeType === "image/webp";
+}
+
+function getChatFileIcon(file: Pick<FileAsset, "filename" | "format" | "mimeType">): string {
+    return file.mimeType.startsWith("image/") || ["png", "jpg", "jpeg", "webp"].includes(file.format?.toLowerCase() ?? "")
+        ? "image"
+        : "description";
+}
 
 export function ChatComposerActionsMenuButton({
     projectId,
@@ -61,9 +88,9 @@ export function ChatComposerActionsMenuButton({
                 console.error(result.error);
                 return;
             }
-            const pdfs = result.data.filter((file) => file.format === "pdf" || file.mimeType.includes("pdf"));
-            fileListCacheRef.current = { files: pdfs, fetchedAt: Date.now() };
-            setProjectFiles(pdfs);
+            const supportedFiles = result.data.filter(isSupportedChatFile);
+            fileListCacheRef.current = { files: supportedFiles, fetchedAt: Date.now() };
+            setProjectFiles(supportedFiles);
         } catch (error) {
             console.error("Failed to load project files", error);
         } finally {
@@ -90,9 +117,9 @@ export function ChatComposerActionsMenuButton({
     const handleFileSelected = useCallback((event: ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
-        if (!file.name.toLowerCase().endsWith(".pdf")) return;
-        onAttachFile?.(file);
         event.target.value = "";
+        if (!hasSupportedChatFileExtension(file.name)) return;
+        onAttachFile?.(file);
     }, [onAttachFile]);
 
     const handleAttachExisting = useCallback((fileAssetId: string) => {
@@ -123,7 +150,7 @@ export function ChatComposerActionsMenuButton({
             title="More actions"
             disabled={disabled}
         >
-            <span className="material-icons-round">add</span>
+            <span className="material-icons-round" aria-hidden="true">add</span>
         </button>
     );
 
@@ -132,7 +159,7 @@ export function ChatComposerActionsMenuButton({
             <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf"
+                accept=".pdf,.png,.jpg,.jpeg,.webp"
                 style={{ display: "none" }}
                 onChange={handleFileSelected}
             />
@@ -144,8 +171,8 @@ export function ChatComposerActionsMenuButton({
                         onClick={handleUploadNew}
                         disabled={isAttaching}
                     >
-                        <span className="material-icons-round">{isAttaching ? "hourglass_top" : "upload_file"}</span>
-                        <span>{isAttaching ? "Uploading PDF..." : "Upload PDF"}</span>
+                        <span className="material-icons-round" aria-hidden="true">{isAttaching ? "hourglass_top" : "upload_file"}</span>
+                        <span>{isAttaching ? "Uploading file..." : "Upload document or image"}</span>
                     </button>
                 )}
                 {canShowCompress && (
@@ -156,7 +183,7 @@ export function ChatComposerActionsMenuButton({
                         disabled={!canCompress || isCompressing}
                         title={canCompress ? "Compress history" : "Compress (available after longer chats)"}
                     >
-                        <span className="material-icons-round">{isCompressing ? "hourglass_top" : "compress"}</span>
+                        <span className="material-icons-round" aria-hidden="true">{isCompressing ? "hourglass_top" : "compress"}</span>
                         <span>{isCompressing ? "Compressing history..." : "Compress history"}</span>
                     </button>
                 )}
@@ -165,7 +192,7 @@ export function ChatComposerActionsMenuButton({
             {canShowAttachments && (
                 <div className={styles.actionsMenuFiles}>
                     {loadingProjectFiles ? (
-                        <div className={styles.actionsMenuLoading}>Loading project PDFs...</div>
+                        <div className={styles.actionsMenuLoading}>Loading project files...</div>
                     ) : projectFiles.length > 0 ? (
                         <>
                             {studyFiles.length > 0 && (
@@ -178,7 +205,7 @@ export function ChatComposerActionsMenuButton({
                                             className={styles.actionsMenuItem}
                                             onClick={() => handleAttachExisting(file.id)}
                                         >
-                                            <span className="material-icons-round">description</span>
+                                            <span className="material-icons-round" aria-hidden="true">{getChatFileIcon(file)}</span>
                                             <span className={styles.actionsMenuFileName}>{file.filename}</span>
                                         </button>
                                     ))}
@@ -187,7 +214,7 @@ export function ChatComposerActionsMenuButton({
                             {otherFiles.length > 0 && (
                                 <div className={styles.actionsMenuSection}>
                                     <div className={styles.actionsMenuLabel}>
-                                        {studyFiles.length > 0 ? "Other studies" : "Project PDFs"}
+                                        {studyFiles.length > 0 ? "Other project files" : "Project files"}
                                     </div>
                                     {otherFiles.slice(0, 10).map((file) => (
                                         <button
@@ -196,7 +223,7 @@ export function ChatComposerActionsMenuButton({
                                             className={styles.actionsMenuItem}
                                             onClick={() => handleAttachExisting(file.id)}
                                         >
-                                            <span className="material-icons-round">description</span>
+                                            <span className="material-icons-round" aria-hidden="true">{getChatFileIcon(file)}</span>
                                             <span className={styles.actionsMenuFileName}>{file.filename}</span>
                                         </button>
                                     ))}
@@ -204,7 +231,7 @@ export function ChatComposerActionsMenuButton({
                             )}
                         </>
                     ) : (
-                        <div className={styles.actionsMenuEmpty}>No project PDFs yet.</div>
+                        <div className={styles.actionsMenuEmpty}>No supported documents or images yet.</div>
                     )}
                 </div>
             )}

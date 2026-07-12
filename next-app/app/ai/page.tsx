@@ -19,6 +19,8 @@ import type {
   ChoiceOption,
   ConversationContext,
   CopilotPage,
+  DeliveryMode,
+  ReasoningEffort,
   ReasoningMode,
   RuntimeSendOverrides,
   UserInputRequest,
@@ -82,16 +84,27 @@ import {
   readAiEntryRestoreState,
 } from "@/lib/ai/ai-entry-restore";
 import { useQueuedFollowUpController } from "@/hooks/useQueuedFollowUpController";
+import { useModelAvailability } from "@/hooks/useModelAvailability";
 import {
   DEFAULT_SELECTABLE_MODEL_ID,
-  USER_SELECTABLE_MODELS,
-  getReasoningSupportTier,
-  type ReasoningSupportTier,
+  getProviderModelId,
+  getReasoningVisibilitySupport,
+  SELECTABLE_MODEL_IDS,
+  type ReasoningVisibilitySupport,
   type SelectableModelId,
 } from "@/lib/ai/config";
 import { isProgressiveAnswerStreamingEnabled } from "@/lib/feature-flags";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { QueuedFollowUp } from "@/types/queued-followup";
+import type { GenerationPreferenceSnapshot } from "@/types/queued-followup";
+import {
+  createGenerationPreferenceSnapshot,
+  readStoredReasoningEffort,
+  readStoredSelectableModel,
+  resolveDeliveryMode,
+  resolveReasoningEffort,
+  writeStoredReasoningEffort,
+} from "@/lib/ai/generation-preferences";
 import { buildAiRouteHref, readAiRouteState, type AiRouteState } from "@/lib/ai/ai-route-state";
 import { type ChatConversation, groupConversationsByDate } from "./groupConversationsByDate";
 import {
@@ -222,6 +235,14 @@ function AIViewContent() {
   const [queuedFollowUp, setQueuedFollowUp] = useState<QueuedFollowUp | null>(null);
   const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(() => getReasoningModePreference());
   const [selectedModel, setSelectedModelState] = useState<SelectableModelId>(DEFAULT_SELECTABLE_MODEL_ID);
+  const [reasoningEffort, setReasoningEffortState] = useState<ReasoningEffort>(() => (
+    resolveReasoningEffort(DEFAULT_SELECTABLE_MODEL_ID)
+  ));
+  const [deliveryMode, setDeliveryModeState] = useState<DeliveryMode>("standard");
+  const modelAvailabilityState = useModelAvailability();
+  const modelAvailability = modelAvailabilityState?.availability;
+  const modelAvailabilityStatus = modelAvailabilityState?.status;
+  const retryModelAvailability = modelAvailabilityState?.retry;
 
   const [timelineByConversation, setTimelineByConversation] = useState<Record<string, TimelineItem[]>>({});
   const [conversationBootstrapError, setConversationBootstrapError] = useState<Extract<TimelineItem, { type: "error" }> | null>(null);
@@ -268,12 +289,12 @@ function AIViewContent() {
     });
   }, []);
 
-  const reasoningSupport: ReasoningSupportTier = useMemo(
-    () => getReasoningSupportTier(selectedModel),
+  const reasoningVisibilitySupport: ReasoningVisibilitySupport = useMemo(
+    () => getReasoningVisibilitySupport(selectedModel),
     [selectedModel]
   );
 
-  const showReasoningControls = reasoningSupport !== "none";
+  const showReasoningControls = reasoningVisibilitySupport !== "none";
   timelineByConversationRef.current = timelineByConversation;
   activeConversationIdRef.current = activeConversationId;
 
@@ -290,19 +311,46 @@ function AIViewContent() {
 
   const setSelectedModel = useCallback((modelId: SelectableModelId) => {
     setSelectedModelState(modelId);
+    setReasoningEffortState(
+      typeof window === "undefined"
+        ? resolveReasoningEffort(modelId)
+        : readStoredReasoningEffort(window.localStorage, modelId),
+    );
+    setDeliveryModeState("standard");
     if (typeof window !== "undefined") {
       window.localStorage.setItem("litrev_ai_model", modelId);
     }
   }, []);
 
+  const setReasoningEffort = useCallback((effort: ReasoningEffort) => {
+    const resolved = resolveReasoningEffort(selectedModel, effort);
+    setReasoningEffortState(resolved);
+    if (typeof window !== "undefined") {
+      writeStoredReasoningEffort(window.localStorage, selectedModel, resolved);
+    }
+  }, [selectedModel]);
+
+  const setDeliveryMode = useCallback((mode: DeliveryMode) => {
+    setDeliveryModeState(resolveDeliveryMode(selectedModel, mode));
+  }, [selectedModel]);
+
+  useEffect(() => {
+    if (modelAvailabilityStatus && modelAvailabilityStatus !== "ready") return;
+    if (!modelAvailability || modelAvailability[selectedModel] !== false) return;
+    const fallbackModel = modelAvailability[DEFAULT_SELECTABLE_MODEL_ID]
+      ? DEFAULT_SELECTABLE_MODEL_ID
+      : SELECTABLE_MODEL_IDS.find((modelId) => modelAvailability[modelId] === true);
+    if (fallbackModel) setSelectedModel(fallbackModel);
+  }, [modelAvailability, modelAvailabilityStatus, selectedModel, setSelectedModel]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem("litrev_ai_model");
-    const valid = USER_SELECTABLE_MODELS.some((m) => m.id === stored);
-    if (valid) {
-      setSelectedModel(stored as SelectableModelId);
-    }
-  }, [setSelectedModel]);
+    const storedModel = readStoredSelectableModel(window.localStorage, "litrev_ai_model");
+    const storedEffort = readStoredReasoningEffort(window.localStorage, storedModel);
+    setSelectedModelState((current) => current === storedModel ? current : storedModel);
+    setReasoningEffortState((current) => current === storedEffort ? current : storedEffort);
+    setDeliveryModeState("standard");
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1491,6 +1539,7 @@ function AIViewContent() {
     retryModelExpectation?: RetryModelExpectation,
     _contextTargets?: unknown,
     runtimeOverrides?: string | RuntimeSendOverrides,
+    generationPreferences?: GenerationPreferenceSnapshot,
   ) => {
     const msgText = rawText.trim();
     const replaceRunIdOverride = typeof runtimeOverrides === "string"
@@ -1544,7 +1593,17 @@ function AIViewContent() {
 
     const context: ConversationContext = selectedProjectId ? "project" : "global";
     const effectiveAgentMode = agentMode ?? (msgText ? routeToAgent(msgText, "overview") : "general");
-    const effectiveModel = model ?? selectedModel;
+    const requestedModel = generationPreferences?.model ?? model ?? selectedModel;
+    const sameAsSelectedModel = requestedModel === selectedModel;
+    const generationSnapshot = createGenerationPreferenceSnapshot({
+      model: requestedModel,
+      reasoningEffort: generationPreferences?.reasoningEffort
+        ?? (sameAsSelectedModel ? reasoningEffort : undefined),
+      deliveryMode: generationPreferences?.deliveryMode
+        ?? (sameAsSelectedModel ? deliveryMode : "standard"),
+    });
+    setDeliveryModeState("standard");
+    const effectiveModel = generationSnapshot.model;
     const reasoningRequest = resolveReasoningRequest({
       preferredMode: reasoningMode,
       modelId: effectiveModel,
@@ -1602,12 +1661,11 @@ function AIViewContent() {
         projectId: selectedProjectId,
         payload: {
           requestKey: retryModelExpectation.requestKey,
-          expectedModel: retryModelExpectation.expectedModel,
+          expectedModel: getProviderModelId(effectiveModel) ?? effectiveModel,
           source: retryModelExpectation.source,
         },
       });
     }
-
     const nowIso = new Date().toISOString();
     const userInputResolution = explicitUserInputResolution ?? (
       pendingUserInput?.sourceRunId
@@ -1829,6 +1887,8 @@ function AIViewContent() {
             userInputResolution: userInputResolution ?? undefined,
             projectId: selectedProjectId ?? undefined,
             model: effectiveModel,
+            reasoningEffort: generationSnapshot.reasoningEffort,
+            deliveryMode: generationSnapshot.deliveryMode,
             reasoningMode: reasoningRequest.reasoningMode,
             includeReasoning: reasoningRequest.includeReasoning,
             reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
@@ -2059,6 +2119,8 @@ function AIViewContent() {
     cancelStream,
     selectedProjectId,
     selectedModel,
+    reasoningEffort,
+    deliveryMode,
     reasoningMode,
     handleNavigate,
     clearRecoverableAiEntry,
@@ -2426,9 +2488,15 @@ function AIViewContent() {
     let errorMessage: string | null = null;
     let aborted = false;
     let terminalEventEmitted = false;
+    const generationSnapshot = createGenerationPreferenceSnapshot({
+      model: selectedModel,
+      reasoningEffort,
+      deliveryMode,
+    });
+    setDeliveryModeState("standard");
     const reasoningRequest = resolveReasoningRequest({
       preferredMode: reasoningMode,
-      modelId: selectedModel,
+      modelId: generationSnapshot.model,
     });
     const runtime = createAiStreamRuntime({
       aiMessageId,
@@ -2512,7 +2580,9 @@ function AIViewContent() {
             conversationId: convId,
             replaceRunId: replaceRunId ?? undefined,
             projectId: selectedProjectId ?? undefined,
-            model: selectedModel,
+            model: generationSnapshot.model,
+            reasoningEffort: generationSnapshot.reasoningEffort,
+            deliveryMode: generationSnapshot.deliveryMode,
             reasoningMode: reasoningRequest.reasoningMode,
             includeReasoning: reasoningRequest.includeReasoning,
             reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
@@ -2668,6 +2738,8 @@ function AIViewContent() {
     cancelStream,
     selectedProjectId,
     selectedModel,
+    reasoningEffort,
+    deliveryMode,
     reasoningMode,
     clearRecoverableAiEntry,
     handleNavigate,
@@ -2698,6 +2770,10 @@ function AIViewContent() {
       nextQueuedFollowUp.model,
       nextQueuedFollowUp.agentMode,
       nextQueuedFollowUp.studyId,
+      undefined,
+      undefined,
+      undefined,
+      nextQueuedFollowUp,
     ),
   });
 
@@ -2713,15 +2789,21 @@ function AIViewContent() {
     model?: SelectableModelId | null;
     agentMode?: AgentMode;
   }) => {
+    const generationSnapshot = createGenerationPreferenceSnapshot({
+      model: payload.model ?? selectedModel,
+      reasoningEffort,
+      deliveryMode,
+    });
     setQueuedFollowUp(
       createQueuedFollowUp({
         ...payload,
-        model: payload.model ?? undefined,
+        ...generationSnapshot,
         conversationId: activeConversationId ?? null,
         source: "draft",
       })
     );
-  }, [activeConversationId]);
+    setDeliveryModeState("standard");
+  }, [activeConversationId, deliveryMode, reasoningEffort, selectedModel]);
 
   const handleEditQueuedFollowUp = useCallback(() => {
     if (!queuedFollowUp) return;
@@ -2815,7 +2897,6 @@ function AIViewContent() {
       undefined,
       {
         requestKey,
-        expectedModel: selectedModel ?? null,
         source: "retry_action",
       },
       undefined,
@@ -3033,13 +3114,20 @@ function AIViewContent() {
             projects={projects.map((project) => ({ id: project.id, name: project.name }))}
             returnProject={returnProject}
             selectedModel={selectedModel}
+            modelAvailability={modelAvailability}
+            modelAvailabilityStatus={modelAvailabilityStatus}
+            onRetryModelAvailability={retryModelAvailability}
+            reasoningEffort={reasoningEffort}
+            deliveryMode={deliveryMode}
             showReasoningControls={showReasoningControls}
             reasoningMode={reasoningMode}
-            reasoningSupport={reasoningSupport}
+            reasoningVisibilitySupport={reasoningVisibilitySupport}
             onHistoryToggle={handleHistoryToggle}
             onNewChat={handleNewChat}
             onSelectProject={handleSelectProject}
             onModelChange={setSelectedModel}
+            onReasoningEffortChange={setReasoningEffort}
+            onDeliveryModeChange={setDeliveryMode}
             onReasoningModeChange={updateReasoningMode}
           />
 
@@ -3122,6 +3210,13 @@ function AIViewContent() {
                   clearChoices={() => { setPendingChoices([]); setPendingUserInput(null); }}
                   selectedModel={selectedModel}
                   onModelChange={setSelectedModel}
+                  modelAvailability={modelAvailability}
+                  modelAvailabilityStatus={modelAvailabilityStatus}
+                  onRetryModelAvailability={retryModelAvailability}
+                  reasoningEffort={reasoningEffort}
+                  onReasoningEffortChange={setReasoningEffort}
+                  deliveryMode={deliveryMode}
+                  onDeliveryModeChange={setDeliveryMode}
                   hideModelControl={isPhoneViewport}
                   compactMobileChrome={isPhoneViewport}
                   showAutonomyPreset={false}

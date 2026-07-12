@@ -46,6 +46,7 @@ This plan is the long-term implementation contract for how LitRev adapts across 
   - chat-shell-specific transitional debt that should be retired inside the chat follow-up contract work rather than forced into a separate fake “pre-chat” cleanup phase
 - `MOB-FND-009` audit closed without a dedicated implementation wave: the admin findings captured in `docs/plans/mobile-admin-audit.md` show transitional responsive debt, but not enough user impact to justify a standalone admin rollout, and there is still no standalone settings route in the current repo.
 - Project shell hides the embedded copilot pane on narrower widths; conversation mode is already the primary mobile chat surface.
+- `/ai` phone configuration now uses an accessible dialog that keeps all seven model rows scroll-reachable and exposes separate model, reasoning-effort, and conditional delivery controls with 44px targets; reasoning visibility remains hidden until an adapter returns a safe summary, and compact/desktop composers use a narrow settings launcher rather than clipping or hiding the only model control.
 
 ## Target Responsive Architecture
 Long-term, LitRev should not use a single `desktop vs mobile` switch. It should use semantic layout tiers.

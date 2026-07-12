@@ -1,6 +1,5 @@
-import { AI_CONFIG, getReasoningSupportTier, type ReasoningSupportTier } from "@/lib/ai/config";
+import { AI_CONFIG } from "@/lib/ai/config";
 import {
-  getReasoningBudgetTokens,
   resolveRequestReasoningMode,
   shouldRequestReasoning,
 } from "@/lib/ai/reasoning-visibility";
@@ -17,7 +16,6 @@ export function resolveReasoningRequest(params: {
   modelId?: string | null;
 }): ResolvedReasoningRequest {
   const resolvedModelId = params.modelId?.trim() || AI_CONFIG.defaultModel;
-  const tier: ReasoningSupportTier = getReasoningSupportTier(resolvedModelId);
   const reasoningMode = resolveRequestReasoningMode(params.preferredMode, resolvedModelId);
   const includeReasoning = shouldRequestReasoning(reasoningMode);
 
@@ -29,17 +27,10 @@ export function resolveReasoningRequest(params: {
     };
   }
 
-  if (tier === "explicit") {
-    return {
-      reasoningMode,
-      includeReasoning,
-      reasoningBudgetTokens: getReasoningBudgetTokens(reasoningMode),
-    };
-  }
-
   return {
     reasoningMode,
     includeReasoning,
+    // Visibility never chooses provider compute. Reasoning effort owns that.
     reasoningBudgetTokens: undefined,
   };
 }

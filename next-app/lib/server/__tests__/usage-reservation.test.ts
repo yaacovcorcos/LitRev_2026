@@ -50,7 +50,10 @@ const mocks = vi.hoisted(() => ({
     reservationFindUnique: vi.fn(),
 }));
 
-vi.mock("@/lib/ai/config", () => ({ AI_CONFIG: config }));
+vi.mock("@/lib/ai/config", () => ({
+    AI_CONFIG: config,
+    getModelCapabilityRecord: vi.fn(() => undefined),
+}));
 vi.mock("@/lib/server/prisma", () => ({
     prisma: {
         $transaction: mocks.transaction,

@@ -9,6 +9,31 @@ vi.mock("@/lib/server/ai/rate-limiter", () => ({
     tryMarkUsageReservationReconcilable: vi.fn(async () => true),
 }));
 
+vi.mock("@/lib/ai/config", () => ({
+    AI_CONFIG: { defaultProvider: "oversized-batch", defaultModel: "oversized-model" },
+    AVAILABLE_MODELS: { openai: [], anthropic: [], xai: [], google: [], gateway: [] },
+    getModelCapabilityRecord: vi.fn(() => ({
+        id: "oversized-model",
+        providerModelId: "oversized-model",
+        provider: "openai",
+        providerDialect: "openai",
+        contextWindow: 8_192,
+        maxOutputTokens: 2_048,
+        capabilities: ["chat", "tools"],
+        reasoningSupport: "explicit",
+        reasoningVisibilitySupport: "none",
+        reasoningEfforts: ["fast", "low", "medium", "high", "max"],
+        defaultReasoningEffort: "medium",
+        temperatureSupport: "full",
+        deliveryModes: ["standard"],
+        selectable: true,
+    })),
+    getProviderForModel: vi.fn(() => "oversized-batch"),
+    getProviderModelId: vi.fn((modelId: string) => modelId),
+    getDefaultReasoningEffort: vi.fn(() => "medium"),
+    getContextBudget: vi.fn(() => 8_192),
+}));
+
 import { AIService } from "@/lib/server/ai/ai-service";
 import { BaseAIProvider } from "@/lib/server/ai/providers/base";
 

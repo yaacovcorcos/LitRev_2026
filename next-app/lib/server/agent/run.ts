@@ -30,6 +30,9 @@ export interface StartRunInput {
     trigger: RunTrigger;
     agentMode: AgentMode;
     model?: string;
+    provider?: string;
+    reasoningEffort?: string;
+    deliveryMode?: string;
     initialPhase?: RunPhase;
 }
 
@@ -44,6 +47,13 @@ export interface RunLineageNode {
     agentMode: AgentMode;
     status: RunStatus;
     model: string | null;
+    provider: string | null;
+    reasoningEffort: string | null;
+    deliveryMode: string | null;
+    actualModel: string | null;
+    actualProvider: string | null;
+    actualReasoningEffort: string | null;
+    actualDeliveryMode: string | null;
     costTokensIn: number;
     costTokensOut: number;
     startedAt: string;
@@ -454,6 +464,9 @@ export async function startRun(input: StartRunInput) {
         agentMode: input.agentMode,
         status: "running",
         model: input.model ?? undefined,
+        provider: input.provider ?? undefined,
+        reasoningEffort: input.reasoningEffort ?? undefined,
+        deliveryMode: input.deliveryMode ?? undefined,
         startedAt,
         runPhase: input.initialPhase ?? "plan",
         phaseEnteredAt: startedAt,
@@ -504,6 +517,35 @@ export async function startRun(input: StartRunInput) {
     // a serverless teardown or previous failed attempt.
     scheduleConversationMemoryExtractionAfterResponse();
     return run;
+}
+
+/**
+ * Record the provider-observed generation receipt without changing run
+ * lifecycle ownership. Repeated calls are safe and keep the latest truthful
+ * provider response for recovery and diagnostics.
+ */
+export async function recordRunGenerationReceipt(
+    runId: string,
+    receipt: {
+        actualModel?: string | null;
+        actualProvider?: string | null;
+        actualReasoningEffort?: string | null;
+        actualDeliveryMode?: string | null;
+    },
+): Promise<void> {
+    await prisma.agentRun.updateMany({
+        where: {
+            id: runId,
+            status: "running",
+            completedAt: null,
+        },
+        data: {
+            ...(receipt.actualModel ? { actualModel: receipt.actualModel } : {}),
+            ...(receipt.actualProvider ? { actualProvider: receipt.actualProvider } : {}),
+            ...(receipt.actualReasoningEffort ? { actualReasoningEffort: receipt.actualReasoningEffort } : {}),
+            ...(receipt.actualDeliveryMode ? { actualDeliveryMode: receipt.actualDeliveryMode } : {}),
+        },
+    });
 }
 
 /**
@@ -677,6 +719,13 @@ export async function getRunLineage(runId: string): Promise<RunLineageNode | nul
             agentMode: run.agentMode as AgentMode,
             status: run.status as RunStatus,
             model: run.model,
+            provider: run.provider,
+            reasoningEffort: run.reasoningEffort,
+            deliveryMode: run.deliveryMode,
+            actualModel: run.actualModel,
+            actualProvider: run.actualProvider,
+            actualReasoningEffort: run.actualReasoningEffort,
+            actualDeliveryMode: run.actualDeliveryMode,
             costTokensIn: run.costTokensIn,
             costTokensOut: run.costTokensOut,
             startedAt: run.startedAt.toISOString(),

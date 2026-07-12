@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+const configMocks = vi.hoisted(() => ({
+  getModelCapabilityRecord: vi.fn(),
+}))
+
 // Mock Prisma before importing the module
 vi.mock('@/lib/server/prisma', () => ({
   prisma: {
@@ -15,6 +19,19 @@ vi.mock('@/lib/server/prisma', () => ({
 const UNDER_LIMIT_USAGE = { inputTokens: 120000, outputTokens: 60000 }
 const AT_LIMIT_USAGE = { inputTokens: 180000, outputTokens: 120000 }
 const OVER_LIMIT_USAGE = { inputTokens: 220000, outputTokens: 120000 }
+const EMPTY_ROUTING_USAGE_FIELDS = {
+  provider: null,
+  requestedModel: null,
+  requestedProvider: null,
+  requestedReasoningEffort: null,
+  requestedDeliveryMode: null,
+  actualReasoningEffort: null,
+  actualDeliveryMode: null,
+  cachedInputTokens: 0,
+  cacheWriteInputTokens: 0,
+  reasoningTokens: 0,
+  estimatedCostUsd: undefined,
+}
 
 // Mock AI config so tests don't depend on env vars
 vi.mock('@/lib/ai/config', () => ({
@@ -23,6 +40,7 @@ vi.mock('@/lib/ai/config', () => ({
     maxTokensPerDay: 300000,
     maxTranscriptionsPerDay: 100,
   },
+  getModelCapabilityRecord: configMocks.getModelCapabilityRecord,
 }))
 
 import {
@@ -35,6 +53,7 @@ import {
   resetCacheMetricsForTests,
   getUsageStats,
   validateRateLimits,
+  estimateUsageCostUsd,
 } from '../ai/rate-limiter'
 import { prisma } from '@/lib/server/prisma'
 
@@ -46,6 +65,7 @@ const mockFindFirst = prisma.aIUsage.findFirst as ReturnType<typeof vi.fn>
 describe('Rate Limiter', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    configMocks.getModelCapabilityRecord.mockReturnValue(undefined)
     resetCacheMetricsForTests()
   })
 
@@ -255,6 +275,7 @@ describe('Rate Limiter', () => {
           contextPage: 'legacy_unknown',
           conversationId: null,
           model: 'gpt-5.2',
+          ...EMPTY_ROUTING_USAGE_FIELDS,
           inputTokens: 500,
           outputTokens: 200,
         },
@@ -274,6 +295,7 @@ describe('Rate Limiter', () => {
           contextPage: 'legacy_unknown',
           conversationId: null,
           model: 'gpt-5.2-mini',
+          ...EMPTY_ROUTING_USAGE_FIELDS,
           inputTokens: 0,
           outputTokens: 0,
         },
@@ -298,6 +320,7 @@ describe('Rate Limiter', () => {
           contextPage: 'overview',
           conversationId: null,
           model: 'whisper-large-v3-turbo',
+          ...EMPTY_ROUTING_USAGE_FIELDS,
           inputTokens: 0,
           outputTokens: 0,
         },
@@ -320,6 +343,24 @@ describe('Rate Limiter', () => {
       expect(summary?.cachedTokenRate).toBe(0.25)
     })
 
+    it('persists cache-write tokens separately from cache-hit tokens', async () => {
+      mockCreate.mockResolvedValue({})
+
+      await recordUsage('project-1', 'gpt-5.6-luna', 1000, 300, {
+        cachedInputTokens: 200,
+        cacheWriteInputTokens: 300,
+      })
+
+      expect(mockCreate).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          inputTokens: 1000,
+          cachedInputTokens: 200,
+          cacheWriteInputTokens: 300,
+          outputTokens: 300,
+        }),
+      })
+    })
+
     it('records null projectId and skips project cache summary', async () => {
       mockCreate.mockResolvedValue({})
 
@@ -334,6 +375,8 @@ describe('Rate Limiter', () => {
           contextPage: 'legacy_unknown',
           conversationId: null,
           model: 'gpt-5.2',
+          ...EMPTY_ROUTING_USAGE_FIELDS,
+          cachedInputTokens: 50,
           inputTokens: 100,
           outputTokens: 20,
         },
@@ -357,6 +400,7 @@ describe('Rate Limiter', () => {
           contextPage: 'legacy_unknown',
           conversationId: null,
           model: 'gpt-5.2',
+          ...EMPTY_ROUTING_USAGE_FIELDS,
           inputTokens: 250,
           outputTokens: 125,
         },
@@ -380,6 +424,257 @@ describe('Rate Limiter', () => {
           conversationId: 'conv-1',
         }),
       })
+    })
+  })
+
+  describe('cost estimation', () => {
+    function usePricingModel(params: {
+      provider?: 'openai' | 'xai' | 'gateway'
+      providerDialect: 'openai' | 'deepseek' | 'qwen' | 'xai'
+      inputPerMillion: number
+      cachedInputPerMillion: number
+      cacheWriteInputPerMillion?: number
+      outputPerMillion: number
+    }) {
+      configMocks.getModelCapabilityRecord.mockReturnValue({
+        provider: params.provider,
+        providerDialect: params.providerDialect,
+        pricing: {
+          currency: 'USD',
+          asOf: '2026-07-12',
+          inputPerMillion: params.inputPerMillion,
+          cachedInputPerMillion: params.cachedInputPerMillion,
+          cacheWriteInputPerMillion: params.cacheWriteInputPerMillion,
+          outputPerMillion: params.outputPerMillion,
+          standardizedLargeTaskUsd: 0,
+        },
+      })
+    }
+
+    it('uses separate uncached, cached, and output prices at the base tier', () => {
+      usePricingModel({
+        providerDialect: 'openai',
+        inputPerMillion: 1,
+        cachedInputPerMillion: 0.1,
+        outputPerMillion: 6,
+      })
+
+      expect(estimateUsageCostUsd({
+        modelId: 'gpt-5.6-luna',
+        inputTokens: 1_000,
+        cachedInputTokens: 200,
+        outputTokens: 100,
+      })).toBeCloseTo(0.00142, 8)
+    })
+
+    it('applies the OpenAI long-context input and output multipliers', () => {
+      usePricingModel({
+        providerDialect: 'openai',
+        inputPerMillion: 1,
+        cachedInputPerMillion: 0.1,
+        outputPerMillion: 6,
+      })
+
+      expect(estimateUsageCostUsd({
+        modelId: 'gpt-5.6-luna',
+        inputTokens: 300_000,
+        cachedInputTokens: 100_000,
+        outputTokens: 20_000,
+      })).toBeCloseTo(0.6, 8)
+    })
+
+    it('prices OpenAI cache writes as a disjoint 1.25x input category', () => {
+      usePricingModel({
+        providerDialect: 'openai',
+        inputPerMillion: 1,
+        cachedInputPerMillion: 0.1,
+        cacheWriteInputPerMillion: 1.25,
+        outputPerMillion: 6,
+      })
+
+      expect(estimateUsageCostUsd({
+        modelId: 'gpt-5.6-luna',
+        inputTokens: 1_000,
+        cachedInputTokens: 200,
+        cacheWriteInputTokens: 300,
+        outputTokens: 100,
+      })).toBeCloseTo(0.001495, 8)
+    })
+
+    it('returns no estimate when provider cache categories overlap or the write rate is unknown', () => {
+      usePricingModel({
+        providerDialect: 'openai',
+        inputPerMillion: 1,
+        cachedInputPerMillion: 0.1,
+        outputPerMillion: 6,
+      })
+
+      expect(estimateUsageCostUsd({
+        modelId: 'gpt-5.6-luna',
+        inputTokens: 1_000,
+        cachedInputTokens: 700,
+        cacheWriteInputTokens: 400,
+        outputTokens: 100,
+      })).toBeUndefined()
+      expect(estimateUsageCostUsd({
+        modelId: 'gpt-5.6-luna',
+        inputTokens: 1_000,
+        cacheWriteInputTokens: 200,
+        outputTokens: 100,
+      })).toBeUndefined()
+    })
+
+    it('applies Qwen long-context pricing above 256K input tokens', () => {
+      usePricingModel({
+        providerDialect: 'qwen',
+        inputPerMillion: 0.4,
+        cachedInputPerMillion: 0.08,
+        cacheWriteInputPerMillion: 0.5,
+        outputPerMillion: 1.6,
+      })
+
+      expect(estimateUsageCostUsd({
+        modelId: 'qwen3.7-plus',
+        inputTokens: 300_000,
+        outputTokens: 10_000,
+      })).toBeCloseTo(0.408, 8)
+    })
+
+    it('prices reported Qwen cache writes at both base and long-context tiers', () => {
+      usePricingModel({
+        providerDialect: 'qwen',
+        inputPerMillion: 0.4,
+        cachedInputPerMillion: 0.08,
+        cacheWriteInputPerMillion: 0.5,
+        outputPerMillion: 1.6,
+      })
+
+      expect(estimateUsageCostUsd({
+        modelId: 'qwen3.7-plus',
+        inputTokens: 100_000,
+        cachedInputTokens: 20_000,
+        cacheWriteInputTokens: 30_000,
+        outputTokens: 10_000,
+      })).toBeCloseTo(0.0526, 8)
+      expect(estimateUsageCostUsd({
+        modelId: 'qwen3.7-plus',
+        inputTokens: 300_000,
+        cachedInputTokens: 50_000,
+        cacheWriteInputTokens: 50_000,
+        outputTokens: 10_000,
+      })).toBeCloseTo(0.375, 8)
+    })
+
+    it('applies Grok long-context pricing above 200K and stacks confirmed priority', () => {
+      usePricingModel({
+        providerDialect: 'xai',
+        inputPerMillion: 2,
+        cachedInputPerMillion: 0.5,
+        outputPerMillion: 6,
+      })
+
+      expect(estimateUsageCostUsd({
+        modelId: 'grok-4.5',
+        inputTokens: 300_000,
+        outputTokens: 10_000,
+        confirmedDeliveryMode: 'priority',
+      })).toBeCloseTo(2.64, 8)
+    })
+
+    it('changes Grok pricing only after the 200K input boundary', () => {
+      usePricingModel({
+        providerDialect: 'xai',
+        inputPerMillion: 2,
+        cachedInputPerMillion: 0.5,
+        outputPerMillion: 6,
+      })
+
+      expect(estimateUsageCostUsd({
+        modelId: 'grok-4.5',
+        inputTokens: 200_000,
+        outputTokens: 10_000,
+        actualDeliveryMode: 'standard',
+      })).toBeCloseTo(0.46, 8)
+      expect(estimateUsageCostUsd({
+        modelId: 'grok-4.5',
+        inputTokens: 200_001,
+        outputTokens: 10_000,
+        actualDeliveryMode: 'standard',
+      })).toBeCloseTo(0.920004, 8)
+    })
+
+    it('does not infer paid-tier cost when a priority request has no provider-confirmed tier', () => {
+      usePricingModel({
+        providerDialect: 'xai',
+        inputPerMillion: 2,
+        cachedInputPerMillion: 0.5,
+        outputPerMillion: 6,
+      })
+
+      expect(estimateUsageCostUsd({
+        modelId: 'grok-4.5',
+        inputTokens: 1_000,
+        outputTokens: 100,
+        requestedDeliveryMode: 'priority',
+      })).toBeUndefined()
+    })
+
+    it('prices gateway usage only for the matching creator host', () => {
+      usePricingModel({
+        provider: 'gateway',
+        providerDialect: 'deepseek',
+        inputPerMillion: 0.14,
+        cachedInputPerMillion: 0.028,
+        outputPerMillion: 0.28,
+      })
+
+      expect(estimateUsageCostUsd({
+        modelId: 'deepseek-v4-flash',
+        inputTokens: 1_000,
+        cachedInputTokens: 1_000,
+        outputTokens: 0,
+        actualProvider: 'deepseek',
+      })).toBeCloseTo(0.000028, 10)
+      expect(estimateUsageCostUsd({
+        modelId: 'deepseek-v4-flash',
+        inputTokens: 1_000,
+        outputTokens: 0,
+        actualProvider: 'fireworks',
+      })).toBeUndefined()
+      expect(estimateUsageCostUsd({
+        modelId: 'deepseek-v4-flash',
+        inputTokens: 1_000,
+        outputTokens: 0,
+      })).toBeUndefined()
+    })
+
+    it('uses the registry DeepSeek Flash cache-read price without decimal drift', async () => {
+      const actualConfig = await vi.importActual<typeof import('@/lib/ai/config')>('@/lib/ai/config')
+      configMocks.getModelCapabilityRecord.mockImplementation(actualConfig.getModelCapabilityRecord)
+
+      expect(estimateUsageCostUsd({
+        modelId: 'deepseek-v4-flash',
+        inputTokens: 1_000,
+        cachedInputTokens: 1_000,
+        outputTokens: 0,
+        actualProvider: 'deepseek',
+      })).toBeCloseTo(0.000028, 10)
+    })
+
+    it('does not persist a knowingly false base estimate for OpenAI priority', () => {
+      usePricingModel({
+        providerDialect: 'openai',
+        inputPerMillion: 1,
+        cachedInputPerMillion: 0.1,
+        outputPerMillion: 6,
+      })
+
+      expect(estimateUsageCostUsd({
+        modelId: 'gpt-5.6-luna',
+        inputTokens: 1_000,
+        outputTokens: 100,
+        confirmedDeliveryMode: 'priority',
+      })).toBeUndefined()
     })
   })
 

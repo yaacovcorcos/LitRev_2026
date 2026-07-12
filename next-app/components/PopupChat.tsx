@@ -11,6 +11,8 @@ import { useProjectConversation } from "@/contexts/ProjectConversationContext";
 import { createNoteAction } from "@/app/actions/notes";
 import { createConversation, addMessage } from "@/app/actions/conversations";
 import { processAIStream } from "@/lib/ai/stream-processor";
+import { resolveReasoningRequest } from "@/lib/ai/reasoning-request";
+import { createGenerationPreferenceSnapshot } from "@/lib/ai/generation-preferences";
 import { buildUnexpectedTerminalErrorState, buildClientErrorState } from "@/lib/ai/stream-error-ui";
 import {
     isFailureTerminalReason,
@@ -31,7 +33,13 @@ import { normalizeAssistantContent } from "@/lib/ai/normalize-assistant-content"
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
 import { MarkdownComponents } from "@/components/markdown/MarkdownComponents";
 import type { PopupChatContext } from "@/types/popup-chat";
-import type { CopilotPage } from "@/types/ai";
+import type { CopilotPage, ReasoningEffort, ReasoningMode } from "@/types/ai";
+import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
+import {
+    isSelectableModelReady,
+    type ModelAvailabilityMap,
+    type ModelAvailabilityStatus,
+} from "@/hooks/useModelAvailability";
 import { COARSE_POINTER_MEDIA_QUERY } from "@/lib/mobile/breakpoints";
 import { isMobilePopupV2Enabled } from "@/lib/mobile/feature-flags";
 import { isMobileTelemetryContext, recordMobileMetric } from "@/lib/mobile/telemetry";
@@ -147,7 +155,17 @@ type PopupChatProps = {
 export function PopupChat({ projectId }: PopupChatProps) {
     const mobilePopupV2Enabled = isMobilePopupV2Enabled();
     const { isOpen, context, closePopupChat } = usePopupChat();
-    const { selectConversation, setCollapsed, refreshConversations } = useProjectConversation();
+    const {
+        selectConversation,
+        setCollapsed,
+        refreshConversations,
+        selectedModel,
+        reasoningEffort,
+        reasoningMode,
+        modelAvailability,
+        modelAvailabilityStatus,
+        retryModelAvailability,
+    } = useProjectConversation();
 
     if (!context) return null;
 
@@ -161,6 +179,12 @@ export function PopupChat({ projectId }: PopupChatProps) {
             selectConversation={selectConversation}
             setCollapsed={setCollapsed}
             refreshConversations={refreshConversations}
+            selectedModel={selectedModel}
+            reasoningEffort={reasoningEffort}
+            reasoningMode={reasoningMode}
+            modelAvailability={modelAvailability}
+            modelAvailabilityStatus={modelAvailabilityStatus}
+            retryModelAvailability={retryModelAvailability}
             mobilePopupV2Enabled={mobilePopupV2Enabled}
         />
     );
@@ -173,6 +197,12 @@ type PopupChatRuntimeProps = PopupChatProps & {
     selectConversation: (conversationId: string) => Promise<boolean>;
     setCollapsed: (collapsed: boolean) => void;
     refreshConversations: () => Promise<void>;
+    selectedModel: SelectableModelId;
+    reasoningEffort: ReasoningEffort;
+    reasoningMode: ReasoningMode;
+    modelAvailability?: ModelAvailabilityMap;
+    modelAvailabilityStatus?: ModelAvailabilityStatus;
+    retryModelAvailability?: () => void;
     mobilePopupV2Enabled: boolean;
 };
 
@@ -184,6 +214,12 @@ function PopupChatRuntime({
     selectConversation,
     setCollapsed,
     refreshConversations,
+    selectedModel,
+    reasoningEffort,
+    reasoningMode,
+    modelAvailability,
+    modelAvailabilityStatus,
+    retryModelAvailability,
     mobilePopupV2Enabled,
 }: PopupChatRuntimeProps) {
     const isDragEnabled = !useMediaQuery(COARSE_POINTER_MEDIA_QUERY);
@@ -214,6 +250,12 @@ function PopupChatRuntime({
 
     // Count user messages
     const userTurnCount = streamState.items.filter((item) => item.type === "user_message").length;
+    const selectedModelInfo = USER_SELECTABLE_MODELS.find((model) => model.id === selectedModel);
+    const selectedModelReady = isSelectableModelReady(
+        modelAvailability,
+        modelAvailabilityStatus,
+        selectedModel,
+    );
 
     const updateStreamState = useCallback((updater: (prev: PopupStreamRuntimeState) => PopupStreamRuntimeState) => {
         setStreamState((prev) => {
@@ -262,7 +304,18 @@ function PopupChatRuntime({
 
     const handleSend = useCallback(async () => {
         const trimmed = input.trim();
-        if (!trimmed || isStreaming || !context) return;
+        if (!trimmed || isStreaming || !context || !selectedModelReady) return;
+        const generationSnapshot = createGenerationPreferenceSnapshot({
+            model: selectedModel,
+            reasoningEffort,
+            // Popup chat has no delivery selector. Keep it isolated from the
+            // main composer's one-shot paid priority state.
+            deliveryMode: "standard",
+        });
+        const reasoningRequest = resolveReasoningRequest({
+            preferredMode: reasoningMode,
+            modelId: generationSnapshot.model,
+        });
         const startedAt = Date.now();
         let sendSucceeded = false;
 
@@ -378,6 +431,12 @@ function PopupChatRuntime({
                             ? context.section
                             : undefined,
                         agentMode: "general",
+                        model: generationSnapshot.model,
+                        reasoningEffort: generationSnapshot.reasoningEffort,
+                        deliveryMode: generationSnapshot.deliveryMode,
+                        reasoningMode: reasoningRequest.reasoningMode,
+                        includeReasoning: reasoningRequest.includeReasoning,
+                        reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
                     },
                 }),
                 signal: controller.signal,
@@ -465,7 +524,7 @@ function PopupChatRuntime({
                 });
             }
         }
-    }, [context, input, isStreaming, updateStreamState]);
+    }, [context, input, isStreaming, reasoningEffort, reasoningMode, selectedModel, selectedModelReady, updateStreamState]);
 
     const handleStop = useCallback(() => {
         userStopRequestedRef.current = true;
@@ -668,7 +727,14 @@ function PopupChatRuntime({
     const label = getContextLabel(context);
     const preview = getContextPreview(context);
     const icon = contextIcon(context);
-    const canSend = input.trim().length > 0 && !isStreaming;
+    const modelReadinessMessage = modelAvailabilityStatus === "loading"
+        ? "Checking model setup…"
+        : modelAvailabilityStatus === "error"
+            ? "Could not verify model setup."
+            : !selectedModelReady
+                ? `${selectedModelInfo?.name ?? selectedModel} is not configured. Choose another model in the main chat.`
+                : null;
+    const canSend = input.trim().length > 0 && !isStreaming && selectedModelReady;
     const popupClassName = `${styles.popupChat} ${mobilePopupV2Enabled ? styles.popupChatMobileV2 : ""}`;
     const renderedItems = streamState.items;
 
@@ -886,6 +952,24 @@ function PopupChatRuntime({
 
                     {/* Input */}
                     <div className={styles.inputArea}>
+                        <div className={styles.popupGenerationSummary}>
+                            <span>{selectedModelInfo?.name ?? selectedModel}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{reasoningEffort} reasoning</span>
+                            <span aria-hidden="true">·</span>
+                            <span>standard delivery</span>
+                        </div>
+                        {modelReadinessMessage ? (
+                            <div
+                                className={`${styles.popupReadiness} ${modelAvailabilityStatus === "error" ? styles.popupReadinessError : ""}`}
+                                role={modelAvailabilityStatus === "error" ? "alert" : "status"}
+                            >
+                                <span>{modelReadinessMessage}</span>
+                                {modelAvailabilityStatus === "error" && retryModelAvailability ? (
+                                    <button type="button" onClick={retryModelAvailability}>Retry</button>
+                                ) : null}
+                            </div>
+                        ) : null}
                         <div className={styles.inputRow}>
                             <textarea
                                 ref={textareaRef}

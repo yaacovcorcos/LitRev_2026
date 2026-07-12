@@ -5,6 +5,7 @@ import { getAIService } from "@/lib/server/ai";
 import { normalizeAssistantContent } from "@/lib/ai/normalize-assistant-content";
 import { sanitizeContext } from "@/lib/ai/prompts/assistant-prompts";
 import type { AIMessage } from "@/types/ai";
+import { getBackgroundModel } from "@/lib/server/ai/background-model-policy";
 import { withValidatedAction, type ActionResult } from "@/lib/server/action-utils";
 import { withAuth } from "@/lib/server/auth/session";
 import { cuidSchema } from "@/lib/schemas/ids";
@@ -96,7 +97,8 @@ export async function summarizeConversationAction(
         // 3. Call AI for summarization
         const aiService = getAIService();
         const response = await aiService.chat(messages, {
-            model: "grok-4-1-fast",
+            model: getBackgroundModel("fast"),
+            reasoningEffort: "fast",
             temperature: 0.2,
             maxTokens: 1500,
             projectId: conversation.projectId ?? undefined,

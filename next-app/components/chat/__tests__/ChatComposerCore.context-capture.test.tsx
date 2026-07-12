@@ -63,7 +63,7 @@ describe("ChatComposerCore context capture UI", () => {
             "Refine this.",
             "protocol",
             undefined,
-            "gpt-5.2",
+            "gpt-5.6-luna",
             "protocol",
             undefined,
             undefined,

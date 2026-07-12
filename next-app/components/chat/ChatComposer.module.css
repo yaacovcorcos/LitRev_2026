@@ -224,6 +224,14 @@
     flex: 1;
 }
 
+.modelControlsWide {
+    display: contents;
+}
+
+.compactModelSettings {
+    display: none;
+}
+
 .inputBarRight {
     display: flex;
     align-items: center;
@@ -408,9 +416,12 @@
 /* ---- Model Selector ---- */
 
 .modelBtn {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 4px;
+    min-width: 0;
+    min-height: 32px;
+    max-width: 172px;
     padding: 6px 10px;
     background: transparent;
     border: none;
@@ -420,6 +431,10 @@
     font-size: 12px;
     font-weight: 500;
     transition: background 0.15s ease, color 0.15s ease;
+}
+
+.modelSettingBtn {
+    min-width: 0;
 }
 
 .modelBtn:hover {
@@ -519,6 +534,7 @@
 
 /* Shadow-only focus for input-bar buttons */
 .modelBtn:focus-visible,
+.modelSettingBtn:focus-visible,
 .presetBtn:focus-visible,
 .actionBtn:focus-visible,
 .compressBtn:focus-visible,
@@ -798,6 +814,43 @@
     box-shadow: var(--shadow-focus-ring);
 }
 
+.composerStatus {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 10px;
+    padding: 7px 9px;
+    border-radius: 8px;
+    background: var(--color-info-bg);
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.composerStatusError {
+    background: var(--color-warning-bg);
+    color: var(--color-warning-text);
+}
+
+.composerStatus button {
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.composerStatus button:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus-ring);
+}
+
 /* ---- Secondary Actions Menu ---- */
 
 .actionsMenuDropdown {
@@ -999,6 +1052,11 @@
     .modePillChevron {
         width: 36px;
         height: 36px;
+    }
+
+    .modelBtn,
+    .modelSettingBtn {
+        min-height: 44px;
     }
 }
 
@@ -1215,15 +1273,26 @@
 
 /* ---- Responsive Container Queries ---- */
 
+@container inputBox (max-width: 400px) {
+    .modelControlsWide {
+        display: none;
+    }
+
+    .compactModelSettings {
+        display: contents;
+    }
+}
+
 @container inputBox (max-width: 360px) {
     .presetBtn {
         display: none;
     }
 }
 
-@container inputBox (max-width: 280px) {
+@container inputBox (max-width: 320px) {
     .modelBtn {
-        display: none;
+        max-width: 88px;
+        padding-inline: 5px;
     }
 }
 

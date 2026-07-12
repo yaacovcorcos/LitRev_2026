@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => {
     markRunFinalizationState: vi.fn(),
     markRunFinalizationFailed: vi.fn(),
     markRunAbnormalEndClassification: vi.fn(async () => undefined),
+    recordRunGenerationReceipt: vi.fn(async () => {}),
     isRunOwnershipError: vi.fn(() => false),
     startRunHeartbeat: vi.fn(() => ({ stop: vi.fn() })),
     registerActiveRunExecutionCancellation: vi.fn(() => ({
@@ -69,6 +70,7 @@ vi.mock("@/lib/server/ai/providers", () => ({
   getAnthropicProvider: () => ({ isConfigured: () => false }),
   getXAIProvider: () => ({ isConfigured: () => false }),
   getGoogleProvider: () => ({ isConfigured: () => false }),
+  getGatewayProvider: () => ({ isConfigured: () => false }),
 }));
 
 vi.mock("@/lib/server/ai/rate-limiter", () => ({
@@ -96,7 +98,25 @@ vi.mock("@/lib/server/memory", () => ({
 
 vi.mock("@/lib/ai/config", () => ({
   AI_CONFIG: { defaultProvider: "mock-provider", defaultModel: "gpt-5.2" },
+  getModelCapabilityRecord: vi.fn(() => ({
+    id: "gpt-5.2",
+    providerModelId: "gpt-5.2",
+    provider: "openai",
+    providerDialect: "openai",
+    contextWindow: 8_000,
+    maxOutputTokens: 2_048,
+    capabilities: ["chat", "tools"],
+    reasoningSupport: "explicit",
+    reasoningVisibilitySupport: "none",
+    reasoningEfforts: ["fast", "low", "medium", "high", "max"],
+    defaultReasoningEffort: "medium",
+    temperatureSupport: "full",
+    deliveryModes: ["standard"],
+    selectable: true,
+  })),
   getProviderForModel: vi.fn(() => "mock-provider"),
+  getProviderModelId: vi.fn((modelId: string) => modelId),
+  getDefaultReasoningEffort: vi.fn(() => "medium"),
   getContextBudget: vi.fn(() => 8000),
 }));
 
@@ -124,6 +144,7 @@ vi.mock("@/lib/server/agent/run", () => ({
   markRunFinalizationState: mocks.markRunFinalizationState,
   markRunFinalizationFailed: mocks.markRunFinalizationFailed,
   markRunAbnormalEndClassification: mocks.markRunAbnormalEndClassification,
+  recordRunGenerationReceipt: mocks.recordRunGenerationReceipt,
   isRunOwnershipError: mocks.isRunOwnershipError,
   startRunHeartbeat: mocks.startRunHeartbeat,
 }));

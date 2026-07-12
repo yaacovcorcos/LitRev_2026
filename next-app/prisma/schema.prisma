@@ -359,21 +359,33 @@ model AIMessage {
 // AI Usage - tracks token usage for rate limiting and cost control
 // Multi-user ready: userId + workspaceId for per-user/workspace tracking
 model AIUsage {
-  id             String              @id @default(cuid())
-  reservationId  String?             @unique
+  id             String  @id @default(cuid())
+  reservationId  String? @unique
   userId         String? // User who made the request (required for multi-user)
   workspaceId    String? // Workspace for billing/limits (required for multi-user)
   projectId      String? // Optional: specific project context
   conversationId String?
-  source         String              @default("legacy_unknown")
-  contextPage    String              @default("legacy_unknown")
-  model          String
-  inputTokens    Int
-  outputTokens   Int
-  createdAt      DateTime            @default(now())
-  conversation   AIConversation?     @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  project        Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  reservation    AIUsageReservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  source                   String @default("legacy_unknown")
+  contextPage              String @default("legacy_unknown")
+  model                    String // Provider-observed model when available
+  provider                 String? // Provider-observed upstream when available; null when unknown
+  requestedModel           String?
+  requestedProvider        String?
+  requestedReasoningEffort String?
+  requestedDeliveryMode    String?
+  actualReasoningEffort    String?
+  actualDeliveryMode       String?
+  inputTokens              Int
+  cachedInputTokens        Int    @default(0)
+  cacheWriteInputTokens    Int    @default(0)
+  outputTokens             Int
+  reasoningTokens          Int    @default(0)
+  estimatedCostUsd         Float?
+  createdAt                DateTime @default(now())
+
+  conversation AIConversation?     @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  project      Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  reservation  AIUsageReservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@index([workspaceId, createdAt])
@@ -679,7 +691,14 @@ model AgentRun {
   trigger                        String // "user_message" | "proactive" | "event"
   agentMode                      String // "protocol" | "search" | "screening" | "drafting" | "qa" | "general"
   status                         String // "running" | "completed" | "failed" | "cancelled" | "paused"
-  model                          String?
+  model                          String? // Requested product model ID
+  provider                       String? // Requested provider route
+  reasoningEffort                String?
+  deliveryMode                   String?
+  actualModel                    String?
+  actualProvider                 String?
+  actualReasoningEffort          String?
+  actualDeliveryMode             String?
   costTokensIn                   Int       @default(0)
   costTokensOut                  Int       @default(0)
   startedAt                      DateTime  @default(now())

@@ -3,7 +3,7 @@
 import type { ReactElement } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type { ReasoningMode } from "@/types/ai";
-import type { ReasoningSupportTier } from "@/lib/ai/config";
+import type { ReasoningVisibilitySupport } from "@/lib/ai/config";
 import { useHydrated } from "@/hooks/useHydrated";
 import { REASONING_MODE_OPTIONS } from "@/lib/ai/reasoning-visibility";
 import styles from "./ChatReasoningModeDropdown.module.css";
@@ -16,12 +16,10 @@ type ChatReasoningModeDropdownProps = {
   align?: "start" | "center" | "end";
   sideOffset?: number;
   /**
-   * Reasoning support tier of the current model.
-   * - "explicit": Full reasoning controls
-   * - "best_effort": Controls + warning note
-   * - "none": Dropdown is hidden (caller should not render)
+   * Provider-supported visible reasoning level, independent of compute effort.
+   * Callers should not render the dropdown when this is "none".
    */
-  reasoningSupport?: ReasoningSupportTier;
+  reasoningVisibilitySupport?: ReasoningVisibilitySupport;
 };
 
 export function ChatReasoningModeDropdown({
@@ -31,10 +29,12 @@ export function ChatReasoningModeDropdown({
   side = "bottom",
   align = "end",
   sideOffset = 6,
-  reasoningSupport = "explicit",
+  reasoningVisibilitySupport = "full",
 }: ChatReasoningModeDropdownProps) {
   const hasMounted = useHydrated();
-  const showBestEffortNote = reasoningSupport === "best_effort";
+  const options = reasoningVisibilitySupport === "summary"
+    ? REASONING_MODE_OPTIONS.filter((option) => option.value !== "full")
+    : REASONING_MODE_OPTIONS;
 
   // Match the server tree on the first client render so Radix-generated ids
   // do not drift during hydration in headers that SSR this trigger.
@@ -59,7 +59,7 @@ export function ChatReasoningModeDropdown({
             value={reasoningMode}
             onValueChange={(value) => onReasoningModeChange(value as ReasoningMode)}
           >
-            {REASONING_MODE_OPTIONS.map((option) => (
+            {options.map((option) => (
               <DropdownMenu.RadioItem
                 key={option.value}
                 value={option.value}
@@ -76,10 +76,10 @@ export function ChatReasoningModeDropdown({
               </DropdownMenu.RadioItem>
             ))}
           </DropdownMenu.RadioGroup>
-          {showBestEffortNote && (
+          {reasoningVisibilitySupport === "summary" && (
             <div className={styles.bestEffortNote}>
               <span className="material-icons-round">info</span>
-              <span>This model may not always return reasoning.</span>
+              <span>This provider returns a reasoning summary, not raw private reasoning.</span>
             </div>
           )}
         </DropdownMenu.Content>

@@ -7,9 +7,10 @@ import { isHighConfidenceExclusion } from "@/lib/criteria-matching";
 import { isTieredScreeningEnabled } from "@/lib/agent/feature-flags";
 import type { ScreeningTier, Study } from "@/types/ledger";
 import { isAbortLikeError, throwIfAborted } from "@/lib/abort";
+import { getBackgroundModel } from "@/lib/server/ai/background-model-policy";
 
 const MAX_BATCH_SIZE = 20;
-const SCREENING_MODEL = "grok-4-1-fast";
+const SCREENING_MODEL = () => getBackgroundModel("analysis");
 const LOW_CONFIDENCE_THRESHOLD = 0.3;
 
 const inputSchema = z.object({
@@ -275,7 +276,8 @@ Return ONLY valid JSON.`,
                             },
                         ],
                         {
-                            model: SCREENING_MODEL,
+                            model: SCREENING_MODEL(),
+                            reasoningEffort: "fast",
                             temperature: 0.2,
                             maxTokens: 200,
                             projectId,
@@ -303,7 +305,7 @@ Return ONLY valid JSON.`,
                         matchRationale: decision.reason,
                         confidence: decision.confidence,
                         screeningTier: "ai",
-                        modelUsed: SCREENING_MODEL,
+                        modelUsed: SCREENING_MODEL(),
                     });
                 } catch (error) {
                     if (context?.signal?.aborted || isAbortLikeError(error)) {
@@ -325,7 +327,7 @@ Return ONLY valid JSON.`,
                                 matchRationale: recovered.reason,
                                 confidence: recovered.confidence,
                                 screeningTier: "heuristic",
-                                modelUsed: SCREENING_MODEL,
+                                modelUsed: SCREENING_MODEL(),
                             });
                             continue;
                         }
@@ -342,7 +344,7 @@ Return ONLY valid JSON.`,
                         matchRationale: "Screening failed — needs manual review",
                         confidence: 0,
                         screeningTier: "default",
-                        modelUsed: SCREENING_MODEL,
+                        modelUsed: SCREENING_MODEL(),
                     });
                 }
             }

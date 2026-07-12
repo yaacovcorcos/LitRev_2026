@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ChatReasoningModeDropdown } from "../ChatReasoningModeDropdown";
 
@@ -15,42 +15,46 @@ describe("ChatReasoningModeDropdown", () => {
         expect(screen.getByRole("button", { name: "Trigger" })).toBeTruthy();
     });
 
-    it("accepts explicit reasoningSupport prop without error", () => {
+    it("accepts full reasoning visibility support without error", () => {
         expect(() =>
             render(
                 <ChatReasoningModeDropdown
                     {...defaultProps}
-                    reasoningSupport="explicit"
+                    reasoningVisibilitySupport="full"
                 />
             )
         ).not.toThrow();
     });
 
-    it("accepts best_effort reasoningSupport prop without error", () => {
+    it("limits summary providers to Off and Summary", () => {
+        render(
+            <ChatReasoningModeDropdown
+                {...defaultProps}
+                reasoningVisibilitySupport="summary"
+            />,
+        );
+
+        fireEvent.pointerDown(screen.getByRole("button", { name: "Trigger" }));
+        expect(screen.getByRole("menuitemradio", { name: /Off/i })).toBeTruthy();
+        expect(screen.getByRole("menuitemradio", { name: /Summary/i })).toBeTruthy();
+        expect(screen.queryByRole("menuitemradio", { name: /Full/i })).toBeNull();
+        expect(screen.getByText(/not raw private reasoning/i)).toBeTruthy();
+    });
+
+    it("accepts no visible reasoning support without error", () => {
         expect(() =>
             render(
                 <ChatReasoningModeDropdown
                     {...defaultProps}
-                    reasoningSupport="best_effort"
+                    reasoningVisibilitySupport="none"
                 />
             )
         ).not.toThrow();
     });
 
-    it("accepts none reasoningSupport prop without error", () => {
-        expect(() =>
-            render(
-                <ChatReasoningModeDropdown
-                    {...defaultProps}
-                    reasoningSupport="none"
-                />
-            )
-        ).not.toThrow();
-    });
-
-    it("defaults to explicit when reasoningSupport is not provided", () => {
+    it("defaults to full when visibility support is not provided", () => {
         // This is a type-level test - the component renders without error
-        // when no reasoningSupport is passed (defaults to "explicit")
+        // when no visibility support is passed (defaults to "full")
         expect(() =>
             render(<ChatReasoningModeDropdown {...defaultProps} />)
         ).not.toThrow();

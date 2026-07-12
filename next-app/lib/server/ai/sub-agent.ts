@@ -19,7 +19,7 @@
 
 import "server-only";
 
-import type { AIMessage, ToolBlockedReason, ToolCall, ToolResultArtifact, UserInputRequest, ChatOptions } from "@/types/ai";
+import type { AIMessage, DeliveryMode, ReasoningEffort, ToolBlockedReason, ToolCall, ToolResultArtifact, UserInputRequest, ChatOptions } from "@/types/ai";
 import type { AgentMode, RunStatus } from "@/types/agent";
 import { LoopState, type LoopBudget, type StopReason } from "@/lib/agent/loop-controller";
 import { getToolDefinitions } from "./tools/base";
@@ -32,6 +32,7 @@ import {
     isRunOwnershipError,
     markRunFinalizationFailed,
     markRunFinalizationState,
+    recordRunGenerationReceipt,
     startRun,
     startRunHeartbeat,
     type RunHeartbeatController,
@@ -48,6 +49,7 @@ import {
     deriveSearchSourcePolicy,
     filterToolDefinitionsBySearchSourcePolicy,
 } from "@/lib/agent/search-source-policy";
+import { getProviderForModel } from "@/lib/ai/config";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,6 +90,8 @@ export interface SubAgentParams {
     signal?: AbortSignal;
     /** Optional model ID used for run metadata. */
     model?: string;
+    reasoningEffort?: ReasoningEffort;
+    deliveryMode?: DeliveryMode;
     /**
      * Original parent request text used for source-gating search tools.
      * This keeps delegated search PubMed-only unless the parent user explicitly
@@ -364,6 +368,9 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             trigger: "event",
             agentMode: mode,
             model: params.model,
+            provider: params.model ? getProviderForModel(params.model) : undefined,
+            reasoningEffort: params.reasoningEffort,
+            deliveryMode: params.deliveryMode,
         });
         childRunId = childRun.id;
         childRootRunId = childRun.rootRunId ?? params.rootRunId ?? childRun.id;
@@ -423,11 +430,13 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
         ];
 
         const chatOptions: ChatOptions = {
+            model: params.model,
+            reasoningEffort: params.reasoningEffort,
+            deliveryMode: params.deliveryMode,
             tools: toolDefs,
             projectId,
             userId,
             signal: loopSignal,
-            model: params.model,
         };
 
         // 4. Run the tool-calling loop
@@ -444,12 +453,23 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             // Stream from AI, collect tool calls and content
             const collectedToolCalls: ToolCall[] = [];
             let contentSoFar = "";
+            let providerReasoningContent: string | undefined;
 
             for await (const chunk of aiService.streamChat(currentMessages, chatOptions)) {
                 if (chunk.type === "tool_call" && chunk.toolCall) {
                     collectedToolCalls.push(chunk.toolCall);
                 } else if (chunk.type === "content") {
                     contentSoFar += chunk.content || "";
+                } else if (chunk.type === "done") {
+                    providerReasoningContent = chunk.providerReasoningContent;
+                    if (childRunId) {
+                        await recordRunGenerationReceipt(childRunId, {
+                            actualModel: chunk.actualModel,
+                            actualProvider: chunk.actualProvider,
+                            actualReasoningEffort: chunk.actualReasoningEffort,
+                            actualDeliveryMode: chunk.actualDeliveryMode,
+                        });
+                    }
                 } else if (chunk.type === "error") {
                     if (loopSignal.aborted) {
                         const timedOut = loopDeadline.timedOut();
@@ -561,6 +581,7 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                 role: "assistant",
                 content: contentSoFar,
                 toolCalls: collectedToolCalls,
+                providerReasoningContent,
                 createdAt: new Date().toISOString(),
             };
             currentMessages.push(assistantMsg);

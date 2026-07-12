@@ -73,7 +73,7 @@ export function ProjectCopilotPanel({
         isLoading,
         reasoningMode,
         setReasoningMode,
-        reasoningSupport,
+        reasoningVisibilitySupport,
         setCollapsed,
         // Conversation management
         conversations,
@@ -106,8 +106,8 @@ export function ProjectCopilotPanel({
     } = useProjectConversation();
     const { notify } = useNotifications();
 
-    // Hide reasoning controls when model doesn't support reasoning
-    const showReasoningControls = reasoningSupport !== "none";
+    // Visible reasoning is separate from the model's compute-effort support.
+    const showReasoningControls = reasoningVisibilitySupport !== "none";
 
     const [showConversationDropdown, setShowConversationDropdown] = useState(false);
     const [isBranching, setIsBranching] = useState(false);
@@ -247,7 +247,6 @@ export function ProjectCopilotPanel({
             studyId,
             {
                 requestKey: generateChatUnificationRequestKey(),
-                expectedModel: selectedModel ?? null,
                 source: "retry_action",
             },
             undefined,
@@ -444,7 +443,7 @@ export function ProjectCopilotPanel({
                             <ChatReasoningModeDropdown
                                 reasoningMode={reasoningMode}
                                 onReasoningModeChange={setReasoningMode}
-                                reasoningSupport={reasoningSupport}
+                                reasoningVisibilitySupport={reasoningVisibilitySupport}
                             >
                                 <button
                                     type="button"

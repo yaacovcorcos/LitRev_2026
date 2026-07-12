@@ -25,6 +25,8 @@ import type {
     AIStreamChunk,
     ChoiceOption,
     CopilotPage,
+    DeliveryMode,
+    ReasoningEffort,
     ReasoningMode,
     RuntimeSendOverrides,
     RunRecoveryResponse,
@@ -76,6 +78,9 @@ import {
 } from "@/lib/ai/run-recovery-client";
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/project-conversation-context";
 import type { useProjectConversationManager } from "@/hooks/useProjectConversationManager";
+import { getModelCapabilityRecord, type SelectableModelId } from "@/lib/ai/config";
+import type { GenerationPreferenceSnapshot } from "@/types/queued-followup";
+import { createGenerationPreferenceSnapshot } from "@/lib/ai/generation-preferences";
 
 /** Dependencies injected by the provider. */
 export type ProjectConversationStreamActionsDeps = {
@@ -96,6 +101,10 @@ export type ProjectConversationStreamActionsDeps = {
     pendingAttachment: PendingAttachment | null;
     setPendingAttachment: React.Dispatch<React.SetStateAction<PendingAttachment | null>>;
     reasoningMode: ReasoningMode;
+    selectedModel: SelectableModelId;
+    reasoningEffort: ReasoningEffort;
+    deliveryMode: DeliveryMode;
+    resetDeliveryMode: () => void;
     convo: ReturnType<typeof useProjectConversationManager>;
     onNavigate: (url: string) => void;
 };
@@ -119,6 +128,10 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         pendingAttachment,
         setPendingAttachment,
         reasoningMode,
+        selectedModel,
+        reasoningEffort,
+        deliveryMode,
+        resetDeliveryMode,
         convo,
         onNavigate,
     } = deps;
@@ -1305,6 +1318,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
             retryModelExpectation?: RetryModelExpectation,
             contextTargets?: ContextCaptureTarget[],
             runtimeOverrides?: RuntimeSendOverrides,
+            generationPreferences?: GenerationPreferenceSnapshot,
         ) => {
             const trimmed = text.trim();
             const explicitUserInputResolution = runtimeOverrides?.userInputResolution ?? null;
@@ -1312,6 +1326,27 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
             if (!trimmed && !attachment && !explicitUserInputResolution) return;
             if (attachment?.extraction.status === "failed") {
                 console.error("Blocking send because the attached PDF could not be read for chat.");
+                return;
+            }
+            const requestedModel = generationPreferences?.model ?? model ?? selectedModel;
+            const sameAsSelectedModel = requestedModel === selectedModel;
+            const generationSnapshot = createGenerationPreferenceSnapshot({
+                model: requestedModel,
+                reasoningEffort: generationPreferences?.reasoningEffort
+                    ?? (sameAsSelectedModel ? reasoningEffort : undefined),
+                deliveryMode: generationPreferences?.deliveryMode
+                    ?? (sameAsSelectedModel ? deliveryMode : "standard"),
+            });
+            const attachmentIsImage = attachment?.extraction.status === "ready"
+                && (
+                    attachment.extraction.mediaKind === "image"
+                    || attachment.mimeType.startsWith("image/")
+                );
+            if (
+                attachmentIsImage
+                && !getModelCapabilityRecord(generationSnapshot.model)?.capabilities.includes("vision")
+            ) {
+                console.error(`Blocking send because ${generationSnapshot.model} does not support image input.`);
                 return;
             }
             const continueFromRunId = runtimeOverrides?.continueFromRunId ?? null;
@@ -1380,6 +1415,8 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 }
             }
 
+            resetDeliveryMode();
+
             // Build attachment metadata and augmented message for AI
             let messageForAI = trimmed;
             let attachmentsMeta: ProjectConversationMessageAttachment[] | undefined;
@@ -1388,8 +1425,17 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 const sizeStr = attachment.size >= 1024 * 1024
                     ? `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`
                     : `${Math.round(attachment.size / 1024)} KB`;
-                const userText = trimmed || "I've attached a PDF. Please review it and summarize the key points.";
-                messageForAI = `<attached_document filename="${attachment.filename}" size="${sizeStr}">\n${attachment.extraction.text}\n</attached_document>\n\n${userText}`;
+                const isImage = attachment.extraction.status === "ready"
+                    && (
+                        attachment.extraction.mediaKind === "image"
+                        || attachment.mimeType.startsWith("image/")
+                    );
+                const userText = trimmed || (isImage
+                    ? "I've attached an image. Please review it and summarize the key points."
+                    : "I've attached a PDF. Please review it and summarize the key points.");
+                messageForAI = isImage
+                    ? userText
+                    : `<attached_document filename="${attachment.filename}" size="${sizeStr}">\n${attachment.extraction.text}\n</attached_document>\n\n${userText}`;
                 attachmentsMeta = [{
                     fileAssetId: attachment.fileAssetId,
                     filename: attachment.filename,
@@ -1397,7 +1443,6 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                     mimeType: attachment.mimeType,
                     isExisting: attachment.isExisting,
                 }];
-                setPendingAttachment(null);
             }
 
             if (contextTargets?.length) {
@@ -1411,7 +1456,11 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
             }
 
             // Add user message (display text only, not the augmented AI text)
-            const displayText = trimmed || (attachment ? "I've attached a PDF. Please review it and summarize the key points." : "");
+            const displayText = trimmed || (attachment
+                ? (attachment.extraction.status === "ready" && attachment.extraction.mediaKind === "image"
+                    ? "I've attached an image. Please review it and summarize the key points."
+                    : "I've attached a PDF. Please review it and summarize the key points.")
+                : "");
             const userMessage: ProjectConversationMessage = {
                 id: `m-${Date.now()}`,
                 sender: "user",
@@ -1431,27 +1480,13 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 convo.markConversationActivity(convId);
             }
 
-            if (retryModelExpectation) {
-                recordChatUnificationMetric({
-                    type: "retry_model_continuity",
-                    surface: "project",
-                    conversationId: convId ?? null,
-                    projectId,
-                    payload: {
-                        requestKey: retryModelExpectation.requestKey,
-                        expectedModel: retryModelExpectation.expectedModel,
-                        source: retryModelExpectation.source,
-                    },
-                });
-            }
-
             const reasoningRequest = resolveReasoningRequest({
                 preferredMode: reasoningMode,
-                modelId: model,
+                modelId: generationSnapshot.model,
             });
 
             // Run the stream
-            await runStream({
+            const streamResult = await runStream({
                 body: {
                     userMessage: messageForAI,
                     context: conversationContext,
@@ -1459,7 +1494,9 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                         conversationId: convId ?? undefined,
                         projectId,
                         studyId: resolvedStudyId,
-                        model,
+                        model: generationSnapshot.model,
+                        reasoningEffort: generationSnapshot.reasoningEffort,
+                        deliveryMode: generationSnapshot.deliveryMode,
                         reasoningMode: reasoningRequest.reasoningMode,
                         includeReasoning: reasoningRequest.includeReasoning,
                         reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
@@ -1481,8 +1518,13 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 convId,
                 replaceRunId,
             });
+            if (attachment && streamResult.success) {
+                setPendingAttachment((current) => (
+                    current?.fileAssetId === attachment.fileAssetId ? null : current
+                ));
+            }
         },
-        [updateState, projectId, beginRunCancellation, convo, pendingAttachment, pendingUserInput, reasoningMode, runStream, setPendingChoices, setPendingAttachment, setPendingUserInput, isLoadingRef, currentRunId, stopLocalStream, waitForActiveSendRelease]
+        [updateState, projectId, beginRunCancellation, convo, pendingAttachment, pendingUserInput, reasoningMode, selectedModel, reasoningEffort, deliveryMode, resetDeliveryMode, runStream, setPendingChoices, setPendingAttachment, setPendingUserInput, isLoadingRef, currentRunId, stopLocalStream, waitForActiveSendRelease]
     );
 
     const executePlanAction = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
@@ -1520,8 +1562,15 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         const convId = convo.currentConversationId;
         const planMessage = stateRef.current.messages.find((msg) => msg.artifact?.id === artifactId);
         const executionPage = planMessage?.context?.page ?? "overview";
+        const generationSnapshot = createGenerationPreferenceSnapshot({
+            model: selectedModel,
+            reasoningEffort,
+            deliveryMode,
+        });
+        resetDeliveryMode();
         const reasoningRequest = resolveReasoningRequest({
             preferredMode: reasoningMode,
+            modelId: generationSnapshot.model,
         });
 
         const result = await runStream({
@@ -1533,6 +1582,9 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 options: {
                     conversationId: convId ?? undefined,
                     projectId,
+                    model: generationSnapshot.model,
+                    reasoningEffort: generationSnapshot.reasoningEffort,
+                    deliveryMode: generationSnapshot.deliveryMode,
                     reasoningMode: reasoningRequest.reasoningMode,
                     includeReasoning: reasoningRequest.includeReasoning,
                     reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
@@ -1607,7 +1659,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 messages: [...prev.messages, feedback],
             }));
         }
-    }, [beginRunCancellation, convo, currentRunId, projectId, reasoningMode, runStream, updateState, setArtifacts, setPendingChoices, isLoadingRef, stateRef, stopLocalStream]);
+    }, [beginRunCancellation, convo, currentRunId, projectId, reasoningMode, selectedModel, reasoningEffort, deliveryMode, resetDeliveryMode, runStream, updateState, setArtifacts, setPendingChoices, isLoadingRef, stateRef, stopLocalStream]);
 
     const reviewArtifactActionLocal = useCallback(async (
         artifactId: string,

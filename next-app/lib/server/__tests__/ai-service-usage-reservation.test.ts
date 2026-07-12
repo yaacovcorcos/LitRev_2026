@@ -30,8 +30,27 @@ vi.mock("@/lib/ai/config", () => ({
         anthropic: [],
         xai: [],
         google: [],
+        gateway: [],
     },
-    getProviderForModel: vi.fn(() => undefined),
+    getModelCapabilityRecord: vi.fn((modelId: string) => modelId === "mock-model" ? ({
+        id: "mock-model",
+        providerModelId: "mock-model",
+        provider: "openai",
+        providerDialect: "openai",
+        contextWindow: 8_192,
+        maxOutputTokens: 2_048,
+        capabilities: ["chat"],
+        reasoningSupport: "explicit",
+        reasoningVisibilitySupport: "none",
+        reasoningEfforts: ["fast", "low", "medium", "high", "max"],
+        defaultReasoningEffort: "medium",
+        temperatureSupport: "full",
+        deliveryModes: ["standard"],
+        selectable: true,
+    }) : undefined),
+    getProviderModelId: vi.fn((modelId: string) => modelId),
+    getDefaultReasoningEffort: vi.fn(() => "medium"),
+    getProviderForModel: vi.fn((modelId: string) => modelId === "mock-model" ? "usage-provider" : undefined),
     getContextBudget: vi.fn(() => 8_192),
 }));
 
@@ -211,13 +230,16 @@ describe("AIService durable provider-attempt accounting", () => {
             "failed",
             "UPSTREAM_503",
         );
-        expect(mocks.trySettleUsageReservation).toHaveBeenCalledWith({
+        expect(mocks.trySettleUsageReservation).toHaveBeenCalledWith(expect.objectContaining({
             reservationId: "reservation-2",
             model: "mock-model",
+            provider: "usage-provider",
+            requestedModel: "mock-model",
+            requestedProvider: "usage-provider",
             inputTokens: 20,
             outputTokens: 5,
             cachedInputTokens: undefined,
-        });
+        }));
     });
 
     it("returns a successful chat response when settlement rejects and does not retry the provider", async () => {

@@ -203,7 +203,9 @@ The remediation replaces those assumptions with explicit ownership checks, compa
 
 ## Model-portfolio integration boundary
 
-The separate model portfolio was monitored in its own worktree. It is not merged merely because it has a commit. Integration requires an independent green gate and deliberate conflict resolution because it changes provider configuration, pricing/accounting, model limits, UI availability, Prisma schema, and many of the same runtime tests changed here. Reliability ownership, cancellation, provider terminal validation, title/background scheduling, and usage reservation semantics from this branch must win any conflict.
+The separate model portfolio was monitored in its own worktree and was not accepted merely because its original suite was green. Independent review found pricing, attachment, availability, runtime-default, reasoning-budget, receipt, background-routing, and reservation-policy gaps. The portfolio was then integrated deliberately with reliability ownership, cancellation, provider terminal validation, title/background scheduling, and usage reservation semantics retained as the controlling contracts.
+
+The integrated result additionally fixes Grok long-context/priority stacking, DeepSeek Flash cache pricing, creator-host-aware gateway estimates, unknown service-tier handling, xAI image MIME validation, fail-closed attachment hydration, bounded model-availability loading, runtime default-model selection, compute/visibility separation, normalized reservation sizing, abnormal-terminal receipt preservation, product/provider model-ID recovery parity, and configured-only background routing. Focused boundary tests were added before the final repository-wide gates.
 
 ## Known residual limits
 
@@ -217,13 +219,15 @@ The separate model portfolio was monitored in its own worktree. It is not merged
 
 ## Verification ledger
 
-This section is updated only after the final branch state is frozen.
+Final frozen-tree verification completed on 2026-07-13:
 
-- Focused runtime and failure-path tests: pending final frozen-tree run.
-- Full Vitest suite: pending final frozen-tree run.
-- TypeScript, ESLint, style lint: pending final frozen-tree run.
-- Agent quality and runtime-impact gates: pending final frozen-tree run.
-- Prisma diagnosis, validation, and migration status: pending final frozen-tree run.
-- Production build: pending final frozen-tree run.
-- Browser automation and manual interaction pass: pending final frozen-tree run.
-- Model-portfolio integration gate: pending independent result.
+- Focused runtime, provider, pricing, reservation, cancellation, recovery, and integration suites passed after repairing stale pre-integration test harnesses.
+- Full Vitest: 443 files passed, 3 skipped; 2,940 tests passed, 18 skipped.
+- Real PostgreSQL lane with `RUN_DB_TESTS=1`: 4 files passed; 15 tests passed, 4 intentionally skipped.
+- TypeScript and ESLint passed. Style lint completed with 0 errors and 19 pre-existing warnings; no new warning class was introduced.
+- `governance:ci-required`, agent-quality, and runtime-test-impact gates passed. The agent-quality gate executed all 9 catalog scenarios through 6 deterministic runtime suites and observed 58 runtime signals.
+- Prisma schema validation, migration deploy/status, and DB diagnosis passed against loopback PostgreSQL with all 35 migrations applied and required indexes present.
+- Production `next build` passed and generated 26 application pages/routes.
+- Browser foundation passed all 21 Chromium desktop/mobile scenarios. One parallel desktop primer transiently failed once, then passed three consecutive isolated repetitions and the complete rerun; it is recorded as a test-environment flake rather than hidden.
+- A separate headed Playwright CLI pass verified login, `/ai`, all seven model choices, setup-disabled routes, Terra selection, paid-priority state, 390×844 responsive layout, and the mobile AI-options dialog with zero browser errors. Screenshots were retained only as local verification artifacts, not product assets.
+- Model-portfolio integration passed its focused policy/UI/runtime tests and the complete frozen-tree gates above.

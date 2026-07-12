@@ -59,6 +59,7 @@ vi.mock("@/lib/server/agent/run", () => ({
   markRunFinalizationFailed: mocks.markRunFinalizationFailed,
   isRunOwnershipError: mocks.isRunOwnershipError,
   startRunHeartbeat: mocks.startRunHeartbeat,
+  recordRunGenerationReceipt: vi.fn(async () => {}),
 }));
 
 vi.mock("@/lib/server/agent/events", () => ({

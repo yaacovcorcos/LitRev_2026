@@ -307,6 +307,85 @@ describe("run recovery", () => {
     });
   });
 
+  it("labels the requested model as requested when no provider-observed model was persisted", async () => {
+    mocks.runEventFindMany.mockResolvedValue([]);
+    mocks.runEventFindFirst.mockResolvedValue(null);
+    mocks.artifactFindMany.mockResolvedValue([]);
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-requested-model",
+      conversationId: "conv-1",
+      status: "completed",
+      runPhase: "finalize",
+      phaseEnteredAt: new Date("2026-03-11T11:59:30.000Z"),
+      model: "gpt-5.6-luna",
+      actualModel: null,
+      actualProvider: null,
+      actualReasoningEffort: null,
+      actualDeliveryMode: null,
+      costTokensIn: 12,
+      costTokensOut: 3,
+      lastActivityAt: new Date("2026-03-11T12:00:00.000Z"),
+      lastDurableProgressAt: new Date("2026-03-11T12:00:00.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
+      finalizationState: "completed",
+      abnormalEndClassification: null,
+    });
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-requested-model",
+    });
+
+    expect(result.terminalEvent).toMatchObject({
+      chunk: {
+        type: "run_end",
+        actualModel: "gpt-5.6-luna",
+        actualModelSource: "requested",
+        actualProvider: undefined,
+      },
+    });
+  });
+
+  it("maps a stable gateway product ID to the same provider model ID used by live receipts", async () => {
+    mocks.runEventFindMany.mockResolvedValue([]);
+    mocks.runEventFindFirst.mockResolvedValue(null);
+    mocks.artifactFindMany.mockResolvedValue([]);
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-requested-gateway-model",
+      conversationId: "conv-1",
+      status: "completed",
+      runPhase: "finalize",
+      phaseEnteredAt: new Date("2026-03-11T11:59:30.000Z"),
+      model: "deepseek-v4-pro",
+      actualModel: null,
+      actualProvider: null,
+      actualReasoningEffort: null,
+      actualDeliveryMode: null,
+      costTokensIn: 12,
+      costTokensOut: 3,
+      lastActivityAt: new Date("2026-03-11T12:00:00.000Z"),
+      lastDurableProgressAt: new Date("2026-03-11T12:00:00.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
+      finalizationState: "completed",
+      abnormalEndClassification: null,
+    });
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-requested-gateway-model",
+    });
+
+    expect(result.terminalEvent).toMatchObject({
+      chunk: {
+        type: "run_end",
+        actualModel: "deepseek/deepseek-v4-pro",
+        actualModelSource: "requested",
+      },
+    });
+  });
+
   it("recommends reconnect for fresh running runs and stop-and-retry for stale ones", async () => {
     mocks.runEventFindMany.mockResolvedValue([]);
     mocks.runEventFindFirst.mockResolvedValue(null);

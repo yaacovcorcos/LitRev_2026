@@ -55,6 +55,7 @@ const {
   markRunDurabilityDegraded,
   markRunFinalizationFailed,
   markRunFinalizationState,
+  recordRunGenerationReceipt,
   settleClarificationDismissedRun,
 } = await import("@/lib/server/agent/run");
 
@@ -110,7 +111,10 @@ describe("startRun lineage", () => {
       userId: "u1",
       trigger: "user_message",
       agentMode: "general",
-      model: "gpt-5.2",
+      model: "gpt-5.6-luna",
+      provider: "openai",
+      reasoningEffort: "medium",
+      deliveryMode: "priority",
     });
 
     expect(mocks.agentRunFindUnique).not.toHaveBeenCalled();
@@ -120,6 +124,10 @@ describe("startRun lineage", () => {
         data: expect.objectContaining({
           parentRunId: undefined,
           rootRunId: undefined,
+          model: "gpt-5.6-luna",
+          provider: "openai",
+          reasoningEffort: "medium",
+          deliveryMode: "priority",
           runPhase: "plan",
           phaseEnteredAt: expect.any(Date),
           lastActivityAt: expect.any(Date),
@@ -376,6 +384,29 @@ describe("run freshness lifecycle", () => {
       }),
     }));
     expect(mocks.extractMemoriesFromConversation).not.toHaveBeenCalled();
+  });
+
+  it("records provider receipts only while the run still owns execution", async () => {
+    await recordRunGenerationReceipt("run-1", {
+      actualModel: "gpt-5.6-luna",
+      actualProvider: "openai",
+      actualReasoningEffort: "medium",
+      actualDeliveryMode: "standard",
+    });
+
+    expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: "run-1",
+        status: "running",
+        completedAt: null,
+      },
+      data: {
+        actualModel: "gpt-5.6-luna",
+        actualProvider: "openai",
+        actualReasoningEffort: "medium",
+        actualDeliveryMode: "standard",
+      },
+    });
   });
 
   it("throws a run ownership error when endRun loses the terminal write race", async () => {

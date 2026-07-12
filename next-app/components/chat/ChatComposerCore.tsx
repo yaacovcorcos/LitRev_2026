@@ -13,12 +13,19 @@ import type { FocusEvent as ReactFocusEvent, MouseEvent as ReactMouseEvent } fro
 import type {
     CopilotPage,
     ChoiceOption,
+    DeliveryMode,
+    ReasoningEffort,
     UserInputRequest,
     UserInputResolutionKind,
 } from "@/types/ai";
 import type { PendingAttachment as InputAttachment } from "@/types/project-conversation-context";
 import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
-import { USER_SELECTABLE_MODELS, type SelectableModelId } from "@/lib/ai/config";
+import {
+    DEFAULT_SELECTABLE_MODEL_ID,
+    getModelCapabilityRecord,
+    USER_SELECTABLE_MODELS,
+    type SelectableModelId,
+} from "@/lib/ai/config";
 import { useVoiceInput, type VoiceTranscriptionSettlement } from "@/hooks/useVoiceInput";
 import { getUserSelectableAgentModes } from "@/lib/agent/feature-flags";
 import {
@@ -35,12 +42,22 @@ import type { RetryModelExpectation } from "@/types/chat-unification";
 import { getContextTargetKey } from "@/lib/context-capture/targets";
 import { useHydrated } from "@/hooks/useHydrated";
 import { useWindowEvent } from "@/hooks/useWindowEvent";
+import {
+    isSelectableModelReady,
+    type ModelAvailabilityMap,
+    type ModelAvailabilityStatus,
+} from "@/hooks/useModelAvailability";
 import { UserInputCard } from "@/components/artifacts/UserInputCard";
 import styles from "./ChatComposer.module.css";
+import {
+    ChatDeliveryModeControl,
+    ChatModelSettingsDialog,
+    ChatModelSelector,
+    ChatReasoningEffortSelector,
+} from "./ChatModelSettings";
 import { VoiceLevelVisualizer } from "./VoiceLevelVisualizer";
 
 const MAX_TEXTAREA_HEIGHT_PX = 200;
-const DEFAULT_SELECTABLE_MODEL_ID: SelectableModelId = "gpt-5.2";
 
 const ChatComposerActionsMenuButton = dynamic(() =>
     import("./ChatComposerActionsMenuButton").then((module) => module.ChatComposerActionsMenuButton)
@@ -105,6 +122,20 @@ export type ChatComposerCoreProps = {
     selectedModel?: SelectableModelId;
     /** Callback when user changes the model */
     onModelChange?: (modelId: SelectableModelId) => void;
+    /** Server-derived provider/model readiness. Explicit false disables that model. */
+    modelAvailability?: ModelAvailabilityMap;
+    /** Readiness request state. Unknown/error states block new sends. */
+    modelAvailabilityStatus?: ModelAvailabilityStatus;
+    /** Re-run the authenticated model-readiness check. */
+    onRetryModelAvailability?: () => void;
+    /** Model compute intensity (controlled externally). */
+    reasoningEffort?: ReasoningEffort;
+    /** Callback when model compute intensity changes. */
+    onReasoningEffortChange?: (effort: ReasoningEffort) => void;
+    /** Paid provider delivery tier (controlled externally). */
+    deliveryMode?: DeliveryMode;
+    /** Callback when paid delivery tier changes. */
+    onDeliveryModeChange?: (mode: DeliveryMode) => void;
     showAutonomyPreset?: boolean;
     showAttachments?: boolean;
     showVoice?: boolean;
@@ -178,6 +209,13 @@ export function ChatComposerCore({
     clearChoices,
     selectedModel: selectedModelProp,
     onModelChange,
+    modelAvailability,
+    modelAvailabilityStatus,
+    onRetryModelAvailability,
+    reasoningEffort: reasoningEffortProp,
+    onReasoningEffortChange,
+    deliveryMode: deliveryModeProp,
+    onDeliveryModeChange,
     showAutonomyPreset,
     showAttachments,
     showVoice = true,
@@ -206,6 +244,27 @@ export function ChatComposerCore({
     }, [hasMounted, onReady]);
 
     const selectedModel = selectedModelProp ?? DEFAULT_SELECTABLE_MODEL_ID;
+    const selectedModelInfo = USER_SELECTABLE_MODELS.find((model) => model.id === selectedModel)
+        ?? USER_SELECTABLE_MODELS[0];
+    const reasoningEffort = selectedModelInfo.reasoningEfforts.includes(reasoningEffortProp ?? selectedModelInfo.defaultReasoningEffort)
+        ? (reasoningEffortProp ?? selectedModelInfo.defaultReasoningEffort)
+        : selectedModelInfo.defaultReasoningEffort;
+    const deliveryMode = selectedModelInfo.deliveryModes.includes(deliveryModeProp ?? "standard")
+        ? (deliveryModeProp ?? "standard")
+        : "standard";
+    const selectedModelReady = isSelectableModelReady(
+        modelAvailability,
+        modelAvailabilityStatus,
+        selectedModel,
+    );
+    const hasImageAttachment = pendingAttachment?.extraction.status === "ready"
+        && (
+            pendingAttachment.extraction.mediaKind === "image"
+            || pendingAttachment.mimeType.startsWith("image/")
+        );
+    const selectedModelSupportsImages = getModelCapabilityRecord(selectedModel)?.capabilities.includes("vision")
+        ?? false;
+    const hasUnsupportedImageAttachment = Boolean(hasImageAttachment && !selectedModelSupportsImages);
 
     const sendLockRef = useRef(false);
 
@@ -281,6 +340,7 @@ export function ChatComposerCore({
         const activeAttachment = pendingAttachment;
         if (!text && !activeAttachment) return false;
         if (activeAttachment?.extraction.status === "failed") return false;
+        if (!selectedModelReady || hasUnsupportedImageAttachment) return false;
 
         const nextContextTargets = attachedContextTargets.length > 0
             ? attachedContextTargets
@@ -339,6 +399,8 @@ export function ChatComposerCore({
         page,
         pendingAttachment,
         restoreComposerInputIfEmpty,
+        selectedModelReady,
+        hasUnsupportedImageAttachment,
         section,
         selectedModel,
         sendMessage,
@@ -431,11 +493,20 @@ export function ChatComposerCore({
     const hasSecondaryActions = canShowAttachments || !!onCompress;
     const isVoiceBusy = voiceState !== "idle";
     const hasAttachmentExtractionFailure = pendingAttachment?.extraction.status === "failed";
+    const modelReadinessMessage = modelAvailabilityStatus === "loading"
+        ? "Checking model setup before sending…"
+        : modelAvailabilityStatus === "error"
+            ? "Could not verify model setup. Retry before sending."
+            : !selectedModelReady
+                ? `${selectedModelInfo.name} is not configured. Choose another model.`
+                : null;
     const canSubmit = voiceState === "recording"
         ? !queuedVoiceSend
         : !interactionLocked
             && voiceState === "idle"
             && !hasAttachmentExtractionFailure
+            && !hasUnsupportedImageAttachment
+            && selectedModelReady
             && (!!input.trim() || !!pendingAttachment);
     const showVoiceStatusPresentation = showVoice && isVoiceBusy;
     const canQueueNext = !interactionLocked
@@ -558,44 +629,19 @@ export function ChatComposerCore({
         }
         : {};
 
-    const selectedModelInfo = USER_SELECTABLE_MODELS.find((m) => m.id === selectedModel);
     const ALL_MODES: AgentMode[] = getUserSelectableAgentModes();
     const isManualMode = isManualComposerModeSelection(modeSelection);
     const shouldShowModePill = Boolean(input.trim() || isManualMode);
 
     const modelControl = hideModelControl ? null : hasMounted ? (
-        <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-                <button type="button" className={styles.modelBtn}>
-                    {selectedModelInfo?.name || "GPT-5.2"}
-                    <span className="material-icons-round">expand_more</span>
-                </button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-                <DropdownMenu.Content className={styles.modelDropdown} side="top" align="start" sideOffset={4}>
-                    <DropdownMenu.RadioGroup
-                        value={selectedModel}
-                        onValueChange={(v) => setSelectedModel(v as SelectableModelId)}
-                    >
-                        {USER_SELECTABLE_MODELS.map((model) => (
-                            <DropdownMenu.RadioItem
-                                key={model.id}
-                                value={model.id}
-                                className={`${styles.modelItem} ${selectedModel === model.id ? styles.modelItemActive : ""}`}
-                            >
-                                <div className={styles.modelItemInner}>
-                                    <span className={`material-icons-round ${styles.modelItemIcon}`}>
-                                        {model.icon}
-                                    </span>
-                                    <span className={styles.modelItemName}>{model.name}</span>
-                                    <span className={styles.modelItemDesc}>{model.description}</span>
-                                </div>
-                            </DropdownMenu.RadioItem>
-                        ))}
-                    </DropdownMenu.RadioGroup>
-                </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-        </DropdownMenu.Root>
+        <ChatModelSelector
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+            availability={modelAvailability}
+            availabilityStatus={modelAvailabilityStatus}
+            onRetryAvailability={onRetryModelAvailability}
+            triggerClassName={styles.modelBtn}
+        />
     ) : (
         <button
             type="button"
@@ -603,10 +649,57 @@ export function ChatComposerCore({
             aria-hidden="true"
             tabIndex={-1}
         >
-            {selectedModelInfo?.name || "GPT-5.2"}
+            {selectedModelInfo.name}
             <span className="material-icons-round">expand_more</span>
         </button>
     );
+
+    const reasoningEffortControl = hideModelControl || !onReasoningEffortChange
+        ? null
+        : hasMounted ? (
+            <ChatReasoningEffortSelector
+                selectedModel={selectedModel}
+                reasoningEffort={reasoningEffort}
+                onReasoningEffortChange={onReasoningEffortChange}
+                triggerClassName={styles.modelSettingBtn}
+            />
+        ) : (
+            <button
+                type="button"
+                className={`${styles.modelSettingBtn} ${styles.mountPlaceholder}`}
+                aria-hidden="true"
+                tabIndex={-1}
+            >
+                {reasoningEffort}
+            </button>
+        );
+
+    const deliveryModeControl = hideModelControl || !onDeliveryModeChange
+        ? null
+        : (
+            <ChatDeliveryModeControl
+                selectedModel={selectedModel}
+                deliveryMode={deliveryMode}
+                onDeliveryModeChange={onDeliveryModeChange}
+            />
+        );
+
+    const compactModelSettingsControl = hideModelControl || !hasMounted
+        ? null
+        : (
+            <ChatModelSettingsDialog
+                selectedModel={selectedModel}
+                onModelChange={setSelectedModel}
+                availability={modelAvailability}
+                availabilityStatus={modelAvailabilityStatus}
+                onRetryAvailability={onRetryModelAvailability}
+                reasoningEffort={reasoningEffort}
+                onReasoningEffortChange={onReasoningEffortChange}
+                deliveryMode={deliveryMode}
+                onDeliveryModeChange={onDeliveryModeChange}
+                disabled={isVoiceBusy}
+            />
+        );
 
     const autonomyControl = canShowAutonomy ? (hasMounted ? (
         <ChatAutonomyPresetButton
@@ -767,11 +860,15 @@ export function ChatComposerCore({
 
                 {(pendingAttachment || isAttaching) && (
                     <div
-                        className={`${styles.pendingAttachment} ${hasAttachmentExtractionFailure ? styles.pendingAttachmentFailed : ""}`}
-                        aria-live={hasAttachmentExtractionFailure ? "polite" : undefined}
+                        className={`${styles.pendingAttachment} ${hasAttachmentExtractionFailure || hasUnsupportedImageAttachment ? styles.pendingAttachmentFailed : ""}`}
+                        aria-live={hasAttachmentExtractionFailure || hasUnsupportedImageAttachment ? "polite" : undefined}
                     >
                         <span className="material-icons-round" style={{ fontSize: 16 }}>
-                            {hasAttachmentExtractionFailure ? "error_outline" : "description"}
+                            {hasAttachmentExtractionFailure || hasUnsupportedImageAttachment
+                                ? "error_outline"
+                                : pendingAttachment?.mimeType.startsWith("image/")
+                                    ? "image"
+                                    : "description"}
                         </span>
                         {isAttaching ? (
                             <span className={styles.pendingAttachmentName}>Uploading...</span>
@@ -782,6 +879,10 @@ export function ChatComposerCore({
                                     {pendingAttachment.extraction.status === "failed" ? (
                                         <span className={styles.pendingAttachmentStatus}>
                                             {pendingAttachment.extraction.message}
+                                        </span>
+                                    ) : hasUnsupportedImageAttachment ? (
+                                        <span className={styles.pendingAttachmentStatus}>
+                                            {selectedModelInfo.name} cannot read images. Choose a vision model or remove the image.
                                         </span>
                                     ) : null}
                                 </div>
@@ -797,6 +898,18 @@ export function ChatComposerCore({
                         ) : null}
                     </div>
                 )}
+
+                {!compactMobileChrome && modelReadinessMessage ? (
+                    <div
+                        className={`${styles.composerStatus} ${modelAvailabilityStatus === "error" ? styles.composerStatusError : ""}`}
+                        role={modelAvailabilityStatus === "error" ? "alert" : "status"}
+                    >
+                        <span>{modelReadinessMessage}</span>
+                        {modelAvailabilityStatus === "error" && onRetryModelAvailability ? (
+                            <button type="button" onClick={onRetryModelAvailability}>Retry</button>
+                        ) : null}
+                    </div>
+                ) : null}
 
                 {attachedContextTargets.length > 0 && (
                     <div className={styles.contextReceipts} role="group" aria-label="Attached context">
@@ -973,7 +1086,11 @@ export function ChatComposerCore({
                             handleSend();
                         }
                     }}
-                    placeholder={isLoading ? "Keep typing..." : inputPlaceholder}
+                    placeholder={isLoading
+                        ? "Keep typing..."
+                        : compactMobileChrome && modelReadinessMessage
+                            ? modelReadinessMessage
+                            : inputPlaceholder}
                     aria-label="Copilot prompt"
                     className={styles.inputTextarea}
                     rows={1}
@@ -1008,7 +1125,14 @@ export function ChatComposerCore({
 
                         {!showVoiceStatusPresentation ? (
                             <>
-                                {modelControl}
+                                <span className={styles.modelControlsWide}>
+                                    {modelControl}
+                                    {reasoningEffortControl}
+                                    {deliveryModeControl}
+                                </span>
+                                <span className={styles.compactModelSettings}>
+                                    {compactModelSettingsControl}
+                                </span>
                                 {autonomyControl}
                             </>
                         ) : (

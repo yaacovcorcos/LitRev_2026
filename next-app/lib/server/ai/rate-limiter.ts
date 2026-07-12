@@ -4,9 +4,9 @@
  */
 
 import { prisma } from "@/lib/server/prisma";
-import { AI_CONFIG } from "@/lib/ai/config";
+import { AI_CONFIG, getModelCapabilityRecord } from "@/lib/ai/config";
 import { AIErrorWithEnvelope } from "@/lib/ai/error-envelope";
-import type { UsageStats } from "@/types/ai";
+import type { DeliveryMode, ReasoningEffort, UsageStats } from "@/types/ai";
 
 type CacheMetricAccumulator = {
     requestCount: number;
@@ -16,6 +16,82 @@ type CacheMetricAccumulator = {
     lastModel: string;
     updatedAt: string;
 };
+
+export function estimateUsageCostUsd(params: {
+    modelId: string;
+    inputTokens: number;
+    cachedInputTokens?: number;
+    cacheWriteInputTokens?: number;
+    outputTokens: number;
+    actualProvider?: string | null;
+    requestedDeliveryMode?: DeliveryMode | null;
+    actualDeliveryMode?: DeliveryMode | null;
+    /** @deprecated Compatibility alias; prefer actualDeliveryMode. */
+    confirmedDeliveryMode?: DeliveryMode | null;
+}): number | undefined {
+    const model = getModelCapabilityRecord(params.modelId);
+    const pricing = model?.pricing;
+    if (!model || !pricing) return undefined;
+    const actualDeliveryMode = params.actualDeliveryMode ?? params.confirmedDeliveryMode;
+
+    if (model.provider === "gateway") {
+        const actualHost = params.actualProvider?.trim().toLowerCase() ?? "";
+        const hasKnownHostPricing = model.providerDialect === "deepseek"
+            ? actualHost === "deepseek"
+            : model.providerDialect === "qwen"
+                ? actualHost === "alibaba"
+                : false;
+        if (!hasKnownHostPricing) return undefined;
+    }
+
+    // A requested paid tier is not evidence that the provider accepted it.
+    if (
+        params.requestedDeliveryMode === "priority"
+        && actualDeliveryMode !== "standard"
+        && actualDeliveryMode !== "priority"
+    ) {
+        return undefined;
+    }
+
+    // OpenAI priority processing is account/product specific. Persisting a
+    // base-tier estimate here would look exact while knowingly undercounting.
+    if (model.providerDialect === "openai" && actualDeliveryMode === "priority") {
+        return undefined;
+    }
+
+    const inputTokens = Math.max(0, params.inputTokens);
+    const cachedInputTokens = Math.max(0, Math.min(inputTokens, params.cachedInputTokens ?? 0));
+    const cacheWriteInputTokens = Math.max(0, Math.min(inputTokens, params.cacheWriteInputTokens ?? 0));
+    if (cachedInputTokens + cacheWriteInputTokens > inputTokens) return undefined;
+    if (cacheWriteInputTokens > 0 && pricing.cacheWriteInputPerMillion === undefined) return undefined;
+    const ordinaryInputTokens = inputTokens - cachedInputTokens - cacheWriteInputTokens;
+    const outputTokens = Math.max(0, params.outputTokens);
+
+    let inputMultiplier = 1;
+    let outputMultiplier = 1;
+    if (model.providerDialect === "openai" && inputTokens > 272_000) {
+        inputMultiplier = 2;
+        outputMultiplier = 1.5;
+    } else if (model.providerDialect === "qwen" && inputTokens > 256_000) {
+        inputMultiplier = 3;
+        outputMultiplier = 3;
+    } else if (model.providerDialect === "xai" && inputTokens > 200_000) {
+        inputMultiplier = 2;
+        outputMultiplier = 2;
+    }
+
+    if (model.providerDialect === "xai" && actualDeliveryMode === "priority") {
+        inputMultiplier *= 2;
+        outputMultiplier *= 2;
+    }
+
+    return (
+        (ordinaryInputTokens * pricing.inputPerMillion * inputMultiplier)
+        + (cachedInputTokens * (pricing.cachedInputPerMillion ?? pricing.inputPerMillion) * inputMultiplier)
+        + (cacheWriteInputTokens * (pricing.cacheWriteInputPerMillion ?? pricing.inputPerMillion) * inputMultiplier)
+        + (outputTokens * pricing.outputPerMillion * outputMultiplier)
+    ) / 1_000_000;
+}
 
 export interface CacheMetricSummary {
     requestCount: number;
@@ -68,9 +144,18 @@ export type UsageAttemptReservation = {
 export type SettleUsageReservationInput = {
     reservationId: string;
     model: string;
+    provider?: string | null;
+    requestedModel?: string | null;
+    requestedProvider?: string | null;
+    requestedReasoningEffort?: ReasoningEffort | null;
+    requestedDeliveryMode?: DeliveryMode | null;
+    actualReasoningEffort?: ReasoningEffort | null;
+    actualDeliveryMode?: DeliveryMode | null;
     inputTokens: number;
     outputTokens: number;
     cachedInputTokens?: number;
+    cacheWriteInputTokens?: number;
+    reasoningTokens?: number;
 };
 
 const USAGE_ADMISSION_MAX_WAIT_MS = 750;
@@ -463,6 +548,20 @@ export async function settleUsageReservation(
 ): Promise<{ settledNow: boolean }> {
     const inputTokens = safeTokenCount(input.inputTokens);
     const outputTokens = safeTokenCount(input.outputTokens);
+    const cachedInputTokens = clampCachedTokens(inputTokens, input.cachedInputTokens ?? 0);
+    const cacheWriteInputTokens = clampCachedTokens(inputTokens, input.cacheWriteInputTokens ?? 0);
+    const reasoningTokens = safeTokenCount(input.reasoningTokens ?? 0);
+    const requestedModel = input.requestedModel ?? input.model;
+    const estimatedCostUsd = estimateUsageCostUsd({
+        modelId: requestedModel,
+        inputTokens,
+        cachedInputTokens,
+        cacheWriteInputTokens,
+        outputTokens,
+        actualProvider: input.provider,
+        requestedDeliveryMode: input.requestedDeliveryMode,
+        actualDeliveryMode: input.actualDeliveryMode,
+    });
     const result = await prisma.$transaction(async (tx) => {
         const initial = await tx.aIUsageReservation.findUnique({
             where: { id: input.reservationId },
@@ -502,8 +601,19 @@ export async function settleUsageReservation(
                 contextPage: reservation.contextPage,
                 conversationId: reservation.conversationId,
                 model: input.model,
+                provider: input.provider ?? null,
+                requestedModel,
+                requestedProvider: input.requestedProvider ?? reservation.provider,
+                requestedReasoningEffort: input.requestedReasoningEffort ?? null,
+                requestedDeliveryMode: input.requestedDeliveryMode ?? null,
+                actualReasoningEffort: input.actualReasoningEffort ?? null,
+                actualDeliveryMode: input.actualDeliveryMode ?? null,
                 inputTokens,
+                cachedInputTokens,
+                cacheWriteInputTokens,
                 outputTokens,
+                reasoningTokens,
+                estimatedCostUsd,
                 createdAt: reservation.createdAt,
             },
         });
@@ -530,7 +640,7 @@ export async function settleUsageReservation(
             result.projectId,
             input.model,
             inputTokens,
-            input.cachedInputTokens ?? 0,
+            cachedInputTokens,
         );
     }
     return { settledNow: result.settledNow };
@@ -719,6 +829,15 @@ export async function recordUsage(
     outputTokens: number,
     options?: {
         cachedInputTokens?: number;
+        cacheWriteInputTokens?: number;
+        reasoningTokens?: number;
+        provider?: string | null;
+        requestedModel?: string | null;
+        requestedProvider?: string | null;
+        requestedReasoningEffort?: ReasoningEffort | null;
+        requestedDeliveryMode?: DeliveryMode | null;
+        actualReasoningEffort?: ReasoningEffort | null;
+        actualDeliveryMode?: DeliveryMode | null;
         userId?: string | null;
         workspaceId?: string | null;
         source?: string | null;
@@ -731,6 +850,18 @@ export async function recordUsage(
         userId: options?.userId ?? null,
         workspaceId: options?.workspaceId ?? null,
     });
+    const cachedInputTokens = Math.max(0, Math.min(inputTokens, options?.cachedInputTokens ?? 0));
+    const cacheWriteInputTokens = Math.max(0, Math.min(inputTokens, options?.cacheWriteInputTokens ?? 0));
+    const estimatedCostUsd = estimateUsageCostUsd({
+        modelId: options?.requestedModel ?? model,
+        inputTokens,
+        cachedInputTokens,
+        cacheWriteInputTokens,
+        outputTokens,
+        actualProvider: options?.provider,
+        requestedDeliveryMode: options?.requestedDeliveryMode,
+        actualDeliveryMode: options?.actualDeliveryMode,
+    });
 
     await prisma.aIUsage.create({
         data: {
@@ -741,8 +872,19 @@ export async function recordUsage(
             contextPage: normalizeUsageContextPage(options?.contextPage),
             conversationId: options?.conversationId ?? null,
             model,
+            provider: options?.provider ?? null,
+            requestedModel: options?.requestedModel ?? null,
+            requestedProvider: options?.requestedProvider ?? null,
+            requestedReasoningEffort: options?.requestedReasoningEffort ?? null,
+            requestedDeliveryMode: options?.requestedDeliveryMode ?? null,
+            actualReasoningEffort: options?.actualReasoningEffort ?? null,
+            actualDeliveryMode: options?.actualDeliveryMode ?? null,
             inputTokens,
+            cachedInputTokens,
+            cacheWriteInputTokens,
             outputTokens,
+            reasoningTokens: Math.max(0, options?.reasoningTokens ?? 0),
+            estimatedCostUsd,
         },
     });
 
@@ -751,7 +893,7 @@ export async function recordUsage(
             projectId,
             model,
             inputTokens,
-            options?.cachedInputTokens ?? 0,
+            cachedInputTokens,
         );
     }
 }

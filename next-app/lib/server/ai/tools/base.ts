@@ -5,7 +5,7 @@
  */
 
 import { z } from "zod";
-import type { ToolDefinition, ToolResult } from "@/types/ai";
+import type { DeliveryMode, ReasoningEffort, ToolDefinition, ToolResult } from "@/types/ai";
 import { createToolSchemaValidationErrorEnvelope } from "@/lib/ai/error-envelope";
 import type { ToolAutonomyMeta, AutonomyLevel, AgentMode } from "@/types/agent";
 import type { ProtocolData } from "@/types/protocol";
@@ -119,6 +119,10 @@ export interface ToolExecutionContext {
      * Middleware uses this as a final guard before any tool executor can run.
      */
     allowedToolNames?: string[];
+    /** Parent generation configuration inherited by delegated sub-agents. */
+    model?: string;
+    reasoningEffort?: ReasoningEffort;
+    deliveryMode?: DeliveryMode;
 }
 
 /**

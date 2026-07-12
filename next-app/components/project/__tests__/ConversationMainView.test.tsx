@@ -152,7 +152,11 @@ describe("ConversationMainView parity", () => {
       approveArtifactsBatch: vi.fn(),
       executePlan: vi.fn(),
       answerUserInput,
-      selectedModel: "gpt-5.2",
+      selectedModel: "gpt-5.6-luna",
+      reasoningMode: "full",
+      setReasoningMode: vi.fn(),
+      reasoningSupport: "explicit",
+      reasoningVisibilitySupport: "full",
       hasMore: false,
       isLoadingOlder: false,
       loadOlderMessages: vi.fn(),
@@ -179,10 +183,13 @@ describe("ConversationMainView parity", () => {
       items: Array<{ type: string; id: string; runId?: string; checkpointKind?: string }>;
       messages?: unknown[];
       suppressedProgressId?: string | null;
+      reasoningMode?: string;
     };
     expect(props.items).toHaveLength(5);
     expect(props.messages).toBeUndefined();
     expect(props.suppressedProgressId).toBe("progress-1");
+    expect(props.reasoningMode).toBe("full");
+    expect(screen.getByRole("button", { name: "Reasoning visibility: full" })).toBeTruthy();
     const checkpoint = props.items.find((item) => item.type === "checkpoint");
     expect(checkpoint).toMatchObject({ id: "checkpoint-1", runId: "run-1", checkpointKind: "recovery" });
   });
@@ -219,7 +226,7 @@ describe("ConversationMainView parity", () => {
       "Recover this search",
       "overview",
       undefined,
-      "gpt-5.2",
+      "gpt-5.6-luna",
       undefined,
       undefined,
       expect.objectContaining({
@@ -235,7 +242,7 @@ describe("ConversationMainView parity", () => {
       "Recover this search",
       "overview",
       undefined,
-      "gpt-5.2",
+      "gpt-5.6-luna",
       undefined,
       undefined,
       expect.objectContaining({
@@ -302,6 +309,9 @@ describe("ConversationMainView parity", () => {
         createdAt: Date.now(),
         conversationId: "conv-1",
         page: "overview",
+        model: "gpt-5.6-luna",
+        reasoningEffort: "medium",
+        deliveryMode: "standard",
         source: "draft",
       },
       clearQueuedFollowUp: vi.fn(),

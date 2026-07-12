@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AIStreamChunk, ToolDefinition } from "@/types/ai";
 
 const mocks = vi.hoisted(() => {
   const trace = {
@@ -23,7 +24,7 @@ const mocks = vi.hoisted(() => {
         usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
       };
     }),
-    streamChat: vi.fn(async function* () {
+    streamChat: vi.fn<(...args: unknown[]) => AsyncIterable<AIStreamChunk>>(async function* () {
       yield { type: "content", content: "provider content" };
       yield {
         type: "done",
@@ -53,6 +54,7 @@ const mocks = vi.hoisted(() => {
     markRunFinalizationState: vi.fn(),
     markRunFinalizationFailed: vi.fn(),
     markRunAbnormalEndClassification: vi.fn(),
+    recordRunGenerationReceipt: vi.fn(async () => {}),
     isRunOwnershipError: vi.fn(() => false),
     after: vi.fn(),
     startRunTrace: vi.fn(() => trace),
@@ -76,6 +78,11 @@ const mocks = vi.hoisted(() => {
     reserveProviderUsageAttempt: vi.fn(),
     trySettleUsageReservation: vi.fn(),
     tryMarkUsageReservationReconcilable: vi.fn(),
+    getProviderModelId: vi.fn((modelId: string) => modelId),
+    getContextualToolDefinitions: vi.fn<() => ToolDefinition[]>(() => []),
+    evaluateToolPrerequisites: vi.fn(),
+    preRecordToolCallBatchForAutonomy: vi.fn(),
+    executeToolWithAutonomy: vi.fn(),
     trace,
     provider,
   };
@@ -91,11 +98,10 @@ vi.mock("@/lib/server/ai/providers", () => ({
   getAnthropicProvider: () => ({ isConfigured: () => false }),
   getXAIProvider: () => ({ isConfigured: () => false }),
   getGoogleProvider: () => ({ isConfigured: () => false }),
+  getGatewayProvider: () => ({ isConfigured: () => false }),
 }));
 
 vi.mock("@/lib/server/ai/rate-limiter", () => ({
-  validateRateLimits: vi.fn(async () => {}),
-  recordUsage: vi.fn(async () => {}),
   reserveProviderUsageAttempt: mocks.reserveProviderUsageAttempt,
   trySettleUsageReservation: mocks.trySettleUsageReservation,
   tryMarkUsageReservationReconcilable:
@@ -118,9 +124,21 @@ vi.mock("@/lib/server/memory", () => ({
 }));
 
 vi.mock("@/lib/ai/config", () => ({
-  AI_CONFIG: { defaultProvider: "mock-provider", defaultModel: "gpt-5.2" },
+  AI_CONFIG: {
+    defaultProvider: "mock-provider",
+    defaultModel: "gpt-5.2",
+    defaultMaxTokens: 2_048,
+    defaultTemperature: 0.7,
+  },
+  getModelCapabilityRecord: vi.fn(() => undefined),
   getProviderForModel: vi.fn(() => "mock-provider"),
+  getProviderModelId: mocks.getProviderModelId,
+  getDefaultReasoningEffort: vi.fn(() => "medium"),
   getContextBudget: vi.fn(() => 8000),
+}));
+
+vi.mock("@/lib/server/ai/background-model-policy", () => ({
+  getBackgroundModel: vi.fn(() => "gpt-5.2"),
 }));
 
 vi.mock("@/lib/agent/compaction", () => ({
@@ -147,6 +165,7 @@ vi.mock("@/lib/server/agent/run", () => ({
   markRunFinalizationState: mocks.markRunFinalizationState,
   markRunFinalizationFailed: mocks.markRunFinalizationFailed,
   markRunAbnormalEndClassification: mocks.markRunAbnormalEndClassification,
+  recordRunGenerationReceipt: mocks.recordRunGenerationReceipt,
   isRunOwnershipError: mocks.isRunOwnershipError,
 }));
 
@@ -347,7 +366,7 @@ vi.mock("@/lib/server/ai/tool-middleware", () => ({
 
 vi.mock("@/lib/server/ai/tool-prerequisites", () => ({
   createToolPrerequisiteMiddleware: vi.fn(() => ({})),
-  evaluateToolPrerequisites: vi.fn(),
+  evaluateToolPrerequisites: mocks.evaluateToolPrerequisites,
 }));
 
 vi.mock("@/lib/server/auth/identity", () => ({
@@ -368,14 +387,15 @@ vi.mock("@/lib/server/ai/tool-helpers", () => ({
   emptyLedgerCounts: vi.fn(() => ({ total: 0, included: 0, excluded: 0, maybe: 0, unscreened: 0 })),
   buildScopingHandoffToolCall: vi.fn(),
   getLazyContextPointerCapabilities: vi.fn(() => ({ canReadProtocol: false, canReadLedger: false })),
-  getContextualToolDefinitions: vi.fn(() => []),
+  getContextualToolDefinitions: mocks.getContextualToolDefinitions,
   shouldUseScopingBatchPlan: vi.fn(() => false),
   buildScopingSearchPackPlan: vi.fn(),
   finalizeScopingResponse: vi.fn(({ fullContent }: { fullContent: string }) => ({ content: fullContent, report: null })),
 }));
 
 vi.mock("@/lib/server/ai/tool-autonomy", () => ({
-  executeToolWithAutonomy: vi.fn(),
+  executeToolWithAutonomy: mocks.executeToolWithAutonomy,
+  preRecordToolCallBatchForAutonomy: mocks.preRecordToolCallBatchForAutonomy,
 }));
 
 const { AIService } = await import("@/lib/server/ai/ai-service");
@@ -417,6 +437,11 @@ describe("AIService run finalization", () => {
     mocks.reserveProviderUsageAttempt.mockReset();
     mocks.trySettleUsageReservation.mockReset();
     mocks.tryMarkUsageReservationReconcilable.mockReset();
+    mocks.getProviderModelId.mockReset();
+    mocks.getContextualToolDefinitions.mockReset();
+    mocks.evaluateToolPrerequisites.mockReset();
+    mocks.preRecordToolCallBatchForAutonomy.mockReset();
+    mocks.executeToolWithAutonomy.mockReset();
     mockRetrieveMemories.mockReset();
     mockGetAutonomyConfig.mockReset();
     mockProtocolFindFirst.mockReset();
@@ -460,6 +485,10 @@ describe("AIService run finalization", () => {
     });
     mocks.trySettleUsageReservation.mockResolvedValue(true);
     mocks.tryMarkUsageReservationReconcilable.mockResolvedValue(true);
+    mocks.getProviderModelId.mockImplementation((modelId: string) => modelId);
+    mocks.getContextualToolDefinitions.mockReturnValue([]);
+    mocks.evaluateToolPrerequisites.mockResolvedValue({ allowed: true, repeatKey: "repeat-key" });
+    mocks.preRecordToolCallBatchForAutonomy.mockResolvedValue(new Map());
     mocks.startRun.mockResolvedValue({ id: "run-1" });
     mocks.getRun.mockResolvedValue({
       id: "run-1",
@@ -680,6 +709,82 @@ describe("AIService run finalization", () => {
     );
 
     await iterator.return?.(undefined);
+  });
+
+  it("routes artifact generations through durable admission and exactly-once usage settlement", async () => {
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+      reasoningEffort: "medium",
+      deliveryMode: "standard",
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(mocks.reserveProviderUsageAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      scope: {
+        projectId: "project-1",
+        userId: "user-1",
+        workspaceId: null,
+      },
+      provider: "mock-provider",
+      model: "gpt-5.2",
+      source: "project_copilot",
+      conversationId: "conv-1",
+    }));
+    expect(mocks.trySettleUsageReservation).toHaveBeenCalledWith(expect.objectContaining({
+      reservationId: "usage-reservation-1",
+      model: "gpt-5.2",
+      provider: "mock-provider",
+      requestedModel: "gpt-5.2",
+      requestedProvider: "mock-provider",
+      requestedReasoningEffort: "medium",
+      requestedDeliveryMode: "standard",
+      inputTokens: 1,
+      outputTokens: 1,
+    }));
+  });
+
+  it("does not persist requested routing as provider-observed generation metadata", async () => {
+    mocks.getProviderModelId.mockReturnValueOnce("openai/gpt-5.2");
+    mocks.provider.streamChat.mockImplementationOnce(async function* () {
+      yield { type: "content", content: "provider content" };
+      yield {
+        type: "done",
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        actualModel: "",
+      };
+    });
+
+    const service = new AIService();
+    const chunks: Array<{
+      type?: string;
+      actualModel?: string;
+      actualModelSource?: string;
+    }> = [];
+    for await (const chunk of service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    })) {
+      chunks.push(chunk);
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(mocks.recordRunGenerationReceipt).toHaveBeenCalledWith("run-1", expect.objectContaining({
+      actualModel: null,
+      actualProvider: null,
+    }));
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      actualModel: "openai/gpt-5.2",
+      actualModelSource: "requested",
+    });
   });
 
   it("continues with a checkpoint when memories degrade after authority succeeds", async () => {
@@ -1239,6 +1344,51 @@ describe("AIService run finalization", () => {
     );
   });
 
+  it("preserves an observed generation receipt when a later tool execution fails", async () => {
+    mocks.getContextualToolDefinitions.mockReturnValueOnce([{
+      name: "search_pubmed",
+      description: "Search",
+      parameters: { type: "object", properties: {} },
+    }]);
+    mocks.provider.streamChat.mockImplementationOnce(async function* () {
+      yield {
+        type: "tool_call",
+        toolCall: { id: "tool-1", name: "search_pubmed", arguments: {} },
+      };
+      yield {
+        type: "done",
+        usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
+        actualModel: "provider-model-actual",
+        actualProvider: "provider-host-actual",
+        actualReasoningEffort: "high",
+        actualDeliveryMode: "priority",
+      };
+    });
+    mocks.executeToolWithAutonomy.mockImplementationOnce(async function* () {
+      throw new Error("tool execution failed");
+    });
+
+    const service = new AIService();
+    const chunks: Array<Record<string, unknown>> = [];
+    for await (const chunk of service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      runStatus: "failed",
+      actualModel: "provider-model-actual",
+      actualModelSource: "provider",
+      actualProvider: "provider-host-actual",
+      actualReasoningEffort: "high",
+      actualDeliveryMode: "priority",
+    });
+  });
+
   it("[runtime-cancelled-terminal-truth] does not persist partial assistant content after a durable semantic cancellation", async () => {
     const semanticCancellation = new AbortController();
     mocks.registerActiveRunExecutionCancellation.mockReturnValueOnce({
@@ -1247,6 +1397,14 @@ describe("AIService run finalization", () => {
       dispose: mocks.runCancellationDispose,
     });
     mocks.provider.streamChat.mockImplementationOnce(async function* () {
+      yield {
+        type: "done",
+        usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 },
+        actualModel: "provider-model-actual",
+        actualProvider: "provider-host-actual",
+        actualReasoningEffort: "high",
+        actualDeliveryMode: "priority",
+      };
       yield { type: "content", content: "partial answer" };
       semanticCancellation.abort();
       throw new DOMException("cancelled", "AbortError");
@@ -1266,6 +1424,11 @@ describe("AIService run finalization", () => {
     expect(mocks.addAssistantMessageToConversationForRun).not.toHaveBeenCalled();
     expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
       runStatus: "cancelled",
+      actualModel: "provider-model-actual",
+      actualModelSource: "provider",
+      actualProvider: "provider-host-actual",
+      actualReasoningEffort: "high",
+      actualDeliveryMode: "priority",
     });
   });
 
