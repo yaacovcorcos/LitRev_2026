@@ -20,6 +20,10 @@ export type StreamRunSummary = {
     terminalReason: StreamTerminalReason | null;
 };
 
+export function isStreamErrorChunk(chunk: AIStreamChunk): boolean {
+    return chunk.type === "error";
+}
+
 type ProcessAIStreamParams = {
     reader: ReadableStreamDefaultReader<Uint8Array>;
     signal?: AbortSignal;

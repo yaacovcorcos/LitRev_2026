@@ -30,7 +30,7 @@ This plan does not own:
   - `test:vitest`
   - `test:governance`, `test:governance:informational`
   - `test:e2e:foundation`, `test:e2e:local`
-  - `test:smoke:mobile`, `test:smoke:citation`
+  - `test:smoke:mobile`, `test:smoke:citation`, `test:smoke:ai-models`
   - `check:chat-stream-architecture`
   - `check:agent-quality`
   - `check:pr`
@@ -104,7 +104,7 @@ Shipped:
   - `test:vitest`
   - `test:governance`, `test:governance:informational`
   - `test:e2e:foundation`, `test:e2e:local`
-  - `test:smoke:mobile`, `test:smoke:citation`
+  - `test:smoke:mobile`, `test:smoke:citation`, `test:smoke:ai-models`
   - `check:chat-stream-architecture`
   - `check:agent-quality`
   - `check:pr`
@@ -134,7 +134,7 @@ Status: Done
 Shipped:
 - Workflow path filtering for the mobile foundation lane
 - Changed-file runtime test-impact enforcement for governed runtime domains, including the core agent service, provider implementations, tool middleware, agent action, and AI stream route in addition to the original runtime/tool directories
-- Existing smoke-like scripts in selected domains such as citation and mobile entry
+- Existing smoke-like scripts in selected domains such as citation, selectable AI provider compatibility, and mobile entry
 - `docs/runbooks/testing-ci-strategy.md` now defines:
   - where changed-scope execution is currently allowed
   - the first small cross-cutting smoke inventory

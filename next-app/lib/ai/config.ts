@@ -170,7 +170,7 @@ export const MODEL_CAPABILITY_REGISTRY = [
             currency: "USD",
             asOf: PRICE_DATE,
             inputPerMillion: 0.435,
-            cachedInputPerMillion: 0.003625,
+            cachedInputPerMillion: 0.0036,
             outputPerMillion: 0.87,
             standardizedLargeTaskUsd: 0.261,
             note: "Creator-first Vercel route; fallback host token prices can be higher.",

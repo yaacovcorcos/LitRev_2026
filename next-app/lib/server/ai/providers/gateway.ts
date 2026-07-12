@@ -36,6 +36,10 @@ import {
     resolveGatewayRuntimeConfig,
     type GatewayRuntimeConfig,
 } from "../model-availability";
+import {
+    createProviderTerminationError,
+    isCompatibleSuccessFinishReason,
+} from "./stream-termination";
 
 const VERCEL_REASONING_STATE_PREFIX = "vercel-reasoning-v1:";
 
@@ -239,14 +243,29 @@ export class GatewayProvider extends BaseAIProvider {
         const params = this.buildRequestParams(messages, normalizedOptions, runtime, false);
         const response = await client.chat.completions.create(params, { signal: normalizedOptions.signal });
         const choice = response.choices[0];
+        if (!choice || !isCompatibleSuccessFinishReason(choice.finish_reason)) {
+            throw new AIErrorWithEnvelope(createProviderTerminationError({
+                provider: this.name,
+                reason: choice?.finish_reason,
+            }));
+        }
 
         const toolCalls: ToolCall[] = [];
         for (const tc of choice.message.tool_calls
             ?.filter((tc): tc is OpenAI.Chat.Completions.ChatCompletionMessageToolCall & { type: "function" } => tc.type === "function")
             ?? []) {
+            if (!tc.id?.trim() || !tc.function.name?.trim()) {
+                throw new AIErrorWithEnvelope(createProviderTerminationError({ provider: this.name }));
+            }
             const parsedArgs = parseToolArgs(tc.function.arguments, tc.function.name, "gateway");
             if (!parsedArgs.success) throw new AIErrorWithEnvelope(parsedArgs.errorMeta);
             toolCalls.push({ id: tc.id, name: tc.function.name, arguments: parsedArgs.args });
+        }
+        if (
+            (choice.finish_reason === "tool_calls" && toolCalls.length === 0)
+            || (choice.finish_reason === "stop" && toolCalls.length > 0)
+        ) {
+            throw new AIErrorWithEnvelope(createProviderTerminationError({ provider: this.name }));
         }
 
         const reasoningText = extractReasoningTextsFromDelta(choice.message as unknown).join("");
@@ -298,6 +317,7 @@ export class GatewayProvider extends BaseAIProvider {
         const pendingToolCalls = new Map<number, { id: string; name: string; arguments: string }>();
         let activeReasoningId: string | null = null;
         let reasoningCounter = 0;
+        let sawTerminalFinish = false;
 
         try {
             for await (const chunk of stream) {
@@ -352,10 +372,26 @@ export class GatewayProvider extends BaseAIProvider {
                         if (tc.function?.arguments) pending.arguments += tc.function.arguments;
                     }
 
+                    if (choice.finish_reason && !isCompatibleSuccessFinishReason(choice.finish_reason)) {
+                        if (activeReasoningId) {
+                            yield { type: "reasoning_end", reasoningId: activeReasoningId };
+                            activeReasoningId = null;
+                        }
+                        yield buildStreamErrorChunk(createProviderTerminationError({
+                            provider: this.name,
+                            reason: choice.finish_reason,
+                        }));
+                        return;
+                    }
+
                     if (choice.finish_reason === "tool_calls") {
                         if (activeReasoningId) {
                             yield { type: "reasoning_end", reasoningId: activeReasoningId };
                             activeReasoningId = null;
+                        }
+                        if (pendingToolCalls.size === 0) {
+                            yield buildStreamErrorChunk(createProviderTerminationError({ provider: this.name }));
+                            return;
                         }
                         const privateReasoning = serializePrivateReasoningState({
                             text: reasoningText,
@@ -363,6 +399,11 @@ export class GatewayProvider extends BaseAIProvider {
                             usesVercelGateway: runtime.usesVercelGateway,
                         });
                         for (const [, tc] of pendingToolCalls) {
+                            if (!tc.id.trim() || !tc.name.trim()) {
+                                yield buildStreamErrorChunk(createProviderTerminationError({ provider: this.name }));
+                                pendingToolCalls.clear();
+                                return;
+                            }
                             const parsedArgs = parseToolArgs(tc.arguments, tc.name, "gateway:stream");
                             if (!parsedArgs.success) {
                                 yield buildStreamErrorChunk(parsedArgs.errorMeta);
@@ -375,10 +416,18 @@ export class GatewayProvider extends BaseAIProvider {
                                 providerReasoningContent: privateReasoning,
                             };
                         }
+                        sawTerminalFinish = true;
                         pendingToolCalls.clear();
-                    } else if (choice.finish_reason === "stop" && activeReasoningId) {
-                        yield { type: "reasoning_end", reasoningId: activeReasoningId };
-                        activeReasoningId = null;
+                    } else if (choice.finish_reason === "stop") {
+                        if (pendingToolCalls.size > 0) {
+                            yield buildStreamErrorChunk(createProviderTerminationError({ provider: this.name }));
+                            return;
+                        }
+                        sawTerminalFinish = true;
+                        if (activeReasoningId) {
+                            yield { type: "reasoning_end", reasoningId: activeReasoningId };
+                            activeReasoningId = null;
+                        }
                     }
                 }
 
@@ -397,6 +446,11 @@ export class GatewayProvider extends BaseAIProvider {
 
             if (activeReasoningId) {
                 yield { type: "reasoning_end", reasoningId: activeReasoningId };
+            }
+
+            if (!sawTerminalFinish) {
+                yield buildStreamErrorChunk(createProviderTerminationError({ provider: this.name }));
+                return;
             }
 
             yield {

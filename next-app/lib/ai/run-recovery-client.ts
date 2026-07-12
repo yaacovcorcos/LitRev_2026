@@ -15,6 +15,15 @@ export const RUN_RECOVERY_FINALIZATION_FAILED_MESSAGE = "The run could not final
 export const RUN_RECOVERY_ACTIVE_RUN_HELD_MESSAGE = "The active run is still holding this conversation. Choose how to continue.";
 export const RUN_RECOVERY_CONTINUE_FROM_CHECKPOINT_MESSAGE = "Saved progress is available. Continue from the latest checkpoint.";
 export const RUN_RECOVERY_CONTINUE_FROM_DURABLE_STATE_MESSAGE = "Saved work is available. Continue from the latest durable state.";
+export const RUN_RECOVERY_INACTIVITY_TIMEOUT_MS = 60_000;
+export const RUN_RECOVERY_ABSOLUTE_TIMEOUT_MS = 180_000;
+
+export function getRunRecoveryPollDelayMs(attempt: number): number {
+    const normalizedAttempt = Math.max(1, Math.floor(attempt));
+    if (normalizedAttempt <= 5) return 1_000;
+    if (normalizedAttempt <= 15) return 2_000;
+    return 5_000;
+}
 
 export async function fetchRunRecovery(params: {
     conversationId: string;
@@ -130,7 +139,10 @@ export async function pollRunRecovery(params: {
     runId: string;
     afterSequence?: number;
     signal?: AbortSignal;
+    /** @deprecated Prefer inactivityTimeoutMs and absoluteTimeoutMs. */
     timeoutMs?: number;
+    inactivityTimeoutMs?: number;
+    absoluteTimeoutMs?: number;
     onReplay: (chunk: AIStreamChunk, sequence: number) => void | Promise<void>;
     onTerminal: (chunk: AIStreamChunk) => void | Promise<void>;
     sleep?: (ms: number) => Promise<void>;
@@ -139,22 +151,82 @@ export async function pollRunRecovery(params: {
     response: RunRecoveryResponse | null;
     lastAppliedSequence: number;
 }> {
-    const timeoutMs = Math.max(0, params.timeoutMs ?? 30_000);
+    const legacyTimeoutMs = params.timeoutMs === undefined
+        ? null
+        : Math.max(0, params.timeoutMs);
+    // The inactivity deadline outlives the server's 45-second missed-heartbeat
+    // proof. A separate absolute cap exceeds the 150-second route lifetime, so
+    // healthy heartbeat progress is not mistaken for a dead run while recovery
+    // still remains bounded if every other signal is misleading.
+    const inactivityTimeoutMs = Math.max(
+        0,
+        params.inactivityTimeoutMs ?? legacyTimeoutMs ?? RUN_RECOVERY_INACTIVITY_TIMEOUT_MS,
+    );
+    const absoluteTimeoutMs = Math.max(
+        0,
+        params.absoluteTimeoutMs ?? legacyTimeoutMs ?? RUN_RECOVERY_ABSOLUTE_TIMEOUT_MS,
+    );
     const sleep = params.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
-    const startedAt = Date.now();
-    const timeoutController = new AbortController();
-    const linkedAbort = createLinkedAbortController([params.signal, timeoutController.signal]);
-    const timeoutHandle = setTimeout(() => timeoutController.abort(), timeoutMs);
+    const deadlineController = new AbortController();
+    const linkedAbort = createLinkedAbortController([params.signal, deadlineController.signal]);
+    let deadlineReason: "inactivity" | "absolute" | null = null;
+    let inactivityHandle: ReturnType<typeof setTimeout> | null = null;
+    const abortForDeadline = (reason: "inactivity" | "absolute") => {
+        if (deadlineController.signal.aborted) return;
+        deadlineReason = reason;
+        deadlineController.abort();
+    };
+    const resetInactivityDeadline = () => {
+        if (inactivityHandle) clearTimeout(inactivityHandle);
+        if (inactivityTimeoutMs === 0) {
+            abortForDeadline("inactivity");
+            return;
+        }
+        inactivityHandle = setTimeout(
+            () => abortForDeadline("inactivity"),
+            inactivityTimeoutMs,
+        );
+    };
+    const absoluteHandle = absoluteTimeoutMs === 0
+        ? null
+        : setTimeout(() => abortForDeadline("absolute"), absoluteTimeoutMs);
+    if (absoluteTimeoutMs === 0) abortForDeadline("absolute");
+    resetInactivityDeadline();
     let lastAppliedSequence = params.afterSequence ?? -1;
     let attempt = 0;
     let lastResponse: RunRecoveryResponse | null = null;
+    let lastObservedActivityMs: number | null = null;
+    let lastObservedSequence = lastAppliedSequence;
+
+    const deadlineExpired = () => deadlineReason !== null || deadlineController.signal.aborted;
+    const classifyAbort = () => params.signal?.aborted ? "aborted" as const : "timeout" as const;
+    const noteResponseProgress = (response: RunRecoveryResponse) => {
+        const activityMs = response.lastActivityAt ? Date.parse(response.lastActivityAt) : Number.NaN;
+        const sequence = response.lastSequence ?? lastObservedSequence;
+        const firstObservation = lastResponse === null;
+        const activityAdvanced = Number.isFinite(activityMs)
+            && (lastObservedActivityMs === null || activityMs > lastObservedActivityMs);
+        const sequenceAdvanced = sequence > lastObservedSequence;
+
+        if (Number.isFinite(activityMs)) {
+            lastObservedActivityMs = Math.max(lastObservedActivityMs ?? activityMs, activityMs);
+        }
+        lastObservedSequence = Math.max(lastObservedSequence, sequence);
+        if (firstObservation || activityAdvanced || sequenceAdvanced) {
+            resetInactivityDeadline();
+        }
+    };
+
+    const runCallbackWithDeadline = async (callback: () => void | Promise<void>) => {
+        await awaitWithAbort(Promise.resolve().then(callback), linkedAbort.signal);
+    };
 
     try {
         while (true) {
             if (params.signal?.aborted) {
                 return { outcome: "aborted", response: lastResponse, lastAppliedSequence };
             }
-            if (timeoutController.signal.aborted || Date.now() - startedAt >= timeoutMs) {
+            if (deadlineExpired()) {
                 return { outcome: "timeout", response: lastResponse, lastAppliedSequence };
             }
 
@@ -170,7 +242,7 @@ export async function pollRunRecovery(params: {
                 if (params.signal?.aborted) {
                     return { outcome: "aborted", response: lastResponse, lastAppliedSequence };
                 }
-                if (timeoutController.signal.aborted || Date.now() - startedAt >= timeoutMs) {
+                if (deadlineExpired()) {
                     return { outcome: "timeout", response: lastResponse, lastAppliedSequence };
                 }
                 // Recovery is itself the fallback path. A transient/offline
@@ -179,17 +251,29 @@ export async function pollRunRecovery(params: {
                 // error handler.
                 return { outcome: "retry", response: lastResponse, lastAppliedSequence };
             }
+            noteResponseProgress(response);
             lastResponse = response;
 
             for (const replayableEvent of response.replayableEvents) {
                 if (replayableEvent.sequence <= lastAppliedSequence) continue;
-                await params.onReplay(replayableEvent.chunk, replayableEvent.sequence);
+                try {
+                    await runCallbackWithDeadline(() => params.onReplay(
+                        replayableEvent.chunk,
+                        replayableEvent.sequence,
+                    ));
+                } catch (error) {
+                    if (params.signal?.aborted || deadlineExpired()) {
+                        return {
+                            outcome: classifyAbort(),
+                            response: lastResponse,
+                            lastAppliedSequence,
+                        };
+                    }
+                    throw error;
+                }
                 lastAppliedSequence = replayableEvent.sequence;
-            }
-
-            if (response.terminalEvent?.chunk) {
-                await params.onTerminal(response.terminalEvent.chunk);
-                return { outcome: "recovered", response, lastAppliedSequence };
+                lastObservedSequence = Math.max(lastObservedSequence, lastAppliedSequence);
+                resetInactivityDeadline();
             }
 
             if (response.recoveryRecommendation === "retry") {
@@ -208,25 +292,42 @@ export async function pollRunRecovery(params: {
                 return { outcome: "needs_user_action", response, lastAppliedSequence };
             }
 
-            if (Date.now() - startedAt >= timeoutMs) {
+            if (response.terminalEvent?.chunk) {
+                try {
+                    await runCallbackWithDeadline(() => params.onTerminal(response.terminalEvent!.chunk));
+                } catch (error) {
+                    if (params.signal?.aborted || deadlineExpired()) {
+                        return {
+                            outcome: classifyAbort(),
+                            response: lastResponse,
+                            lastAppliedSequence,
+                        };
+                    }
+                    throw error;
+                }
+                return { outcome: "recovered", response, lastAppliedSequence };
+            }
+
+            if (deadlineExpired()) {
                 return { outcome: "timeout", response, lastAppliedSequence };
             }
 
             attempt += 1;
             try {
-                await awaitWithAbort(sleep(attempt < 10 ? 1_000 : 2_000), linkedAbort.signal);
+                await awaitWithAbort(sleep(getRunRecoveryPollDelayMs(attempt)), linkedAbort.signal);
             } catch (error) {
                 if (params.signal?.aborted) {
                     return { outcome: "aborted", response: lastResponse, lastAppliedSequence };
                 }
-                if (timeoutController.signal.aborted || Date.now() - startedAt >= timeoutMs) {
+                if (deadlineExpired()) {
                     return { outcome: "timeout", response: lastResponse, lastAppliedSequence };
                 }
                 throw error;
             }
         }
     } finally {
-        clearTimeout(timeoutHandle);
+        if (inactivityHandle) clearTimeout(inactivityHandle);
+        if (absoluteHandle) clearTimeout(absoluteHandle);
         linkedAbort.dispose();
     }
 }

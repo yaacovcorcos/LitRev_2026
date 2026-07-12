@@ -136,6 +136,10 @@ export type ChatComposerCoreProps = {
     deliveryMode?: DeliveryMode;
     /** Callback when paid delivery tier changes. */
     onDeliveryModeChange?: (mode: DeliveryMode) => void;
+    /** True while the current request owns the one-shot delivery selection. */
+    deliveryRequestActive?: boolean;
+    /** Delivery tier confirmed by the provider for the active request, when reported. */
+    actualDeliveryMode?: DeliveryMode | null;
     showAutonomyPreset?: boolean;
     showAttachments?: boolean;
     showVoice?: boolean;
@@ -216,6 +220,8 @@ export function ChatComposerCore({
     onReasoningEffortChange,
     deliveryMode: deliveryModeProp,
     onDeliveryModeChange,
+    deliveryRequestActive = false,
+    actualDeliveryMode = null,
     showAutonomyPreset,
     showAttachments,
     showVoice = true,
@@ -641,6 +647,7 @@ export function ChatComposerCore({
             availabilityStatus={modelAvailabilityStatus}
             onRetryAvailability={onRetryModelAvailability}
             triggerClassName={styles.modelBtn}
+            disabled={deliveryRequestActive}
         />
     ) : (
         <button
@@ -662,6 +669,7 @@ export function ChatComposerCore({
                 reasoningEffort={reasoningEffort}
                 onReasoningEffortChange={onReasoningEffortChange}
                 triggerClassName={styles.modelSettingBtn}
+                disabled={deliveryRequestActive}
             />
         ) : (
             <button
@@ -681,6 +689,8 @@ export function ChatComposerCore({
                 selectedModel={selectedModel}
                 deliveryMode={deliveryMode}
                 onDeliveryModeChange={onDeliveryModeChange}
+                requestActive={deliveryRequestActive}
+                actualDeliveryMode={actualDeliveryMode}
             />
         );
 
@@ -698,6 +708,8 @@ export function ChatComposerCore({
                 deliveryMode={deliveryMode}
                 onDeliveryModeChange={onDeliveryModeChange}
                 disabled={isVoiceBusy}
+                deliveryRequestActive={deliveryRequestActive}
+                actualDeliveryMode={actualDeliveryMode}
             />
         );
 

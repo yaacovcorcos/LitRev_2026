@@ -1,7 +1,7 @@
 # Model Portfolio and Provider Routing
 
 Review date: 2026-07-12
-Status: implementation and local runtime/UI verification complete; production activation awaits migration, live provider evaluation, and rollout approval
+Status: direct OpenAI/xAI routes live-verified; Vercel-gateway activation is fail-closed pending team billing enablement
 Scope: Papilab/LitRev chat model selector, reasoning controls, pricing, multimodal input, provider routing, and usage truth
 
 Prices and provider observations are a dated USD snapshot. Re-check the live provider catalog before production release and during recurring model evaluations.
@@ -39,7 +39,7 @@ Prices are USD per 1 million tokens at the base tier of the implemented default 
 |---|---|---:|---|---|---:|---:|---:|---:|---:|
 | DeepSeek V4 Flash | Fast & cheapest | 1M / 384K | Extremely cheap text, coding chores, extraction, tools | Fast, High, Max | $0.140 | $0.028 | — | $0.280 | $0.084 |
 | GPT-5.6 Luna | Default | 1.05M / 128K | Best everyday balance; vision and tools | Fast, Low, Medium, High, Max | $1.00 | $0.10 | $1.25 | $6.00 | $0.80 |
-| DeepSeek V4 Pro | Science value | 1M / 384K | Serious coding and scientific reasoning at very low cost | Fast, High, Max | $0.435 | $0.003625 | — | $0.870 | $0.261 |
+| DeepSeek V4 Pro | Science value | 1M / 384K | Serious coding and scientific reasoning at very low cost | Fast, High, Max | $0.435 | $0.0036 | — | $0.870 | $0.261 |
 | GPT-5.6 Terra | Advanced research | 1.05M / 128K | Stronger science and long-context work than Luna | Fast, Low, Medium, High, Max | $2.50 | $0.25 | $3.125 | $15.00 | $2.00 |
 | Qwen 3.7 Plus | Vision & documents | 1M / 64K | Figures, screenshots, scans, tables, long multimodal inputs | Fast, High, Max | $0.40 | $0.08 | $0.50 | $1.60 | $0.28 |
 | Grok 4.5 | Strong agent | 500K / 500K catalog limit | Coding, tool orchestration, independent frontier alternative | Fast, Medium, High | $2.00 | $0.50 | — | $6.00 | $1.30 |
@@ -140,7 +140,7 @@ The app implements three separate concepts:
 2. **Reasoning visibility:** hidden for the current portfolio because no active adapter returns a safe, genuinely summarized trace.
 3. **Delivery mode:** standard or paid priority scheduling where supported.
 
-Visibility never chooses compute. No current portfolio model exposes a reasoning-visibility control: direct OpenAI and xAI Chat Completions do not return a supported summary, while DeepSeek/Qwen reasoning fields are raw private reasoning rather than a safe provider summary. No current portfolio route promises raw/full chain-of-thought. Hidden provider reasoning needed for a tool continuation is retained only as transient server state and is deliberately excluded from client serialization and transcript persistence.
+Visibility never chooses compute. No current portfolio model exposes a reasoning-visibility control: the direct OpenAI and xAI Responses routes retain typed private reasoning state for tool continuation but do not expose a supported safe summary, while DeepSeek/Qwen reasoning fields are raw private reasoning rather than a safe provider summary. No current portfolio route promises raw/full chain-of-thought. Hidden provider reasoning needed for a tool continuation is retained only as transient server state and is deliberately excluded from client serialization and transcript persistence.
 
 | UI effort | OpenAI | Grok 4.5 | DeepSeek V4 | Qwen 3.7 Plus |
 |---|---|---|---|---|
@@ -150,7 +150,7 @@ Visibility never chooses compute. No current portfolio model exposes a reasoning
 | High | `high` | native `high` | thinking High | thinking enabled with bounded budget |
 | Max | `max` | not exposed | thinking Max | thinking enabled with a larger bounded budget |
 
-The selected effort is stored per model so switching models restores a valid prior choice. Priority is not persisted and resets to Standard after each request and model switch.
+The selected effort is stored per model so switching models restores a valid prior choice. Priority is one-shot: Faster stays selected and locked while its request is active, the UI claims priority only after a provider receipt confirms it, the last-response receipt remains visible after completion, and the next request or queued follow-up defaults to Standard.
 
 ## Provider Routing
 
@@ -228,15 +228,24 @@ The final local smoke used preview-only quick login with gateway rollout disable
 - The embedded project conversation repeated the same model/effort/delivery contract without horizontal overflow.
 - The browser reported no runtime errors; console output was limited to expected development/HMR information.
 
-## Remaining Activation Inputs
+## Live Provider Verification
 
-Code and migrations are ready. Production OpenAI/xAI credentials and Vercel OIDC catalog access are already confirmed. Production activation still requires:
+On 2026-07-13, the credential-gated portfolio smoke forced a complete tool-call → tool-result → final-answer turn instead of accepting a basic text response:
 
-1. repeatable local/off-platform gateway authentication for live evaluation via `AI_MODEL_GATEWAY_API_KEY` (preferred), `AI_GATEWAY_API_KEY`, or a freshly pulled short-lived Vercel OIDC token;
-2. production application of both additive AI-usage migrations before code writes the new routing, cache-write, and cost columns;
-3. live basic-response smoke tests for all seven routes, plus DeepSeek thinking/tool continuation, governed search-tool loops, and Qwen image/document input;
-4. explicit approval of provider privacy/retention/region posture and the Vercel team Provider Allowlist;
-5. enabling `AI_MODEL_GATEWAY_ENABLED=1` in Preview only after those checks, then promoting the flag to Production only through the normal migration-safe release process.
+- GPT-5.6 Luna, Terra, and Sol passed through the direct OpenAI Responses route with provider-confirmed model/provider receipts.
+- Grok 4.5 passed through the direct xAI Responses route with provider-confirmed model/provider receipts.
+- Every direct model's supported priority run returned a provider-confirmed priority receipt.
+- DeepSeek V4 Flash, DeepSeek V4 Pro, and Qwen 3.7 Plus reached Vercel AI Gateway but generation was rejected before model execution with `customer_verification_required`: the Vercel team needs a valid card on file.
+- Because that failure is external and deterministic, `AI_MODEL_GATEWAY_ENABLED` remains disabled in production; the three affected models continue to fail closed as Setup required rather than appearing usable and returning 403.
+
+## Remaining Gateway Activation Inputs
+
+Direct OpenAI/xAI routes are verified. The three gateway routes must remain disabled until all of the following are true:
+
+1. add a valid card to the Vercel team so AI Gateway generation is permitted;
+2. approve provider privacy, retention, processing-region posture, and the Vercel team Provider Allowlist;
+3. rerun the required seven-model live smoke, including DeepSeek thinking/tool continuation and Qwen image/document input, with `REQUIRE_ALL_SELECTABLE_AI_MODELS=1`;
+4. enable `AI_MODEL_GATEWAY_ENABLED=1` in Preview, verify the authenticated UI/runtime, then promote the flag to Production through the migration-safe release process.
 
 Historical image replay across later turns is intentionally not claimed by this baseline. It needs attachment-aware `AIMessage` loading and bounded server rehydration across every provider adapter; current-turn image analysis is implemented and rejected preflight sends retain the attachment.
 

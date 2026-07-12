@@ -80,6 +80,7 @@ The agent should not merely "feel smart." It should be:
   - per-run sequence allocation is serialized by a transaction-scoped advisory lock before reading the latest event sequence
   - event writability checks are read-only and no longer update the `AgentRun` row before every event append
   - transient serialization/deadlock conflicts retry through the event append loop instead of bubbling as unknown runtime failures
+  - the stream route has a 150-second platform lifetime for the runtime's 120-second loop budget, preserving a finalization window for failure persistence and authoritative terminal delivery
 - Run phase truth is centralized:
   - `verify -> plan` is an intentional legal transition for continuation runs that need to re-plan
   - plan, tool, artifact, and user-input events map through one shared state-machine module instead of scattered switch statements
@@ -92,6 +93,9 @@ The agent should not merely "feel smart." It should be:
   - strict continue remains strict
   - retry/replace can now prefer checkpoint-backed or durable continuation over restart-from-zero when the source is proven
   - interrupted latest tool calls now use a runtime-owned restart policy: read-only calls and idempotent mutations can seed a bounded continuation, while unsafe or decision-sensitive calls still stop truthfully
+  - recovery waits for three missed 15-second heartbeats before compare-and-set terminalization, then snapshots authoritative events after ownership converges so a racing final answer is not lost
+  - safe continuation remains idempotently available after a recovery response is lost, while ordinary failed runs do not gain a continuation they did not earn
+  - client recovery uses advancing heartbeat/event activity for a 60-second inactivity deadline plus a separate 180-second absolute cap, both longer than the 150-second stream function lifetime
 - Artifact undo remains bounded by a server-owned expiry window. The default window is `5` minutes, and operators can tune it with `ARTIFACT_UNDO_WINDOW_MS`; missing, blank, non-finite, and non-positive values fall back to the default.
   - undoable artifacts persist a versioned before/applied snapshot envelope; undo locks the affected domain row and fails closed with `ARTIFACT_UNDO_CONFLICT` unless the current artifact-owned target still matches the captured applied state
   - study, protocol-field, and draft restores change only the artifact-owned fields or section; criteria add/remove undo inverses only the normalized criterion delta, preserving unrelated concurrent criteria edits
@@ -130,7 +134,10 @@ The agent should not merely "feel smart." It should be:
   - model compute (`reasoningEffort`), capability-gated provider reasoning summaries (`reasoningMode`), and paid scheduling (`deliveryMode`) remain independent; no current direct OpenAI/xAI route advertises a no-op visibility control
   - `/ai`, project conversation, side copilot, popup, plan execution, retries/continuations, delegated runs, and queued follow-ups preserve the same validated generation snapshot
   - provider-private reasoning needed for a thinking-model tool continuation stays transient and is removed before client serialization or transcript persistence
+  - direct OpenAI and xAI routes use their Responses APIs for reasoning-plus-tool requests and replay provider-private typed continuation state only on the server
   - requested and provider-observed routing metadata are durable on runs and usage rows, so recovery and support do not infer execution from UI state
+  - paid priority remains visibly locked for the active request, but the UI claims priority only from the provider receipt, retains that last-response receipt after terminal delivery, and defaults the next request and queued follow-ups to Standard
+  - provider failures stream one typed error followed by authoritative `run_end`; a calm fallback is persisted for reload without being duplicated beside the live error
 - Study-scoped stream entry now canonicalizes owned `projectId` before runtime start, popup/context validation, and tool-scope selection, so `studyId`-only requests no longer degrade into accidental global-scope runs.
 - The remaining major platform debt is no longer "invent the architecture." It is:
   - finish convergence

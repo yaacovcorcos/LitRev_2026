@@ -115,7 +115,7 @@ vi.mock("@/lib/server/agent/run", () => ({
   settleClarificationDismissedRun: mocks.settleClarificationDismissedRun,
 }));
 
-const { POST } = await import("../route");
+const { POST, maxDuration } = await import("../route");
 
 describe("/api/ai/stream route", () => {
   beforeEach(() => {
@@ -180,6 +180,10 @@ describe("/api/ai/stream route", () => {
       providerModelId: modelId,
       configured: true,
     }));
+  });
+
+  it("keeps platform execution alive beyond the 120-second agent loop deadline", () => {
+    expect(maxDuration).toBe(150);
   });
 
   it("uses the validated runtime default when the client omits a model", async () => {

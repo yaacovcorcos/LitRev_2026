@@ -7,6 +7,7 @@ function classifyTerminationReason(reason: string): ProviderTerminationKind {
     if (
         normalized === "length"
         || normalized === "max_tokens"
+        || normalized === "max_output_tokens"
         || normalized === "model_context_window_exceeded"
     ) {
         return "truncated";

@@ -266,6 +266,10 @@ vi.mock("@/components/chat/ChatComposerCoreClient", () => ({
     onCompress,
     canCompress,
     isCompressing,
+    deliveryMode,
+    deliveryRequestActive,
+    actualDeliveryMode,
+    onDeliveryModeChange,
   }: {
     onReady?: () => void;
     sendMessage?: (text: string, page: "ai") => void | Promise<void>;
@@ -279,6 +283,10 @@ vi.mock("@/components/chat/ChatComposerCoreClient", () => ({
     onCompress?: () => void | Promise<void>;
     canCompress?: boolean;
     isCompressing?: boolean;
+    deliveryMode?: "standard" | "priority";
+    deliveryRequestActive?: boolean;
+    actualDeliveryMode?: "standard" | "priority" | null;
+    onDeliveryModeChange?: (mode: "standard" | "priority") => void;
   }) => (
     <div
       data-testid="ai-composer"
@@ -288,6 +296,9 @@ vi.mock("@/components/chat/ChatComposerCoreClient", () => ({
       data-compact-mobile-chrome={compactMobileChrome ? "yes" : "no"}
       data-can-compress={canCompress ? "yes" : "no"}
       data-is-compressing={isCompressing ? "yes" : "no"}
+      data-delivery-mode={deliveryMode ?? "standard"}
+      data-delivery-request-active={deliveryRequestActive ? "yes" : "no"}
+      data-actual-delivery-mode={actualDeliveryMode ?? "none"}
     >
       <button type="button" onClick={() => onReady?.()}>
         composer ready
@@ -300,6 +311,12 @@ vi.mock("@/components/chat/ChatComposerCoreClient", () => ({
       </button>
       <button type="button" onClick={() => cancelStream?.()}>
         stop generation
+      </button>
+      <button
+        type="button"
+        onClick={() => onDeliveryModeChange?.(deliveryMode === "priority" ? "standard" : "priority")}
+      >
+        toggle faster delivery
       </button>
       {onCompress ? (
         <button type="button" onClick={() => void onCompress()}>
@@ -351,6 +368,7 @@ vi.mock("@/lib/mobile/telemetry", () => ({
 
 vi.mock("@/lib/ai/stream-processor", () => ({
   processAIStream: (...args: unknown[]) => mockProcessAIStream(...args),
+  isStreamErrorChunk: (chunk: { type?: string }) => chunk.type === "error",
 }));
 
 vi.mock("@/lib/ai/run-recovery-client", async () => {

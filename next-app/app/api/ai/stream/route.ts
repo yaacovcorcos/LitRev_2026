@@ -62,6 +62,10 @@ import {
 
 // Force Node runtime for Prisma compatibility
 export const runtime = "nodejs";
+// The agent loop owns a 120-second wall-time deadline. Keep enough function
+// lifetime after that deadline for failure persistence, run finalization, and
+// the terminal stream event instead of letting the platform kill the worker.
+export const maxDuration = 150;
 
 const STREAM_EVENT_TYPES: RuntimeStreamEvent["type"][] = [
     "content",

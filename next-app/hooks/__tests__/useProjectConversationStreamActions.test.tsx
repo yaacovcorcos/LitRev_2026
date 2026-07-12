@@ -18,7 +18,10 @@ const {
     mockCreateConversation,
     mockProcessAIStream,
     mockRequestAgentRunCancellation,
-    mockResetDeliveryMode,
+    mockPollRunRecovery,
+    mockBeginDeliveryRequest,
+    mockCompleteDeliveryRequest,
+    mockSetActualDeliveryMode,
 } = vi.hoisted(() => ({
     mockReviewArtifactAction: vi.fn(),
     mockUndoArtifactAction: vi.fn(),
@@ -29,7 +32,10 @@ const {
     mockCreateConversation: vi.fn(),
     mockProcessAIStream: vi.fn(),
     mockRequestAgentRunCancellation: vi.fn(),
-    mockResetDeliveryMode: vi.fn(),
+    mockPollRunRecovery: vi.fn(),
+    mockBeginDeliveryRequest: vi.fn(),
+    mockCompleteDeliveryRequest: vi.fn(),
+    mockSetActualDeliveryMode: vi.fn(),
 }));
 
 vi.mock("@/app/actions/agent", () => ({
@@ -48,6 +54,14 @@ vi.mock("@/lib/ai/stream-processor", () => ({
 vi.mock("@/lib/ai/run-cancel-client", () => ({
     cancelAgentRun: (...args: unknown[]) => mockRequestAgentRunCancellation(...args),
 }));
+
+vi.mock("@/lib/ai/run-recovery-client", async () => {
+    const actual = await vi.importActual<typeof import("@/lib/ai/run-recovery-client")>("@/lib/ai/run-recovery-client");
+    return {
+        ...actual,
+        pollRunRecovery: (...args: unknown[]) => mockPollRunRecovery(...args),
+    };
+});
 
 vi.mock("@/lib/project-data-events", () => ({
     dispatchProjectDataChanged: (...args: unknown[]) => mockDispatchProjectDataChanged(...args),
@@ -131,7 +145,9 @@ function useHarness(generation: {
     const [, setPendingChoices] = useState<ChoiceOption[]>([]);
     const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null);
     const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
-    const resetDeliveryMode = mockResetDeliveryMode;
+    const beginDeliveryRequest = mockBeginDeliveryRequest;
+    const completeDeliveryRequest = mockCompleteDeliveryRequest;
+    const setActualDeliveryMode = mockSetActualDeliveryMode;
 
     const hook = useProjectConversationStreamActions({
         projectId: "project-1",
@@ -160,7 +176,9 @@ function useHarness(generation: {
         selectedModel: generation.selectedModel ?? "gpt-5.6-luna",
         reasoningEffort: generation.reasoningEffort ?? "medium",
         deliveryMode: generation.deliveryMode ?? "standard",
-        resetDeliveryMode,
+        beginDeliveryRequest,
+        completeDeliveryRequest,
+        setActualDeliveryMode,
         convo: {
             currentConversationId: "conv-1",
             currentConversationIdRef: { current: "conv-1" },
@@ -181,7 +199,9 @@ function useHarness(generation: {
         pendingAttachment,
         setPendingAttachment,
         setCurrentRunId,
-        resetDeliveryMode,
+        beginDeliveryRequest,
+        completeDeliveryRequest,
+        setActualDeliveryMode,
     };
 }
 
@@ -202,6 +222,11 @@ describe("useProjectConversationStreamActions artifact review path", () => {
             actualModel: null,
             actualModelSource: "unknown",
             terminalReason: "completed",
+        });
+        mockPollRunRecovery.mockResolvedValue({
+            outcome: "retry",
+            response: null,
+            lastAppliedSequence: -1,
         });
         consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
         vi.stubGlobal("fetch", vi.fn(async () => ({
@@ -666,7 +691,7 @@ describe("useProjectConversationStreamActions artifact review path", () => {
         expect(fetch).not.toHaveBeenCalled();
         expect(result.current.pendingAttachment?.fileAssetId).toBe("image-unsupported");
         expect(result.current.state.messages).toHaveLength(1);
-        expect(mockResetDeliveryMode).not.toHaveBeenCalled();
+        expect(mockBeginDeliveryRequest).not.toHaveBeenCalled();
         expect(consoleErrorSpy).toHaveBeenCalledWith(
             "Blocking send because deepseek-v4-flash does not support image input.",
         );
@@ -700,7 +725,25 @@ describe("useProjectConversationStreamActions artifact review path", () => {
         expect(result.current.pendingAttachment?.fileAssetId).toBe("file-rejected");
     });
 
-    it("snapshots one-shot priority delivery and resets the control after capture", async () => {
+    it("keeps one-shot priority active through the terminal receipt, then resets the next request", async () => {
+        mockProcessAIStream.mockImplementationOnce(async ({ onChunk }: {
+            onChunk: (chunk: unknown) => void | Promise<void>;
+        }) => {
+            await onChunk({
+                type: "run_end",
+                runStatus: "completed",
+                stopReason: "done",
+                actualDeliveryMode: "priority",
+            });
+            return {
+                runStatus: "completed",
+                stopReason: "done",
+                errorMessage: null,
+                actualModel: "gpt-5.6-luna",
+                actualModelSource: "provider" as const,
+                terminalReason: "completed" as const,
+            };
+        });
         const { result } = renderHook(() => useHarness());
 
         await act(async () => {
@@ -729,7 +772,61 @@ describe("useProjectConversationStreamActions artifact review path", () => {
             reasoningEffort: "high",
             deliveryMode: "priority",
         });
-        expect(result.current.resetDeliveryMode).toHaveBeenCalledTimes(1);
+        expect(result.current.beginDeliveryRequest).toHaveBeenCalledWith("priority");
+        expect(result.current.setActualDeliveryMode).toHaveBeenCalledWith("priority");
+        expect(result.current.completeDeliveryRequest).toHaveBeenCalledTimes(1);
+    });
+
+    it("consumes a failed run_end after a provider error without recovery or a generic duplicate", async () => {
+        mockProcessAIStream.mockImplementationOnce(async ({ onChunk }: {
+            onChunk: (chunk: unknown) => void | Promise<void>;
+        }) => {
+            await onChunk({
+                type: "error",
+                error: "Provider rejected this request.",
+                errorMeta: {
+                    kind: "provider_request",
+                    code: "PROVIDER_REQUEST_FAILED",
+                    message: "Provider rejected this request.",
+                    retryable: false,
+                    source: "provider_request",
+                },
+            });
+            await onChunk({
+                type: "run_end",
+                runStatus: "failed",
+                stopReason: "provider_error",
+            });
+            return {
+                runStatus: "failed",
+                stopReason: "provider_error",
+                errorMessage: "Provider rejected this request.",
+                actualModel: "gpt-5.6-luna",
+                actualModelSource: "provider" as const,
+                terminalReason: "failed_server" as const,
+            };
+        });
+        const { result } = renderHook(() => useHarness({ deliveryMode: "priority" }));
+
+        let streamResult!: Awaited<ReturnType<typeof result.current.runStream>>;
+        await act(async () => {
+            streamResult = await result.current.runStream({
+                body: { options: { deliveryMode: "priority" } },
+                page: "overview",
+                convId: "conv-1",
+            });
+        });
+
+        expect(streamResult.success).toBe(false);
+        expect(streamResult.runStatus).toBe("failed");
+        expect(mockPollRunRecovery).not.toHaveBeenCalled();
+        const renderedErrors = result.current.state.messages.filter((message) => message.streamError);
+        expect(renderedErrors).toHaveLength(1);
+        expect(renderedErrors[0]?.text).toBe("Provider rejected this request.");
+        expect(result.current.state.messages.some((message) => (
+            message.text === "The stream ended unexpectedly. Retry to continue."
+            || message.text.includes("Reconnecting to the active run")
+        ))).toBe(false);
     });
 
     it("propagates the selected generation settings into plan execution", async () => {
@@ -756,6 +853,7 @@ describe("useProjectConversationStreamActions artifact review path", () => {
                 reasoningMode: "off",
             },
         });
-        expect(result.current.resetDeliveryMode).toHaveBeenCalledTimes(1);
+        expect(result.current.beginDeliveryRequest).toHaveBeenCalledWith("priority");
+        expect(result.current.completeDeliveryRequest).toHaveBeenCalledTimes(1);
     });
 });

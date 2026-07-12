@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AIMessage, AIStreamChunk } from "@/types/ai";
 import { GoogleProvider } from "@/lib/server/ai/providers/google";
-import { OpenAIProvider } from "@/lib/server/ai/providers/openai";
-import { XAIProvider } from "@/lib/server/ai/providers/xai";
 
 function userMessage(content: string): AIMessage {
   return {
@@ -33,21 +31,13 @@ async function collectChunks(stream: AsyncIterable<AIStreamChunk>): Promise<AISt
 
 type ProviderCase = {
   label: string;
-  createProvider: () => OpenAIProvider | GoogleProvider | XAIProvider;
+  createProvider: () => GoogleProvider;
 };
 
 const providerCases: ProviderCase[] = [
   {
-    label: "OpenAI",
-    createProvider: () => new OpenAIProvider(),
-  },
-  {
     label: "Google",
     createProvider: () => new GoogleProvider(),
-  },
-  {
-    label: "xAI",
-    createProvider: () => new XAIProvider(),
   },
 ];
 

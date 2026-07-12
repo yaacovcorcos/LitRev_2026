@@ -9,14 +9,23 @@ vi.mock('@/lib/server/prisma', () => ({
     study: {
       findFirst: vi.fn(),
     },
+    aIConversation: {
+      findFirst: vi.fn(),
+    },
   },
 }))
 
-import { assertProjectAccess, assertStudyAccess, resolveOwnedConversationScope } from '../access'
+import {
+  assertProjectAccess,
+  assertStudyAccess,
+  findOwnedConversationAccess,
+  resolveOwnedConversationScope,
+} from '../access'
 import { prisma } from '@/lib/server/prisma'
 
 const mockFindFirst = prisma.project.findFirst as ReturnType<typeof vi.fn>
 const mockStudyFindFirst = prisma.study.findFirst as ReturnType<typeof vi.fn>
+const mockConversationFindFirst = prisma.aIConversation.findFirst as ReturnType<typeof vi.fn>
 
 describe('assertProjectAccess', () => {
   beforeEach(() => {
@@ -250,5 +259,110 @@ describe('resolveOwnedConversationScope', () => {
         studyId: 'study-foreign',
       })
     ).rejects.toThrow('Study not found or access denied.')
+  })
+})
+
+describe('findOwnedConversationAccess', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const validScope = {
+    ownerId: 'user-123',
+    workspaceId: 'workspace-456',
+  }
+
+  it('authorizes with a narrow active-owner query and does not load messages or summaries', async () => {
+    mockConversationFindFirst.mockResolvedValue({
+      id: 'conversation-1',
+      projectId: null,
+      studyId: null,
+    })
+
+    await expect(
+      findOwnedConversationAccess(validScope, 'conversation-1')
+    ).resolves.toEqual({
+      id: 'conversation-1',
+      projectId: null,
+      studyId: null,
+    })
+
+    expect(mockConversationFindFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'conversation-1',
+        userId: 'user-123',
+        workspaceId: 'workspace-456',
+        archived: false,
+      },
+      select: {
+        id: true,
+        projectId: true,
+        studyId: true,
+      },
+    })
+    expect(mockFindFirst).not.toHaveBeenCalled()
+    expect(mockStudyFindFirst).not.toHaveBeenCalled()
+  })
+
+  it('preserves project ownership validation', async () => {
+    mockConversationFindFirst.mockResolvedValue({
+      id: 'conversation-1',
+      projectId: 'project-1',
+      studyId: null,
+    })
+    mockFindFirst.mockResolvedValue({ id: 'project-1' })
+
+    await expect(
+      findOwnedConversationAccess(validScope, 'conversation-1')
+    ).resolves.toEqual({
+      id: 'conversation-1',
+      projectId: 'project-1',
+      studyId: null,
+    })
+    expect(mockFindFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'project-1',
+        workspaceId: 'workspace-456',
+        ownerId: 'user-123',
+      },
+      select: { id: true },
+    })
+  })
+
+  it('preserves study ownership validation and hides denied conversations', async () => {
+    mockConversationFindFirst.mockResolvedValue({
+      id: 'conversation-1',
+      projectId: 'project-1',
+      studyId: 'study-1',
+    })
+    mockStudyFindFirst.mockResolvedValue(null)
+
+    await expect(
+      findOwnedConversationAccess(validScope, 'conversation-1')
+    ).resolves.toBeNull()
+    expect(mockStudyFindFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'study-1',
+        projectId: 'project-1',
+        project: {
+          workspaceId: 'workspace-456',
+          ownerId: 'user-123',
+        },
+      },
+      select: {
+        id: true,
+        projectId: true,
+      },
+    })
+  })
+
+  it('returns null when the exact active owner/workspace query finds no row', async () => {
+    mockConversationFindFirst.mockResolvedValue(null)
+
+    await expect(
+      findOwnedConversationAccess(validScope, 'conversation-1')
+    ).resolves.toBeNull()
+    expect(mockFindFirst).not.toHaveBeenCalled()
+    expect(mockStudyFindFirst).not.toHaveBeenCalled()
   })
 })

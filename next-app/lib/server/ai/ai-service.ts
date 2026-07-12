@@ -2543,15 +2543,20 @@ class AIService {
                                 conversationId: conversation.id,
                                 content: fallbackContent,
                             });
-                            yield { type: "content", content: fallbackContent, conversationId: conversation.id };
+                            // Persist one calm fallback for conversation reload, but do not
+                            // stream it beside the structured error below. The live surface
+                            // renders the typed error once and still consumes the authoritative
+                            // run_end; replay later has one fallback assistant message.
                         }
                         loop.markStopped("error");
                         await persistRecoveryErrorChunk(terminalErrorChunk);
-                        yield terminalErrorChunk;
                         const finalized = await finalizeRunOnce("failed");
                         if (!finalized) {
                             return;
                         }
+                        // Durable terminal truth must exist before the client can
+                        // observe the error and disconnect the stream.
+                        yield terminalErrorChunk;
                         const runModelMeta = resolveRunActualModelMeta(iterationChatOptions.model, observedRunModel, invokedModel);
                         const terminalStatus: TerminalRunStatus = finalizedRunStatus ?? "failed";
                         yield {
@@ -3400,7 +3405,8 @@ class AIService {
                         content: fallbackContent,
                     });
                 }
-                yield { type: "content", content: fallbackContent, conversationId: conversation.id };
+                // The structured terminal error below is the single live error.
+                // Keep the persisted fallback for reload without duplicating it in-stream.
             }
 
             const finalized = await finalizeRunOnce("failed");

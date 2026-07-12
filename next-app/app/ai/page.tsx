@@ -28,7 +28,7 @@ import type {
 } from "@/types/ai";
 import type { ArtifactStatus } from "@/types/artifacts";
 import type { TimelineItem } from "@/types/timeline";
-import { processAIStream } from "@/lib/ai/stream-processor";
+import { isStreamErrorChunk, processAIStream } from "@/lib/ai/stream-processor";
 import { routeToAgent } from "@/lib/agent/router";
 import { dispatchProjectDataChanged, getChangedDomainsForAcceptedArtifact } from "@/lib/project-data-events";
 import { isNavigationSafe } from "@/lib/ai/navigation-safety";
@@ -239,6 +239,8 @@ function AIViewContent() {
     resolveReasoningEffort(DEFAULT_SELECTABLE_MODEL_ID)
   ));
   const [deliveryMode, setDeliveryModeState] = useState<DeliveryMode>("standard");
+  const [deliveryRequestActive, setDeliveryRequestActive] = useState(false);
+  const [actualDeliveryMode, setActualDeliveryMode] = useState<DeliveryMode | null>(null);
   const modelAvailabilityState = useModelAvailability();
   const modelAvailability = modelAvailabilityState?.availability;
   const modelAvailabilityStatus = modelAvailabilityState?.status;
@@ -317,6 +319,7 @@ function AIViewContent() {
         : readStoredReasoningEffort(window.localStorage, modelId),
     );
     setDeliveryModeState("standard");
+    setActualDeliveryMode(null);
     if (typeof window !== "undefined") {
       window.localStorage.setItem("litrev_ai_model", modelId);
     }
@@ -332,6 +335,7 @@ function AIViewContent() {
 
   const setDeliveryMode = useCallback((mode: DeliveryMode) => {
     setDeliveryModeState(resolveDeliveryMode(selectedModel, mode));
+    setActualDeliveryMode(null);
   }, [selectedModel]);
 
   useEffect(() => {
@@ -1602,7 +1606,9 @@ function AIViewContent() {
       deliveryMode: generationPreferences?.deliveryMode
         ?? (sameAsSelectedModel ? deliveryMode : "standard"),
     });
-    setDeliveryModeState("standard");
+    setDeliveryModeState(generationSnapshot.deliveryMode);
+    setDeliveryRequestActive(true);
+    setActualDeliveryMode(null);
     const effectiveModel = generationSnapshot.model;
     const reasoningRequest = resolveReasoningRequest({
       preferredMode: reasoningMode,
@@ -1650,6 +1656,9 @@ function AIViewContent() {
         },
       });
       releaseSendLock();
+      setDeliveryModeState("standard");
+      setDeliveryRequestActive(false);
+      setActualDeliveryMode(null);
       return false;
     }
     failedConversationBootstrapRef.current = null;
@@ -1812,7 +1821,7 @@ function AIViewContent() {
     });
 
     const attemptRecoveryFromAbnormalEnd = async (): Promise<boolean> => {
-      if (!terminalReason || !shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
+      if (runStatus !== null || !terminalReason || !shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
         return false;
       }
       const runtimeState = runtime.getState();
@@ -1835,8 +1844,16 @@ function AIViewContent() {
         conversationId: activeConversationId,
         runId: activeRunId,
         signal: controller.signal,
-        onReplay: async (chunk) => runtime.handleChunk(chunk),
-        onTerminal: async (chunk) => runtime.handleChunk(chunk),
+        onReplay: async (chunk) => {
+          if (chunk.actualDeliveryMode) setActualDeliveryMode(chunk.actualDeliveryMode);
+          if (isStreamErrorChunk(chunk)) emittedTerminalError = true;
+          await runtime.handleChunk(chunk);
+        },
+        onTerminal: async (chunk) => {
+          if (chunk.actualDeliveryMode) setActualDeliveryMode(chunk.actualDeliveryMode);
+          if (isStreamErrorChunk(chunk)) emittedTerminalError = true;
+          await runtime.handleChunk(chunk);
+        },
       });
 
       if (recoveryResult.outcome === "recovered") {
@@ -1918,22 +1935,26 @@ function AIViewContent() {
         reader,
         signal: controller.signal,
         shouldContinue: () => streamGenRef.current === myGen,
-        throwOnErrorChunk: true,
-        onChunk: (data) => runtime.handleChunk(data),
+        throwOnErrorChunk: false,
+        onChunk: async (data) => {
+          if (data.actualDeliveryMode) setActualDeliveryMode(data.actualDeliveryMode);
+          if (isStreamErrorChunk(data)) emittedTerminalError = true;
+          await runtime.handleChunk(data);
+        },
       });
       runStatus = summary.runStatus;
-      terminalReason = summary.terminalReason;
-      sendSucceeded = summary.terminalReason === "completed";
-      if (summary.terminalReason === "paused_for_input") {
-        sendSucceeded = true;
-      }
+      terminalReason = runStatus !== null
+        ? terminalReasonFromRunEnd({ runStatus, stopReason: summary.stopReason })
+        : summary.terminalReason;
+      emittedTerminalError = emittedTerminalError || summary.errorMessage !== null;
+      sendSucceeded = isSuccessfulTerminalReason(terminalReason);
       const runEndToolCounts = runtime.getLastRunEndToolCounts();
       unresolvedCountBeforeClear = runEndToolCounts?.beforeClear ?? null;
       unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
       currentRunIdRef.current = runtime.getState().localRunId || currentRunIdRef.current;
       convId = runtime.getConversationId();
       const recovered = await attemptRecoveryFromAbnormalEnd();
-      if (!recovered && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
+      if (!recovered && runStatus === null && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
         return;
       }
     } catch (err) {
@@ -2032,6 +2053,8 @@ function AIViewContent() {
       if (streamGenRef.current === myGen) {
         releaseSendLock();
         setIsTyping(false);
+        setDeliveryModeState("standard");
+        setDeliveryRequestActive(false);
         setConversations((prev) =>
           sortConversationsByUpdatedAt(
             prev.map((conv) =>
@@ -2486,6 +2509,7 @@ function AIViewContent() {
     let lastVisibleChunkAtMs: number | null = null;
     let stopReason: string | null = null;
     let errorMessage: string | null = null;
+    let streamedTerminalError = false;
     let aborted = false;
     let terminalEventEmitted = false;
     const generationSnapshot = createGenerationPreferenceSnapshot({
@@ -2493,7 +2517,9 @@ function AIViewContent() {
       reasoningEffort,
       deliveryMode,
     });
-    setDeliveryModeState("standard");
+    setDeliveryModeState(generationSnapshot.deliveryMode);
+    setDeliveryRequestActive(true);
+    setActualDeliveryMode(null);
     const reasoningRequest = resolveReasoningRequest({
       preferredMode: reasoningMode,
       modelId: generationSnapshot.model,
@@ -2606,17 +2632,27 @@ function AIViewContent() {
         reader,
         signal: controller.signal,
         shouldContinue: () => streamGenRef.current === myGen,
-        throwOnErrorChunk: true,
-        onChunk: (data) => runtime.handleChunk(data),
+        throwOnErrorChunk: false,
+        onChunk: async (data) => {
+          if (data.actualDeliveryMode) setActualDeliveryMode(data.actualDeliveryMode);
+          if (isStreamErrorChunk(data)) streamedTerminalError = true;
+          await runtime.handleChunk(data);
+        },
       });
       convId = runtime.getConversationId();
       runStatus = summary.runStatus;
-      terminalReason = summary.terminalReason;
+      terminalReason = summary.runStatus !== null
+        ? terminalReasonFromRunEnd({
+            runStatus: summary.runStatus,
+            stopReason: summary.stopReason,
+          })
+        : summary.terminalReason;
       const runEndToolCounts = runtime.getLastRunEndToolCounts();
       unresolvedCountBeforeClear = runEndToolCounts?.beforeClear ?? null;
       unresolvedCountAfterClear = runEndToolCounts?.afterClear ?? null;
       stopReason = summary.stopReason;
       errorMessage = summary.errorMessage;
+      streamedTerminalError = streamedTerminalError || summary.errorMessage !== null;
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         aborted = true;
@@ -2668,6 +2704,8 @@ function AIViewContent() {
       }
       if (streamGenRef.current === myGen) {
         setIsTyping(false);
+        setDeliveryModeState("standard");
+        setDeliveryRequestActive(false);
         setConversations((prev) =>
           sortConversationsByUpdatedAt(
             prev.map((conv) =>
@@ -2699,7 +2737,7 @@ function AIViewContent() {
     const didComplete = terminalReason === "completed";
     setPlanStatus(didComplete ? "accepted" : "proposed");
 
-    if (!didComplete && streamGenRef.current === myGen) {
+    if (!didComplete && !streamedTerminalError && streamGenRef.current === myGen) {
       const reason = errorMessage ?? (stopReason ? `Execution stopped: ${stopReason}` : "Execution did not complete.");
       const errorState = buildClientErrorState(`Plan execution failed: ${reason}`);
       updateConversationTimeline(convId, (items) => {
@@ -2792,7 +2830,7 @@ function AIViewContent() {
     const generationSnapshot = createGenerationPreferenceSnapshot({
       model: payload.model ?? selectedModel,
       reasoningEffort,
-      deliveryMode,
+      deliveryMode: deliveryRequestActive ? "standard" : deliveryMode,
     });
     setQueuedFollowUp(
       createQueuedFollowUp({
@@ -2802,8 +2840,11 @@ function AIViewContent() {
         source: "draft",
       })
     );
-    setDeliveryModeState("standard");
-  }, [activeConversationId, deliveryMode, reasoningEffort, selectedModel]);
+    if (!deliveryRequestActive) {
+      setDeliveryModeState("standard");
+      setActualDeliveryMode(null);
+    }
+  }, [activeConversationId, deliveryMode, deliveryRequestActive, reasoningEffort, selectedModel]);
 
   const handleEditQueuedFollowUp = useCallback(() => {
     if (!queuedFollowUp) return;
@@ -3119,6 +3160,8 @@ function AIViewContent() {
             onRetryModelAvailability={retryModelAvailability}
             reasoningEffort={reasoningEffort}
             deliveryMode={deliveryMode}
+            deliveryRequestActive={deliveryRequestActive}
+            actualDeliveryMode={actualDeliveryMode}
             showReasoningControls={showReasoningControls}
             reasoningMode={reasoningMode}
             reasoningVisibilitySupport={reasoningVisibilitySupport}
@@ -3217,6 +3260,8 @@ function AIViewContent() {
                   onReasoningEffortChange={setReasoningEffort}
                   deliveryMode={deliveryMode}
                   onDeliveryModeChange={setDeliveryMode}
+                  deliveryRequestActive={deliveryRequestActive}
+                  actualDeliveryMode={actualDeliveryMode}
                   hideModelControl={isPhoneViewport}
                   compactMobileChrome={isPhoneViewport}
                   showAutonomyPreset={false}

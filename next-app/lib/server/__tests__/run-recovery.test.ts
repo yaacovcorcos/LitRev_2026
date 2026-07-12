@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  RUN_RECOVERY_ABSOLUTE_TIMEOUT_MS,
+  RUN_RECOVERY_INACTIVITY_TIMEOUT_MS,
+} from "@/lib/ai/run-recovery-client";
 
 const mocks = vi.hoisted(() => ({
   agentRunFindFirst: vi.fn(),
+  agentRunUpdateMany: vi.fn(),
   runEventFindMany: vi.fn(),
   runEventFindFirst: vi.fn(),
   artifactFindMany: vi.fn(),
@@ -13,6 +18,7 @@ vi.mock("@/lib/server/prisma", () => ({
   prisma: {
     agentRun: {
       findFirst: mocks.agentRunFindFirst,
+      updateMany: mocks.agentRunUpdateMany,
     },
     runEvent: {
       findMany: mocks.runEventFindMany,
@@ -32,13 +38,24 @@ vi.mock("@/lib/server/agent/run-checkpoints", () => ({
   resolveLatestValidRunCheckpoint: mocks.resolveLatestValidRunCheckpoint,
 }));
 
-const { buildRunRecoveryResponse, REPLAY_AUTHORITATIVE_RUN_EVENT_TYPES } = await import("@/lib/server/agent/run-recovery");
+const {
+  buildRunRecoveryResponse,
+  REPLAY_AUTHORITATIVE_RUN_EVENT_TYPES,
+  RUN_RECOVERY_ABANDONED_STALE_MS,
+} = await import("@/lib/server/agent/run-recovery");
 
 describe("run recovery", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    mocks.agentRunUpdateMany.mockResolvedValue({ count: 0 });
     mocks.resolveLatestValidRunCheckpoint.mockResolvedValue(null);
     mocks.resolveDurableContinuationSource.mockResolvedValue(null);
+  });
+
+  it("keeps the client recovery window beyond the server's stale-worker proof", () => {
+    expect(RUN_RECOVERY_ABANDONED_STALE_MS).toBe(45_000);
+    expect(RUN_RECOVERY_INACTIVITY_TIMEOUT_MS).toBeGreaterThan(RUN_RECOVERY_ABANDONED_STALE_MS);
+    expect(RUN_RECOVERY_ABSOLUTE_TIMEOUT_MS).toBeGreaterThan(150_000);
   });
 
   it("returns a safe retry response when the run is missing", async () => {
@@ -386,7 +403,7 @@ describe("run recovery", () => {
     });
   });
 
-  it("recommends reconnect for fresh running runs and stop-and-retry for stale ones", async () => {
+  it("recommends reconnect for fresh running runs and terminalizes stale abandoned ones", async () => {
     mocks.runEventFindMany.mockResolvedValue([]);
     mocks.runEventFindFirst.mockResolvedValue(null);
     mocks.artifactFindMany.mockResolvedValue([]);
@@ -433,6 +450,7 @@ describe("run recovery", () => {
       finalizationState: "not_started",
       abnormalEndClassification: null,
     });
+    mocks.agentRunUpdateMany.mockResolvedValueOnce({ count: 1 });
 
     const stale = await buildRunRecoveryResponse({
       conversationId: "conv-1",
@@ -440,7 +458,304 @@ describe("run recovery", () => {
       now: new Date("2026-03-11T12:00:00.000Z"),
       staleMs: 90_000,
     });
-    expect(stale.recoveryRecommendation).toBe("stop_and_retry");
+    expect(stale.recoveryRecommendation).toBe("terminal");
+    expect(stale).toMatchObject({
+      runStatus: "failed",
+      isActive: false,
+      abnormalEndClassification: "network_disconnect",
+      terminalEvent: {
+        chunk: {
+          type: "run_end",
+          runId: "run-stale",
+          runStatus: "failed",
+        },
+      },
+    });
+    expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: "run-stale",
+        conversationId: "conv-1",
+        status: "running",
+        completedAt: null,
+        lastActivityAt: { lte: new Date("2026-03-11T11:58:30.000Z") },
+      }),
+      data: expect.objectContaining({
+        status: "failed",
+        runPhase: "finalize",
+        phaseEnteredAt: new Date("2026-03-11T12:00:00.000Z"),
+        finalizationState: "completed",
+        abnormalEndClassification: "network_disconnect",
+      }),
+    }));
+  });
+
+  it("preserves the same durable continuation across repeated recovery requests", async () => {
+    const runningRun = {
+      id: "run-tool-abandoned",
+      conversationId: "conv-1",
+      status: "running",
+      runPhase: "act",
+      phaseEnteredAt: new Date("2026-07-13T09:00:00.000Z"),
+      model: "grok-4.5",
+      actualModel: "grok-4.5",
+      actualProvider: "xai",
+      actualReasoningEffort: "medium",
+      actualDeliveryMode: "standard",
+      costTokensIn: 12,
+      costTokensOut: 34,
+      lastActivityAt: new Date("2026-07-13T09:00:15.000Z"),
+      lastDurableProgressAt: new Date("2026-07-13T09:00:14.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
+      finalizationState: "not_started",
+      abnormalEndClassification: null,
+    };
+    const recoveryTerminalizedRun = {
+      ...runningRun,
+      status: "failed",
+      runPhase: "finalize",
+      phaseEnteredAt: new Date("2026-07-13T09:01:01.000Z"),
+      lastActivityAt: new Date("2026-07-13T09:01:01.000Z"),
+      lastDurableProgressAt: new Date("2026-07-13T09:01:01.000Z"),
+      finalizationState: "completed",
+      abnormalEndClassification: "network_disconnect",
+    };
+    mocks.agentRunFindFirst
+      .mockResolvedValueOnce(runningRun)
+      .mockResolvedValueOnce(recoveryTerminalizedRun);
+    mocks.runEventFindMany.mockResolvedValue([{
+      sequence: 2,
+      type: "tool_result",
+      payload: {
+        callId: "read-protocol-1",
+        result: { success: true, data: { message: "No protocol is defined yet." } },
+      },
+      toolName: "read_protocol",
+      artifactId: null,
+      messageRole: null,
+    }]);
+    mocks.runEventFindFirst.mockResolvedValue({ sequence: 2 });
+    mocks.artifactFindMany.mockResolvedValue([]);
+    mocks.agentRunUpdateMany.mockResolvedValueOnce({ count: 1 });
+    mocks.resolveDurableContinuationSource.mockResolvedValue({
+      runId: "run-tool-abandoned",
+      conversationId: "conv-1",
+      eventSequence: 2,
+      kind: "tool_result",
+    });
+
+    const firstResult = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-tool-abandoned",
+      afterSequence: 1,
+      now: new Date("2026-07-13T09:01:01.000Z"),
+    });
+
+    const secondResult = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-tool-abandoned",
+      afterSequence: 1,
+      now: new Date("2026-07-13T09:01:02.000Z"),
+    });
+
+    expect(firstResult.replayableEvents).toEqual([{
+      sequence: 2,
+      chunk: {
+        type: "tool_result",
+        toolResult: {
+          callId: "read-protocol-1",
+          result: { success: true, data: { message: "No protocol is defined yet." } },
+        },
+        toolName: "read_protocol",
+        replay: true,
+        conversationId: "conv-1",
+      },
+    }]);
+    expect(firstResult).toMatchObject({
+      runStatus: "failed",
+      isActive: false,
+      recoveryRecommendation: "continue_from_durable_state",
+      terminalEvent: null,
+    });
+    expect(secondResult).toMatchObject({
+      runStatus: "failed",
+      isActive: false,
+      recoveryRecommendation: "continue_from_durable_state",
+      terminalEvent: null,
+    });
+    expect(mocks.agentRunUpdateMany).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveDurableContinuationSource).toHaveBeenCalledTimes(2);
+    expect(mocks.resolveDurableContinuationSource).toHaveBeenLastCalledWith({
+      runId: "run-tool-abandoned",
+      conversationId: "conv-1",
+    });
+  });
+
+  it("does not widen ordinary failed runs into recovery continuations", async () => {
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-ordinary-failure",
+      conversationId: "conv-1",
+      status: "failed",
+      runPhase: "finalize",
+      phaseEnteredAt: new Date("2026-07-13T09:01:00.000Z"),
+      model: "grok-4.5",
+      actualModel: "grok-4.5",
+      actualProvider: "xai",
+      actualReasoningEffort: "medium",
+      actualDeliveryMode: "standard",
+      costTokensIn: 12,
+      costTokensOut: 1,
+      lastActivityAt: new Date("2026-07-13T09:01:00.000Z"),
+      lastDurableProgressAt: new Date("2026-07-13T09:01:00.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
+      finalizationState: "completed",
+      abnormalEndClassification: "unknown",
+    });
+    mocks.runEventFindMany.mockResolvedValue([]);
+    mocks.runEventFindFirst.mockResolvedValue(null);
+    mocks.resolveDurableContinuationSource.mockResolvedValue({
+      kind: "tool_result",
+      sourceRunId: "run-ordinary-failure",
+      conversationId: "conv-1",
+      eventSequence: 2,
+    });
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-ordinary-failure",
+    });
+
+    expect(mocks.resolveLatestValidRunCheckpoint).not.toHaveBeenCalled();
+    expect(mocks.resolveDurableContinuationSource).not.toHaveBeenCalled();
+    expect(result.recoveryRecommendation).toBe("terminal");
+    expect(result.terminalEvent).toMatchObject({
+      chunk: { type: "run_end", runStatus: "failed" },
+    });
+  });
+
+  it("re-fetches final assistant events after stale reconciliation loses the ownership race", async () => {
+    const staleRun = {
+      id: "run-final-race",
+      conversationId: "conv-1",
+      status: "running",
+      runPhase: "act",
+      phaseEnteredAt: new Date("2026-07-13T09:00:00.000Z"),
+      model: "grok-4.5",
+      actualModel: "grok-4.5",
+      actualProvider: "xai",
+      actualReasoningEffort: "medium",
+      actualDeliveryMode: "standard",
+      costTokensIn: 20,
+      costTokensOut: 10,
+      lastActivityAt: new Date("2026-07-13T09:00:00.000Z"),
+      lastDurableProgressAt: new Date("2026-07-13T09:00:00.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
+      finalizationState: "not_started",
+      abnormalEndClassification: null,
+    };
+    mocks.agentRunFindFirst
+      .mockResolvedValueOnce(staleRun)
+      .mockResolvedValueOnce({
+        ...staleRun,
+        status: "completed",
+        runPhase: "finalize",
+        phaseEnteredAt: new Date("2026-07-13T09:01:00.000Z"),
+        lastActivityAt: new Date("2026-07-13T09:01:00.000Z"),
+        lastDurableProgressAt: new Date("2026-07-13T09:01:00.000Z"),
+        finalizationState: "completed",
+      });
+    mocks.agentRunUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.runEventFindMany.mockResolvedValue([{
+      sequence: 3,
+      type: "message",
+      payload: { content: "The final answer committed during recovery." },
+      toolName: null,
+      artifactId: null,
+      messageRole: "assistant",
+    }]);
+    mocks.runEventFindFirst.mockResolvedValue({ sequence: 3 });
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-final-race",
+      afterSequence: 2,
+      now: new Date("2026-07-13T09:01:00.000Z"),
+    });
+
+    expect(mocks.agentRunFindFirst).toHaveBeenCalledTimes(2);
+    expect(mocks.runEventFindMany.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocks.agentRunFindFirst.mock.invocationCallOrder[1]!,
+    );
+    expect(result.replayableEvents).toEqual([{
+      sequence: 3,
+      chunk: {
+        type: "content",
+        content: "The final answer committed during recovery.",
+        contentMode: "replace",
+        replay: true,
+        conversationId: "conv-1",
+      },
+    }]);
+    expect(result.lastSequence).toBe(3);
+    expect(result.terminalEvent).toMatchObject({
+      chunk: { type: "run_end", runStatus: "completed" },
+    });
+  });
+
+  it("preserves a concurrent semantic cancellation that wins stale reconciliation", async () => {
+    const staleRun = {
+      id: "run-cancel-race",
+      conversationId: "conv-1",
+      status: "running",
+      runPhase: "act",
+      phaseEnteredAt: new Date("2026-07-13T09:00:00.000Z"),
+      model: null,
+      actualModel: null,
+      actualProvider: null,
+      actualReasoningEffort: null,
+      actualDeliveryMode: null,
+      costTokensIn: 0,
+      costTokensOut: 0,
+      lastActivityAt: new Date("2026-07-13T09:00:00.000Z"),
+      lastDurableProgressAt: new Date("2026-07-13T09:00:00.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
+      finalizationState: "not_started",
+      abnormalEndClassification: null,
+    };
+    mocks.agentRunFindFirst
+      .mockResolvedValueOnce(staleRun)
+      .mockResolvedValueOnce({
+        ...staleRun,
+        status: "cancelled",
+        lastActivityAt: new Date("2026-07-13T09:01:00.000Z"),
+        lastDurableProgressAt: new Date("2026-07-13T09:01:00.000Z"),
+        finalizationState: "completed",
+      });
+    mocks.runEventFindMany.mockResolvedValue([]);
+    mocks.runEventFindFirst.mockResolvedValue(null);
+    mocks.artifactFindMany.mockResolvedValue([]);
+    mocks.agentRunUpdateMany.mockResolvedValue({ count: 0 });
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-1",
+      runId: "run-cancel-race",
+      now: new Date("2026-07-13T09:01:00.000Z"),
+    });
+
+    expect(result).toMatchObject({
+      runStatus: "cancelled",
+      isActive: false,
+      recoveryRecommendation: "terminal",
+      terminalEvent: {
+        chunk: {
+          runStatus: "cancelled",
+          stopReason: "cancelled",
+        },
+      },
+    });
   });
 
   it("replays the live auto-applied artifact state from its authoritative review event", async () => {
@@ -524,6 +839,7 @@ describe("run recovery", () => {
     ]);
     mocks.runEventFindFirst
       .mockResolvedValueOnce({ sequence: 4 })
+      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({ sequence: 4 });
     mocks.artifactFindMany.mockResolvedValue([]);
     mocks.agentRunFindFirst.mockResolvedValue({
