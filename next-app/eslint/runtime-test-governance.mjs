@@ -14,6 +14,15 @@ export const REQUIRE_RUNTIME_TEST_DOMAINS = [
   "lib/agent/",
   "lib/server/agent/",
   "lib/server/ai/tools/",
+  "lib/server/ai/ai-service.ts",
+  "lib/server/ai/providers/anthropic.ts",
+  "lib/server/ai/providers/google.ts",
+  "lib/server/ai/providers/openai.ts",
+  "lib/server/ai/providers/stream-termination.ts",
+  "lib/server/ai/providers/xai.ts",
+  "lib/server/ai/tool-middleware.ts",
+  "app/actions/agent.ts",
+  "app/api/ai/stream/route.ts",
 ];
 
 export const PREFER_COLOCATED_TEST_DOMAINS = [
@@ -21,6 +30,24 @@ export const PREFER_COLOCATED_TEST_DOMAINS = [
 ];
 
 export const RUNTIME_TEST_WAIVER_FILE = "eslint/runtime-test-impact-waivers.json";
+
+export const CENTRAL_RUNTIME_TEST_FAMILIES = [
+  {
+    runtimePath: "lib/server/ai/ai-service.ts",
+    testDirectory: "lib/server/__tests__",
+    testFilenamePrefix: "ai-service-",
+  },
+  {
+    runtimePathPrefix: "lib/server/ai/providers/",
+    testDirectory: "lib/server/__tests__",
+    testFilenamePrefix: "provider-",
+  },
+  {
+    runtimePath: "app/actions/agent.ts",
+    testDirectory: "app/actions/__tests__",
+    testFilenamePrefix: "agent-",
+  },
+];
 
 const WAIVER_REQUIRED_FIELDS = ["path", "reason", "coverage", "testPath"];
 const GLOB_PATTERN = /[*?[\]{}]/;
@@ -142,8 +169,33 @@ export function hasRuntimeTestImpactWaiver(filename, waivers = loadRuntimeTestIm
   return getRuntimeTestImpactWaiver(filename, waivers) !== null;
 }
 
+function getCentralRuntimeTestFamily(filename) {
+  const relative = normalizeRelativeFilePath(relativeToRoot(filename));
+  return CENTRAL_RUNTIME_TEST_FAMILIES.find((family) => (
+    (family.runtimePath && family.runtimePath === relative)
+    || (family.runtimePathPrefix && relative.startsWith(family.runtimePathPrefix))
+  )) ?? null;
+}
+
+function isCentralRuntimeTestFamilyPath(filename, family) {
+  const relative = normalizeRelativeFilePath(relativeToRoot(filename));
+  return path.dirname(relative) === family.testDirectory
+    && path.basename(relative).startsWith(family.testFilenamePrefix)
+    && isTestFile(relative);
+}
+
+export function hasCentralRuntimeTestFamily(filename) {
+  const family = getCentralRuntimeTestFamily(filename);
+  if (!family) return false;
+  const directory = path.join(process.cwd(), family.testDirectory);
+  if (!fs.existsSync(directory)) return false;
+  return fs.readdirSync(directory).some((entry) => (
+    isCentralRuntimeTestFamilyPath(path.join(family.testDirectory, entry), family)
+  ));
+}
+
 export function hasNearbyRuntimeTest(filename) {
-  return findCandidateTestFiles(filename).some(fileExists);
+  return findCandidateTestFiles(filename).some(fileExists) || hasCentralRuntimeTestFamily(filename);
 }
 
 export function getColocatedRuntimeTestCandidates(filename) {
@@ -176,9 +228,31 @@ export function listChangedGovernedRuntimeFiles(changedFiles, domains = REQUIRE_
     .filter((file) => isGovernedRuntimeTestFile(file, domains));
 }
 
-export function hasChangedNearbyTestImpact(runtimeFile, changedFiles) {
+export function hasChangedNearbyTestImpact(runtimeFile, changedFiles, cwd = process.cwd()) {
   const changedSet = new Set(changedFiles.map(normalizeRelativeFilePath));
-  return findCandidateTestFiles(runtimeFile).some((candidate) => changedSet.has(candidate));
+  return findCandidateTestFiles(runtimeFile).some(
+    (candidate) => changedSet.has(candidate) && fs.existsSync(path.join(cwd, candidate)),
+  );
+}
+
+export function hasChangedRuntimeTestImpact(
+  runtimeFile,
+  changedFiles,
+  waivers = loadRuntimeTestImpactWaivers(),
+  cwd = process.cwd(),
+) {
+  if (hasChangedNearbyTestImpact(runtimeFile, changedFiles, cwd)) return true;
+  const family = getCentralRuntimeTestFamily(runtimeFile);
+  if (family && changedFiles.some((file) => (
+    isCentralRuntimeTestFamilyPath(file, family)
+    && fs.existsSync(path.join(cwd, normalizeRelativeFilePath(file)))
+  ))) {
+    return true;
+  }
+  const waiver = getRuntimeTestImpactWaiver(runtimeFile, waivers);
+  if (!waiver) return false;
+  const changedSet = new Set(changedFiles.map(normalizeRelativeFilePath));
+  return changedSet.has(waiver.testPath);
 }
 
 export function buildRuntimeTestImpactSummary({
@@ -186,17 +260,24 @@ export function buildRuntimeTestImpactSummary({
   waivers = loadRuntimeTestImpactWaivers(),
   waiverPath = RUNTIME_TEST_WAIVER_FILE,
   generatedAt = new Date().toISOString(),
+  cwd = process.cwd(),
 } = {}) {
   const normalizedChangedFiles = changedFiles.map(normalizeRelativeFilePath);
   const changedRuntimeFiles = listChangedGovernedRuntimeFiles(normalizedChangedFiles);
-  const failures = changedRuntimeFiles.filter((file) => (
-    !hasRuntimeTestImpactWaiver(file, waivers)
-    && !hasChangedNearbyTestImpact(file, normalizedChangedFiles)
-  ));
+  const deletedRuntimeFiles = changedRuntimeFiles.filter(
+    (file) => !fs.existsSync(path.join(cwd, file)),
+  );
+  const deletedRuntimeSet = new Set(deletedRuntimeFiles);
+  const failures = changedRuntimeFiles.filter(
+    (file) => !deletedRuntimeSet.has(file),
+  ).filter(
+    (file) => !hasChangedRuntimeTestImpact(file, normalizedChangedFiles, waivers, cwd),
+  );
 
   return {
     checkedAt: generatedAt,
     changedRuntimeFiles,
+    deletedRuntimeFiles,
     failures,
     waiverPath,
   };

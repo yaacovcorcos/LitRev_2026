@@ -270,6 +270,9 @@ export async function POST(request: NextRequest) {
         const service = getAIService();
         const scopedOptions: StreamRouteOptions = {
             ...options,
+            // Lineage is server-owned. A client may request a validated durable
+            // continuation, but it may never attach itself to an arbitrary run.
+            parentRunId: undefined,
             projectId: scopedProjectId,
             studyId: scopedStudyId,
             replaceRunId: normalizedReplaceRunId,
@@ -437,6 +440,10 @@ export async function POST(request: NextRequest) {
                                     sourceRunId: runtimeOptions.userInputResolution.sourceRunId,
                                     conversationId: runtimeOptions.conversationId ?? null,
                                     callId: runtimeOptions.userInputResolution.callId,
+                                    actor: {
+                                        userId: authResult.context.userId,
+                                        workspaceId: authResult.context.workspaceId,
+                                    },
                                 });
                             } catch (error) {
                                 await emitClarificationRuntimeMetric(
@@ -497,6 +504,7 @@ export async function POST(request: NextRequest) {
                             await persistUserInputResolution({
                                 resolution: resolvedUserInput,
                                 request: pendingUserInputSource.request,
+                                actorUserId: authResult.context.userId,
                             });
                             await coalescer.push({
                                 type: "user_input_resolved",

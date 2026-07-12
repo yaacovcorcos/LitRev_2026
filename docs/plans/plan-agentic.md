@@ -93,6 +93,10 @@ The agent should not merely "feel smart." It should be:
   - retry/replace can now prefer checkpoint-backed or durable continuation over restart-from-zero when the source is proven
   - interrupted latest tool calls now use a runtime-owned restart policy: read-only calls and idempotent mutations can seed a bounded continuation, while unsafe or decision-sensitive calls still stop truthfully
 - Artifact undo remains bounded by a server-owned expiry window. The default window is `5` minutes, and operators can tune it with `ARTIFACT_UNDO_WINDOW_MS`; missing, blank, non-finite, and non-positive values fall back to the default.
+  - undoable artifacts persist a versioned before/applied snapshot envelope; undo locks the affected domain row and fails closed with `ARTIFACT_UNDO_CONFLICT` unless the current artifact-owned target still matches the captured applied state
+  - study, protocol-field, and draft restores change only the artifact-owned fields or section; criteria add/remove undo inverses only the normalized criterion delta, preserving unrelated concurrent criteria edits
+  - legacy snapshots without a trustworthy applied-state comparison are not restored for compatibility, because an unconditional restore could overwrite legitimate later work
+- Metadata-only scoping reports have no proposed intermediate state: their `auto_applied` artifact row, authoritative `artifact_reviewed` event, and matching recovery checkpoint commit atomically under one stable run-scoped apply key. A failure in any member rolls the whole persistence unit back, and retry reconciles the already committed live state without duplicating the event or checkpoint.
 - `ask_user` is already runtime-safe and request-bound:
   - canonical identity is `sourceRunId + callId`
   - `questionId` support already exists as additive question-level structure
@@ -105,6 +109,11 @@ The agent should not merely "feel smart." It should be:
   - structured tool-boundary failures
   - no fake `{}` coercion for invalid payloads
   - mutating-tool idempotency receipts now settle on returned, thrown, and aborted executor failures; stale running leases remain the crash/process-death fallback instead of a normal cancellation path
+  - loop cancellation propagates into nested bulk-screening model calls, late read-only results are rejected after abort, artifact mutation phases recheck ownership before writes, and tool spans close on every terminal path
+  - PDF extraction links tool cancellation to a 30-second provider deadline; the first assistant message atomically commits and emits a deterministic conversation title while optional provider refinement is deadline-bounded and scheduled with request-scoped `after()`, and memory-use attribution plus post-finalization conversation summarization are never awaited before terminal delivery
+  - post-run conversation-memory extraction is also off the terminal-delivery path, but no longer fire-and-forget: successful scoped finalization atomically records a pending job on `AgentRun`, workers use fenced expiring leases, and later run boundaries retry eligible backlog when request-scoped `after()` acceleration is unavailable
+  - every chat, streaming, or voice-transcription provider attempt, including retries, is admitted through a durable scope-locked usage reservation with a conservative token hold and replay-safe attempt identity; settlement is idempotent and bounded, while failed, interrupted, or deferred attempts remain quota-bearing and reconcilable without suppressing `done` or `run_end`
+  - critical read-only startup branches fail closed after a typed 10-second deadline; conversation creation and run-admission mutations are deliberately not detached because Prisma cannot safely preempt an in-flight write
 - Search transparency is materially better:
   - semantic receipts for the main search tools
   - shared query/count/source semantics

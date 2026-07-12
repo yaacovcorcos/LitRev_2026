@@ -11,6 +11,7 @@ import { AGENT_MODES, type AgentMode } from "@/types/agent";
 export type ArtifactType =
     | "study_proposal"
     | "study_update"
+    | "study_deletion"
     | "draft_diff"
     | "screening_batch"
     | "protocol_suggestion"
@@ -82,6 +83,12 @@ export interface StudyUpdatePayload {
     };
     changes: StudyFieldChange[];
     rationale: string;
+}
+
+export interface StudyDeletionPayload {
+    studyId: string;
+    title: string;
+    reason?: string;
 }
 
 export interface DraftDiffPayload {
@@ -158,6 +165,12 @@ export interface CriteriaCardPayload {
     inclusion: string[];
     exclusion: string[];
     rationale?: string;
+    /** New criteria proposals carry a delta so acceptance preserves concurrent edits. */
+    mutation?: {
+        action: "add" | "remove";
+        type: "inclusion" | "exclusion";
+        criterion: string;
+    };
 }
 
 export interface EvidenceTablePayload {
@@ -267,6 +280,12 @@ export const StudyUpdateSchema = z.object({
     rationale: z.string().min(1),
 });
 
+export const StudyDeletionSchema = z.object({
+    studyId: z.string().min(1),
+    title: z.string().min(1),
+    reason: z.string().min(1).optional(),
+});
+
 export const DraftDiffSchema = z.object({
     section: z.string().min(1),
     sectionKey: z.string().min(1).optional(),
@@ -342,6 +361,11 @@ export const CriteriaCardSchema = z.object({
     inclusion: z.array(z.string()),
     exclusion: z.array(z.string()),
     rationale: z.string().optional(),
+    mutation: z.object({
+        action: z.enum(["add", "remove"]),
+        type: z.enum(["inclusion", "exclusion"]),
+        criterion: z.string().min(1),
+    }).optional(),
 });
 
 export const EvidenceTableSchema = z.object({
@@ -397,6 +421,7 @@ export const MemoryForgetProposalSchema = z.object({
 export const ARTIFACT_PAYLOAD_SCHEMAS: Record<ArtifactType, z.ZodType> = {
     study_proposal: StudyProposalSchema,
     study_update: StudyUpdateSchema,
+    study_deletion: StudyDeletionSchema,
     draft_diff: DraftDiffSchema,
     screening_batch: ScreeningBatchSchema,
     protocol_suggestion: ProtocolSuggestionSchema,

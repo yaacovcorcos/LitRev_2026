@@ -165,7 +165,7 @@ describe("tool idempotency store", () => {
     });
 
     expect(mocks.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "receipt-1", status: "running" },
+      where: { id: "receipt-1", status: "running", callId: "c1" },
       data: expect.objectContaining({
         status: "completed",
         result: { callId: "", result: { added: 1 } },
@@ -175,36 +175,23 @@ describe("tool idempotency store", () => {
     expect(mocks.upsert).not.toHaveBeenCalled();
   });
 
-  it("upserts a completed receipt when the original reservation row is gone", async () => {
+  it("refuses to settle a reservation after another call reclaims its lease", async () => {
     mocks.updateMany.mockResolvedValue({ count: 0 });
-    mocks.upsert.mockResolvedValue({ id: "receipt-1" });
     const store = createPrismaToolIdempotencyStore();
 
-    await store.complete({
+    await expect(store.complete({
       scopeKey: "root-1",
       toolName: "add_to_ledger",
       fingerprint: "fp",
       callId: "c1",
       reservationId: "receipt-1",
       result: { callId: "c1", result: { added: 1 } },
-    });
+    })).rejects.toThrow("reservation is no longer owned");
 
-    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: {
-        scopeKey_toolName_fingerprint: {
-          scopeKey: "root-1",
-          toolName: "add_to_ledger",
-          fingerprint: "fp",
-        },
-      },
-      update: expect.objectContaining({ status: "completed" }),
-      create: expect.objectContaining({
-        scopeKey: "root-1",
-        toolName: "add_to_ledger",
-        fingerprint: "fp",
-        status: "completed",
-      }),
+    expect(mocks.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "receipt-1", status: "running", callId: "c1" },
     }));
+    expect(mocks.upsert).not.toHaveBeenCalled();
   });
 
   it("releases an unresolved reservation after a tool-level error", async () => {
@@ -216,12 +203,14 @@ describe("tool idempotency store", () => {
       toolName: "add_to_ledger",
       fingerprint: "fp",
       reservationId: "receipt-1",
+      callId: "c1",
     });
 
     expect(mocks.deleteMany).toHaveBeenCalledWith({
       where: {
         id: "receipt-1",
         status: "running",
+        callId: "c1",
       },
     });
   });

@@ -9,9 +9,13 @@ const mocks = vi.hoisted(() => ({
     create: vi.fn(),
     transaction: vi.fn(),
     studyUpdate: vi.fn(),
+    studyUpdateMany: vi.fn(),
     protocolUpsert: vi.fn(),
     protocolFindUnique: vi.fn(),
+    ensureProtocol: vi.fn(),
+    syncProtocolToMemory: vi.fn(),
     executeRaw: vi.fn(),
+    queryRaw: vi.fn(),
     userMemoryUpdateMany: vi.fn(),
     projectMemoryUpdate: vi.fn(),
     projectMemoryUpdateMany: vi.fn(),
@@ -22,6 +26,7 @@ const mocks = vi.hoisted(() => ({
     noteObservedRunActivity: vi.fn(),
     getDraft: vi.fn(),
     saveDraft: vi.fn(),
+    draftFindUnique: vi.fn(),
 }));
 
 vi.mock("@/lib/server/prisma", () => ({
@@ -35,6 +40,7 @@ vi.mock("@/lib/server/prisma", () => ({
         study: {
             findFirst: mocks.findFirst,
             update: mocks.studyUpdate.mockImplementation(async (args: { data: unknown }) => args.data),
+            updateMany: mocks.studyUpdateMany,
         },
         protocol: {
             findUnique: mocks.protocolFindUnique,
@@ -53,6 +59,7 @@ vi.mock("@prisma/client", () => ({
 vi.mock("@/lib/server/agent/events", () => ({
     emitEvent: mocks.emitEvent,
     emitEventWithinTransaction: mocks.emitEventWithinTransaction,
+    emitPostRunUserEventWithinTransaction: mocks.emitEventWithinTransaction,
 }));
 
 vi.mock("@/lib/server/agent/run-checkpoints", () => ({
@@ -72,15 +79,11 @@ vi.mock("@/lib/server/memory/decision-extractor", () => ({
 }));
 
 vi.mock("@/lib/server/memory/protocol-sync", () => ({
-    syncProtocolToMemory: vi.fn(),
+    syncProtocolToMemory: mocks.syncProtocolToMemory,
 }));
 
 vi.mock("@/lib/server/protocols", () => ({
-    ensureProtocolWithDb: vi.fn().mockResolvedValue({
-        researchQuestion: "Old RQ",
-        pico: { population: "adults", intervention: "", comparison: "", outcome: "" },
-        eligibility: { inclusion: ["English"], exclusion: ["animals"] },
-    }),
+    ensureProtocolWithDb: mocks.ensureProtocol,
     saveProtocolTrusted: mocks.protocolUpsert,
 }));
 
@@ -166,7 +169,7 @@ function makeArtifact(overrides: Record<string, unknown> = {}) {
         conversationId: null,
         userId: "u1",
         type: "protocol_suggestion",
-        status: "proposed",
+        status: overrides.appliedAt ? "accepted" : "proposed",
         title: "Protocol: researchQuestion",
         payload: { field: "researchQuestion", value: "New RQ", rationale: "test" },
         snapshot: null,
@@ -196,9 +199,13 @@ function makeTx() {
         study: {
             findFirst: mocks.findFirst,
             update: mocks.studyUpdate,
+            updateMany: mocks.studyUpdateMany,
         },
         protocol: {
             findUnique: mocks.protocolFindUnique,
+        },
+        draft: {
+            findUnique: mocks.draftFindUnique,
         },
         userMemory: {
             updateMany: mocks.userMemoryUpdateMany,
@@ -208,6 +215,34 @@ function makeTx() {
             updateMany: mocks.projectMemoryUpdateMany,
         },
         $executeRaw: mocks.executeRaw,
+        $queryRaw: mocks.queryRaw,
+    };
+}
+
+function undoEnvelope(before: unknown, applied: unknown) {
+    return {
+        undoSnapshotVersion: 1,
+        before,
+        applied,
+    };
+}
+
+function protocolFieldState(value: unknown) {
+    return {
+        version: "2026-07-12T10:00:00.000Z",
+        field: "researchQuestion",
+        value: { exists: true, value },
+    };
+}
+
+function criteriaState(
+    inclusion: string[],
+    exclusion: string[],
+    version = "2026-07-12T10:00:00.000Z",
+) {
+    return {
+        version,
+        eligibility: { inclusion, exclusion },
     };
 }
 
@@ -216,7 +251,7 @@ function makeTx() {
 describe("undoArtifact", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        mocks.update.mockResolvedValue({ id: "art-1", status: "rejected" });
+        mocks.update.mockResolvedValue({ id: "art-1", runId: "run-1", status: "rejected" });
         mocks.create.mockImplementation(async (args: { data: Record<string, unknown> }) => ({
             id: "art-created",
             ...args.data,
@@ -229,10 +264,19 @@ describe("undoArtifact", () => {
         mocks.markRunDurabilityDegraded.mockResolvedValue(1);
         mocks.noteObservedRunActivity.mockReturnValue(undefined);
         mocks.protocolUpsert.mockResolvedValue(undefined);
+        mocks.ensureProtocol.mockResolvedValue({
+            researchQuestion: "Current RQ",
+            pico: { population: "adults", intervention: "", comparison: "", outcome: "" },
+            eligibility: { inclusion: ["Current inclusion"], exclusion: ["Current exclusion"] },
+        });
+        mocks.syncProtocolToMemory.mockResolvedValue(undefined);
         mocks.executeRaw.mockResolvedValue(1);
+        mocks.queryRaw.mockResolvedValue([{ locked: 1 }]);
         mocks.userMemoryUpdateMany.mockResolvedValue({ count: 0 });
         mocks.projectMemoryUpdate.mockResolvedValue(undefined);
         mocks.projectMemoryUpdateMany.mockResolvedValue({ count: 0 });
+        mocks.studyUpdateMany.mockResolvedValue({ count: 1 });
+        mocks.draftFindUnique.mockResolvedValue(null);
         mocks.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback(makeTx()));
     });
 
@@ -267,9 +311,14 @@ describe("undoArtifact", () => {
         mocks.findUnique.mockResolvedValue(makeArtifact({
             type: "protocol_suggestion",
             appliedAt: tenMinutesAgo,
-            snapshot: { field: "researchQuestion", previousValue: "Old RQ" },
+            snapshot: undoEnvelope(protocolFieldState("Old RQ"), protocolFieldState("New RQ")),
             payload: { field: "researchQuestion", value: "New RQ", rationale: "test" },
         }));
+        mocks.ensureProtocol.mockResolvedValue({
+            researchQuestion: "New RQ",
+            pico: { population: "adults", intervention: "", comparison: "", outcome: "" },
+            eligibility: { inclusion: [], exclusion: [] },
+        });
 
         await undoArtifact("art-1");
 
@@ -285,9 +334,14 @@ describe("undoArtifact", () => {
         mocks.findUnique.mockResolvedValue(makeArtifact({
             type: "protocol_suggestion",
             appliedAt: recentApply,
-            snapshot: { field: "researchQuestion", previousValue: "Old RQ" },
+            snapshot: undoEnvelope(protocolFieldState("Old RQ"), protocolFieldState("New RQ")),
             payload: { field: "researchQuestion", value: "New RQ", rationale: "test" },
         }));
+        mocks.ensureProtocol.mockResolvedValue({
+            researchQuestion: "New RQ",
+            pico: { population: "adults", intervention: "", comparison: "", outcome: "" },
+            eligibility: { inclusion: [], exclusion: [] },
+        });
 
         await undoArtifact("art-1");
 
@@ -302,6 +356,74 @@ describe("undoArtifact", () => {
             where: { id: "art-1" },
             data: { status: "rejected", reviewNote: "Undone by user" },
         });
+        expect(mocks.syncProtocolToMemory).toHaveBeenCalledWith(
+            "proj-1",
+            expect.objectContaining({ researchQuestion: "Old RQ" }),
+        );
+    });
+
+    it("fails closed when the applied protocol field was edited concurrently", async () => {
+        const recentApply = new Date(Date.now() - 60_000);
+        mocks.findUnique.mockResolvedValue(makeArtifact({
+            type: "protocol_suggestion",
+            appliedAt: recentApply,
+            snapshot: undoEnvelope(protocolFieldState("Old RQ"), protocolFieldState("New RQ")),
+            payload: { field: "researchQuestion", value: "New RQ", rationale: "test" },
+        }));
+        mocks.ensureProtocol.mockResolvedValue({
+            researchQuestion: "Concurrent RQ",
+            pico: { population: "", intervention: "", comparison: "", outcome: "" },
+            eligibility: { inclusion: [], exclusion: [] },
+        });
+
+        await expect(undoArtifact("art-1")).rejects.toMatchObject({
+            errorCode: "ARTIFACT_UNDO_CONFLICT",
+        });
+
+        expect(mocks.protocolUpsert).not.toHaveBeenCalled();
+        expect(mocks.update).not.toHaveBeenCalled();
+        expect(mocks.ensureProtocol.mock.results[0]?.value).toBeDefined();
+    });
+
+    it("apply -> concurrent protocol edit -> undo preserves the edit and artifact status", async () => {
+        let artifactState = makeArtifact({
+            type: "protocol_suggestion",
+            status: "proposed",
+            payload: { field: "researchQuestion", value: "New RQ", rationale: "test" },
+        });
+        const protocolState = {
+            researchQuestion: "Old RQ",
+            pico: { population: "", intervention: "", comparison: "", outcome: "" },
+            eligibility: { inclusion: [], exclusion: [] },
+        };
+        let protocolUpdatedAt = new Date("2026-07-12T09:00:00.000Z");
+        mocks.findUnique.mockImplementation(async () => artifactState);
+        mocks.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+            artifactState = { ...artifactState, ...data };
+            return artifactState;
+        });
+        mocks.protocolFindUnique.mockImplementation(async () => ({
+            data: structuredClone(protocolState),
+            updatedAt: protocolUpdatedAt,
+        }));
+        mocks.ensureProtocol.mockImplementation(async () => protocolState);
+        mocks.protocolUpsert.mockImplementation(async () => {
+            protocolUpdatedAt = new Date("2026-07-12T10:00:00.000Z");
+        });
+
+        await applyArtifact("art-1", "accepted");
+        expect(artifactState.status).toBe("accepted");
+        expect(protocolState.researchQuestion).toBe("new value");
+
+        protocolState.researchQuestion = "Concurrent RQ";
+        protocolUpdatedAt = new Date("2026-07-12T11:00:00.000Z");
+
+        await expect(undoArtifact("art-1")).rejects.toMatchObject({
+            errorCode: "ARTIFACT_UNDO_CONFLICT",
+        });
+        expect(protocolState.researchQuestion).toBe("Concurrent RQ");
+        expect(artifactState.status).toBe("accepted");
+        expect(mocks.update).toHaveBeenCalledTimes(1);
     });
 
     it("restores criteria_card eligibility on undo", async () => {
@@ -309,9 +431,17 @@ describe("undoArtifact", () => {
         mocks.findUnique.mockResolvedValue(makeArtifact({
             type: "criteria_card",
             appliedAt: recentApply,
-            snapshot: { inclusion: ["Old inclusion"], exclusion: ["Old exclusion"] },
+            snapshot: undoEnvelope(
+                criteriaState(["Old inclusion"], ["Old exclusion"]),
+                criteriaState(["New inclusion"], ["New exclusion"]),
+            ),
             payload: { inclusion: ["New inclusion"], exclusion: ["New exclusion"] },
         }));
+        mocks.ensureProtocol.mockResolvedValue({
+            researchQuestion: "RQ",
+            pico: { population: "", intervention: "", comparison: "", outcome: "" },
+            eligibility: { inclusion: ["New inclusion"], exclusion: ["New exclusion"] },
+        });
 
         await undoArtifact("art-1");
 
@@ -322,25 +452,140 @@ describe("undoArtifact", () => {
                 eligibility: { inclusion: ["Old inclusion"], exclusion: ["Old exclusion"] },
             }),
         );
+        expect(mocks.syncProtocolToMemory).toHaveBeenCalledWith(
+            "proj-1",
+            expect.objectContaining({
+                eligibility: { inclusion: ["Old inclusion"], exclusion: ["Old exclusion"] },
+            }),
+        );
+    });
+
+    it("undoes only a criteria delta and preserves concurrent criteria", async () => {
+        const recentApply = new Date(Date.now() - 60_000);
+        mocks.findUnique.mockResolvedValue(makeArtifact({
+            type: "criteria_card",
+            appliedAt: recentApply,
+            snapshot: undoEnvelope(
+                criteriaState(["Adults"], ["Case reports"]),
+                criteriaState(["Adults", "RCT"], ["Case reports"]),
+            ),
+            payload: {
+                inclusion: ["Adults", "RCT"],
+                exclusion: ["Case reports"],
+                mutation: { action: "add", type: "inclusion", criterion: "RCT" },
+            },
+        }));
+        mocks.ensureProtocol.mockResolvedValue({
+            researchQuestion: "RQ",
+            pico: { population: "", intervention: "", comparison: "", outcome: "" },
+            eligibility: {
+                inclusion: ["Adults", "Concurrent criterion", "RCT"],
+                exclusion: ["Case reports", "Concurrent exclusion"],
+            },
+        });
+
+        await undoArtifact("art-1");
+
+        expect(mocks.protocolUpsert).toHaveBeenCalledWith(
+            expect.any(Object),
+            "proj-1",
+            expect.objectContaining({
+                eligibility: {
+                    inclusion: ["Adults", "Concurrent criterion"],
+                    exclusion: ["Case reports", "Concurrent exclusion"],
+                },
+            }),
+        );
+    });
+
+    it("fails criteria undo when the artifact-owned delta changed concurrently", async () => {
+        const recentApply = new Date(Date.now() - 60_000);
+        mocks.findUnique.mockResolvedValue(makeArtifact({
+            type: "criteria_card",
+            appliedAt: recentApply,
+            snapshot: undoEnvelope(
+                criteriaState(["Adults"], []),
+                criteriaState(["Adults", "RCT"], []),
+            ),
+            payload: {
+                inclusion: ["Adults", "RCT"],
+                exclusion: [],
+                mutation: { action: "add", type: "inclusion", criterion: "RCT" },
+            },
+        }));
+        mocks.ensureProtocol.mockResolvedValue({
+            researchQuestion: "RQ",
+            pico: { population: "", intervention: "", comparison: "", outcome: "" },
+            eligibility: { inclusion: ["Adults"], exclusion: [] },
+        });
+
+        await expect(undoArtifact("art-1")).rejects.toMatchObject({
+            errorCode: "ARTIFACT_UNDO_CONFLICT",
+        });
+
+        expect(mocks.protocolUpsert).not.toHaveBeenCalled();
+        expect(mocks.update).not.toHaveBeenCalled();
+    });
+
+    it("fails criteria undo when the artifact-owned criterion text changed concurrently", async () => {
+        const recentApply = new Date(Date.now() - 60_000);
+        mocks.findUnique.mockResolvedValue(makeArtifact({
+            type: "criteria_card",
+            appliedAt: recentApply,
+            snapshot: undoEnvelope(
+                criteriaState(["Adults"], []),
+                criteriaState(["Adults", "RCT"], []),
+            ),
+            payload: {
+                inclusion: ["Adults", "RCT"],
+                exclusion: [],
+                mutation: { action: "add", type: "inclusion", criterion: "RCT" },
+            },
+        }));
+        mocks.ensureProtocol.mockResolvedValue({
+            researchQuestion: "RQ",
+            pico: { population: "", intervention: "", comparison: "", outcome: "" },
+            eligibility: { inclusion: ["Adults", "rct"], exclusion: [] },
+        });
+
+        await expect(undoArtifact("art-1")).rejects.toMatchObject({
+            errorCode: "ARTIFACT_UNDO_CONFLICT",
+        });
+
+        expect(mocks.protocolUpsert).not.toHaveBeenCalled();
+        expect(mocks.update).not.toHaveBeenCalled();
     });
 
     it("restores study_update fields on undo", async () => {
         const recentApply = new Date(Date.now() - 60_000);
-        const studySnapshot = {
+        const beforeStudyState = {
+            id: "study-1",
+            version: "2026-07-12T09:00:00.000Z",
+            top: { quality: { exists: true, value: "-" } },
+            details: {},
+            detailsContainerWasNull: false,
+        };
+        const appliedStudyState = {
+            ...beforeStudyState,
+            version: "2026-07-12T10:00:00.000Z",
+            top: { quality: { exists: true, value: "High" } },
+        };
+        mocks.findUnique.mockResolvedValue(makeArtifact({
+            type: "study_update",
+            appliedAt: recentApply,
+            snapshot: undoEnvelope(beforeStudyState, appliedStudyState),
+            payload: { studyId: "study-1", studyTitle: "Original Title", snapshotAt: new Date().toISOString(), idempotencyKey: "k1", patch: { top: { quality: "High" } }, changes: [], rationale: "test" },
+        }));
+        mocks.findFirst.mockResolvedValue({
             id: "study-1",
             title: "Original Title",
             authors: "Author A",
             year: 2024,
             status: "pending",
-            quality: "-",
+            quality: "High",
             details: { doi: "10.1234/test" },
-        };
-        mocks.findUnique.mockResolvedValue(makeArtifact({
-            type: "study_update",
-            appliedAt: recentApply,
-            snapshot: studySnapshot,
-            payload: { studyId: "study-1", studyTitle: "Original Title", snapshotAt: new Date().toISOString(), idempotencyKey: "k1", patch: { top: { quality: "High" } }, changes: [], rationale: "test" },
-        }));
+            updatedAt: new Date("2026-07-12T10:00:00.000Z"),
+        });
 
         const { prisma } = await import("@/lib/server/prisma");
 
@@ -348,14 +593,72 @@ describe("undoArtifact", () => {
 
         expect(prisma.study.update).toHaveBeenCalledWith({
             where: { id: "study-1" },
-            data: expect.objectContaining({
-                title: "Original Title",
-                authors: "Author A",
-                year: 2024,
-                status: "pending",
-                quality: "-",
-            }),
+            data: { quality: "-" },
         });
+    });
+
+    it("fails study_update undo when an applied field changed concurrently", async () => {
+        const recentApply = new Date(Date.now() - 60_000);
+        const before = {
+            id: "study-1",
+            version: "2026-07-12T09:00:00.000Z",
+            top: { quality: { exists: true, value: "-" } },
+            details: {},
+            detailsContainerWasNull: false,
+        };
+        mocks.findUnique.mockResolvedValue(makeArtifact({
+            type: "study_update",
+            appliedAt: recentApply,
+            snapshot: undoEnvelope(before, {
+                ...before,
+                version: "2026-07-12T10:00:00.000Z",
+                top: { quality: { exists: true, value: "High" } },
+            }),
+            payload: { studyId: "study-1", patch: { top: { quality: "High" } } },
+        }));
+        mocks.findFirst.mockResolvedValue({
+            id: "study-1",
+            title: "Study",
+            authors: "A",
+            year: 2024,
+            status: "active",
+            quality: "Medium",
+            details: {},
+            updatedAt: new Date("2026-07-12T11:00:00.000Z"),
+        });
+
+        await expect(undoArtifact("art-1")).rejects.toMatchObject({
+            errorCode: "ARTIFACT_UNDO_CONFLICT",
+        });
+
+        expect(mocks.studyUpdate).not.toHaveBeenCalled();
+        expect(mocks.update).not.toHaveBeenCalled();
+    });
+
+    it("fails study_deletion undo when deletion state changed concurrently", async () => {
+        const recentApply = new Date(Date.now() - 60_000);
+        const deletedAt = "2026-07-12T10:00:00.000Z";
+        mocks.findUnique.mockResolvedValue(makeArtifact({
+            type: "study_deletion",
+            appliedAt: recentApply,
+            snapshot: undoEnvelope(
+                { id: "study-1", version: "2026-07-12T09:00:00.000Z", deletedAt: null },
+                { id: "study-1", version: deletedAt, deletedAt },
+            ),
+            payload: { studyId: "study-1", title: "Study" },
+        }));
+        mocks.findFirst.mockResolvedValue({
+            id: "study-1",
+            deletedAt: null,
+            updatedAt: new Date("2026-07-12T11:00:00.000Z"),
+        });
+
+        await expect(undoArtifact("art-1")).rejects.toMatchObject({
+            errorCode: "ARTIFACT_UNDO_CONFLICT",
+        });
+
+        expect(mocks.studyUpdateMany).not.toHaveBeenCalled();
+        expect(mocks.update).not.toHaveBeenCalled();
     });
 
     it("soft-deletes newly-created study on study_proposal undo when snapshot is null", async () => {
@@ -363,10 +666,30 @@ describe("undoArtifact", () => {
         mocks.findUnique.mockResolvedValue(makeArtifact({
             type: "study_proposal",
             appliedAt: recentApply,
-            snapshot: null, // null means "study didn't exist before"
+            snapshot: undoEnvelope(null, {
+                id: "study-new",
+                version: "2026-07-12T10:00:00.000Z",
+                title: "New Study",
+                authors: "A",
+                year: 2025,
+                status: "active",
+                quality: "-",
+                details: { triageDecision: "keep", source: "pubmed" },
+                deletedAt: null,
+            }),
             payload: { title: "New Study", authors: "A", year: 2025, source: "pubmed", recommendation: "keep", confidence: 0.9 },
         }));
-        mocks.findFirst.mockResolvedValue({ id: "study-new" });
+        mocks.findFirst.mockResolvedValue({
+            id: "study-new",
+            title: "New Study",
+            authors: "A",
+            year: 2025,
+            status: "active",
+            quality: "-",
+            details: { triageDecision: "keep", source: "pubmed" },
+            deletedAt: null,
+            updatedAt: new Date("2026-07-12T10:00:00.000Z"),
+        });
 
         await undoArtifact("art-1");
 
@@ -382,7 +705,18 @@ describe("undoArtifact", () => {
         mocks.findUnique.mockResolvedValue(makeArtifact({
             type: "draft_diff",
             appliedAt: recentApply,
-            snapshot: previousContent,
+            snapshot: undoEnvelope(
+                {
+                    version: "2026-07-12T09:00:00.000Z",
+                    sectionKey: "introduction",
+                    content: { exists: true, value: previousContent },
+                },
+                {
+                    version: "2026-07-12T10:00:00.000Z",
+                    sectionKey: "introduction",
+                    content: { exists: true, value: { type: "doc", content: [] } },
+                },
+            ),
             payload: { section: "Introduction", content: "New text", citations: [], wordCount: 2 },
         }));
         mocks.getDraft.mockResolvedValue({
@@ -402,7 +736,32 @@ describe("undoArtifact", () => {
         );
     });
 
-    it("marks unsupported type as rejected without restoring", async () => {
+    it("fails draft undo when the applied section changed concurrently", async () => {
+        const recentApply = new Date(Date.now() - 60_000);
+        const appliedContent = { type: "doc", content: [{ type: "text", text: "Applied" }] };
+        const concurrentContent = { type: "doc", content: [{ type: "text", text: "Concurrent" }] };
+        mocks.findUnique.mockResolvedValue(makeArtifact({
+            type: "draft_diff",
+            appliedAt: recentApply,
+            snapshot: undoEnvelope(
+                { version: null, sectionKey: "introduction", content: { exists: false, value: null } },
+                { version: "2026-07-12T10:00:00.000Z", sectionKey: "introduction", content: { exists: true, value: appliedContent } },
+            ),
+            payload: { section: "Introduction", content: "Applied", citations: [], wordCount: 1 },
+        }));
+        mocks.getDraft.mockResolvedValue({
+            contentBySection: { introduction: concurrentContent },
+        });
+
+        await expect(undoArtifact("art-1")).rejects.toMatchObject({
+            errorCode: "ARTIFACT_UNDO_CONFLICT",
+        });
+
+        expect(mocks.saveDraft).not.toHaveBeenCalled();
+        expect(mocks.update).not.toHaveBeenCalled();
+    });
+
+    it("rejects unsupported undo without restoring or relabeling the artifact", async () => {
         const recentApply = new Date(Date.now() - 60_000);
         mocks.findUnique.mockResolvedValue(makeArtifact({
             type: "memory_proposal",
@@ -410,17 +769,88 @@ describe("undoArtifact", () => {
             snapshot: { some: "data" },
         }));
 
-        await undoArtifact("art-1");
+        await expect(undoArtifact("art-1")).rejects.toMatchObject({
+            errorCode: "ARTIFACT_UNDO_UNSUPPORTED",
+        });
 
         // No restore should happen — no study/protocol/draft writes
         expect(mocks.protocolUpsert).not.toHaveBeenCalled();
         expect(mocks.findFirst).not.toHaveBeenCalled();
         expect(mocks.saveDraft).not.toHaveBeenCalled();
-        // But artifact should still be marked as rejected
-        expect(mocks.update).toHaveBeenCalledWith({
-            where: { id: "art-1" },
-            data: { status: "rejected", reviewNote: "Undone by user" },
+        expect(mocks.update).not.toHaveBeenCalled();
+        expect(mocks.syncProtocolToMemory).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        "protocol_suggestion",
+        "criteria_card",
+        "study_update",
+    ] as const)("fails closed when %s lacks its required snapshot", async (type) => {
+        const recentApply = new Date(Date.now() - 60_000);
+        mocks.findUnique.mockResolvedValue(makeArtifact({
+            type,
+            appliedAt: recentApply,
+            snapshot: null,
+        }));
+
+        await expect(undoArtifact("art-1")).rejects.toMatchObject({
+            errorCode: "ARTIFACT_UNDO_CONFLICT",
         });
+
+        expect(mocks.protocolUpsert).not.toHaveBeenCalled();
+        expect(mocks.update).not.toHaveBeenCalled();
+        expect(mocks.syncProtocolToMemory).not.toHaveBeenCalled();
+    });
+
+    it("runs restored protocol memory synchronization only after the restore transaction commits", async () => {
+        const order: string[] = [];
+        const recentApply = new Date(Date.now() - 60_000);
+        mocks.findUnique.mockResolvedValue(makeArtifact({
+            type: "protocol_suggestion",
+            appliedAt: recentApply,
+            snapshot: undoEnvelope(protocolFieldState("Old RQ"), protocolFieldState("New RQ")),
+        }));
+        mocks.ensureProtocol.mockResolvedValue({
+            researchQuestion: "New RQ",
+            pico: { population: "", intervention: "", comparison: "", outcome: "" },
+            eligibility: { inclusion: [], exclusion: [] },
+        });
+        mocks.protocolUpsert.mockImplementation(async () => {
+            order.push("restore");
+        });
+        mocks.update.mockImplementation(async () => {
+            order.push("artifact-status");
+            return { id: "art-1", runId: "run-1", status: "rejected" };
+        });
+        mocks.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => {
+            const result = await callback(makeTx());
+            order.push("commit");
+            return result;
+        });
+        mocks.syncProtocolToMemory.mockImplementation(async () => {
+            order.push("memory-sync");
+        });
+
+        await undoArtifact("art-1");
+
+        expect(order).toEqual(["restore", "artifact-status", "commit", "memory-sync"]);
+    });
+
+    it("refuses a repeated undo before any stale snapshot restoration", async () => {
+        const recentApply = new Date(Date.now() - 60_000);
+        mocks.findUnique.mockResolvedValue(makeArtifact({
+            type: "protocol_suggestion",
+            status: "rejected",
+            appliedAt: recentApply,
+            snapshot: { field: "researchQuestion", previousValue: "Old RQ" },
+        }));
+
+        await expect(undoArtifact("art-1")).rejects.toMatchObject({
+            errorCode: "ARTIFACT_INVALID_STATE",
+        });
+
+        expect(mocks.protocolUpsert).not.toHaveBeenCalled();
+        expect(mocks.update).not.toHaveBeenCalled();
     });
 });
 
@@ -460,9 +890,15 @@ describe("applyArtifact — snapshot capture", () => {
             payload: { field: "researchQuestion", value: "New RQ", rationale: "test" },
         });
         mocks.findUnique.mockResolvedValue(artifact);
-        mocks.protocolFindUnique.mockResolvedValue({
-            data: { researchQuestion: "Old RQ", pico: {}, eligibility: { inclusion: [], exclusion: [] } },
-        });
+        mocks.protocolFindUnique
+            .mockResolvedValueOnce({
+                data: { researchQuestion: "Old RQ", pico: {}, eligibility: { inclusion: [], exclusion: [] } },
+                updatedAt: new Date("2026-07-12T09:00:00.000Z"),
+            })
+            .mockResolvedValueOnce({
+                data: { researchQuestion: "new value", pico: {}, eligibility: { inclusion: [], exclusion: [] } },
+                updatedAt: new Date("2026-07-12T10:00:00.000Z"),
+            });
 
         await applyArtifact("art-1");
 
@@ -475,7 +911,18 @@ describe("applyArtifact — snapshot capture", () => {
         );
         expect(snapshotCall).toBeDefined();
         const snapshotData = (snapshotCall![0] as { data: { snapshot: unknown } }).data.snapshot;
-        expect(snapshotData).toEqual({ field: "researchQuestion", previousValue: "Old RQ" });
+        expect(snapshotData).toEqual(undoEnvelope(
+            {
+                version: "2026-07-12T09:00:00.000Z",
+                field: "researchQuestion",
+                value: { exists: true, value: "Old RQ" },
+            },
+            {
+                version: "2026-07-12T10:00:00.000Z",
+                field: "researchQuestion",
+                value: { exists: true, value: "new value" },
+            },
+        ));
     });
 
     it("captures criteria_card eligibility snapshot before applying", async () => {
@@ -485,13 +932,23 @@ describe("applyArtifact — snapshot capture", () => {
             payload: { inclusion: ["New"], exclusion: ["New excl"] },
         });
         mocks.findUnique.mockResolvedValue(artifact);
-        mocks.protocolFindUnique.mockResolvedValue({
-            data: {
-                researchQuestion: "RQ",
-                pico: {},
-                eligibility: { inclusion: ["Original"], exclusion: ["Original excl"] },
-            },
-        });
+        mocks.protocolFindUnique
+            .mockResolvedValueOnce({
+                data: {
+                    researchQuestion: "RQ",
+                    pico: {},
+                    eligibility: { inclusion: ["Original"], exclusion: ["Original excl"] },
+                },
+                updatedAt: new Date("2026-07-12T09:00:00.000Z"),
+            })
+            .mockResolvedValueOnce({
+                data: {
+                    researchQuestion: "RQ",
+                    pico: {},
+                    eligibility: { inclusion: ["New"], exclusion: ["New excl"] },
+                },
+                updatedAt: new Date("2026-07-12T10:00:00.000Z"),
+            });
 
         await applyArtifact("art-1");
 
@@ -503,13 +960,17 @@ describe("applyArtifact — snapshot capture", () => {
         );
         expect(snapshotCall).toBeDefined();
         const snapshotData = (snapshotCall![0] as { data: { snapshot: unknown } }).data.snapshot;
-        expect(snapshotData).toEqual({ inclusion: ["Original"], exclusion: ["Original excl"] });
+        expect(snapshotData).toEqual(undoEnvelope(
+            criteriaState(["Original"], ["Original excl"], "2026-07-12T09:00:00.000Z"),
+            criteriaState(["New"], ["New excl"]),
+        ));
     });
 
     it("captures study_update snapshot before applying", async () => {
         const studyRow = {
             id: "study-1", title: "Title", authors: "A", year: 2024,
             status: "pending", quality: "-", details: { doi: "10.1234/x" },
+            updatedAt: new Date("2026-07-12T09:00:00.000Z"),
         };
         const artifact = makeArtifact({
             type: "study_update",
@@ -521,7 +982,14 @@ describe("applyArtifact — snapshot capture", () => {
             },
         });
         mocks.findUnique.mockResolvedValue(artifact);
-        mocks.findFirst.mockResolvedValue(studyRow);
+        mocks.findFirst
+            .mockResolvedValueOnce(studyRow)
+            .mockResolvedValueOnce({ updatedAt: studyRow.updatedAt })
+            .mockResolvedValueOnce({
+                ...studyRow,
+                quality: "High",
+                updatedAt: new Date("2026-07-12T10:00:00.000Z"),
+            });
 
         await applyArtifact("art-1");
 
@@ -533,7 +1001,22 @@ describe("applyArtifact — snapshot capture", () => {
         );
         expect(snapshotCall).toBeDefined();
         const snapshotData = (snapshotCall![0] as { data: { snapshot: unknown } }).data.snapshot;
-        expect(snapshotData).toEqual(studyRow);
+        expect(snapshotData).toEqual(undoEnvelope(
+            {
+                id: "study-1",
+                version: "2026-07-12T09:00:00.000Z",
+                top: { quality: { exists: true, value: "-" } },
+                details: {},
+                detailsContainerWasNull: false,
+            },
+            {
+                id: "study-1",
+                version: "2026-07-12T10:00:00.000Z",
+                top: { quality: { exists: true, value: "High" } },
+                details: {},
+                detailsContainerWasNull: false,
+            },
+        ));
     });
 
     it("writes DbNull snapshot when entity does not exist (study_proposal)", async () => {
@@ -543,7 +1026,17 @@ describe("applyArtifact — snapshot capture", () => {
             payload: { title: "Brand New", authors: "B", year: 2025, source: "pubmed", recommendation: "keep", confidence: 0.9 },
         });
         mocks.findUnique.mockResolvedValue(artifact);
-        mocks.findFirst.mockResolvedValue(null); // no existing study
+        mocks.findFirst.mockResolvedValueOnce({
+                id: "study-upserted",
+                title: "Brand New",
+                authors: "B",
+                year: 2025,
+                status: "active",
+                quality: "-",
+                details: { triageDecision: "keep", source: "pubmed" },
+                deletedAt: null,
+                updatedAt: new Date("2026-07-12T10:00:00.000Z"),
+            });
 
         await applyArtifact("art-1");
 
@@ -554,8 +1047,19 @@ describe("applyArtifact — snapshot capture", () => {
             }
         );
         expect(snapshotCall).toBeDefined();
-        // null maps to Prisma.DbNull
-        expect((snapshotCall![0] as { data: { snapshot: unknown } }).data.snapshot).toBe("DbNull");
+        expect((snapshotCall![0] as { data: { snapshot: unknown } }).data.snapshot).toEqual(
+            undoEnvelope(null, {
+                id: "study-upserted",
+                version: "2026-07-12T10:00:00.000Z",
+                title: "Brand New",
+                authors: "B",
+                year: 2025,
+                status: "active",
+                quality: "-",
+                details: { triageDecision: "keep", source: "pubmed" },
+                deletedAt: null,
+            }),
+        );
     });
 
     it("applies study_proposal by updating existing study when payload studyId is present", async () => {

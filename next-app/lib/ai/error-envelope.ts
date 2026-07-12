@@ -133,13 +133,17 @@ export function createToolCallParseErrorEnvelope(params: {
 
 export function createToolSchemaValidationErrorEnvelope(
     toolName: string,
+    boundary: "input" | "output" = "input",
 ): AIErrorEnvelope {
+    const isInput = boundary === "input";
     return {
         kind: "tool_schema_validation",
-        code: "TOOL_INPUT_VALIDATION_FAILED",
+        code: isInput ? "TOOL_INPUT_VALIDATION_FAILED" : "TOOL_OUTPUT_VALIDATION_FAILED",
         retryable: false,
         source: "tool_validator",
-        message: `The model called ${toolName} with invalid input, so the action was not run.`,
+        message: isInput
+            ? `The model called ${toolName} with invalid input, so the action was not run.`
+            : `${toolName} returned an invalid result, so it was not trusted by the agent runtime.`,
         headers: undefined,
         status: undefined,
     };

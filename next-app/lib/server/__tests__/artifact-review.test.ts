@@ -4,6 +4,7 @@ type Store = {
     artifact: Record<string, unknown>;
     protocolData: Record<string, unknown>;
     draftState: { contentBySection: Record<string, unknown> } | null;
+    failDraftSnapshotRead?: boolean;
     draftVersions: Array<Record<string, unknown>>;
     draftCheckpoints: Array<Record<string, unknown>>;
     notes: Array<Record<string, unknown>>;
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     rootArtifactUpdate: vi.fn(),
     transaction: vi.fn(),
     emitEventWithinTransaction: vi.fn(),
+    queryRaw: vi.fn(),
     createArtifactCheckpointInTransaction: vi.fn(),
     markRunDurabilityDegraded: vi.fn(),
     noteObservedRunActivity: vi.fn(),
@@ -58,6 +60,7 @@ vi.mock("@/lib/server/prisma", () => ({
 
 vi.mock("@/lib/server/agent/events", () => ({
     emitEventWithinTransaction: mocks.emitEventWithinTransaction,
+    emitPostRunUserEventWithinTransaction: mocks.emitEventWithinTransaction,
 }));
 
 vi.mock("@/lib/server/agent/run-checkpoints", () => ({
@@ -216,6 +219,7 @@ function makeStore(overrides: Partial<Store> = {}): Store {
                 introduction: { type: "doc", markdown: "Old introduction" },
             },
         },
+        failDraftSnapshotRead: false,
         draftVersions: [],
         draftCheckpoints: [],
         notes: [],
@@ -279,6 +283,21 @@ function createTx(store: Store) {
                     : null
             ),
         },
+        draft: {
+            findUnique: vi.fn(async ({ where }: { where: { projectId: string } }) => {
+                if (store.failDraftSnapshotRead) throw new Error("draft snapshot failed");
+                if (
+                    where.projectId !== (store.artifact.projectId as string)
+                    || !store.draftState
+                ) {
+                    return null;
+                }
+                return {
+                    state: cloneStore(store.draftState),
+                    updatedAt: new Date("2026-03-20T10:00:00.000Z"),
+                };
+            }),
+        },
         draftCheckpoint: {
             create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
                 const checkpoint = {
@@ -337,6 +356,7 @@ function createTx(store: Store) {
             deleteMany: vi.fn(async () => ({ count: 0 })),
         },
         $executeRaw: vi.fn(async () => 1),
+        $queryRaw: mocks.queryRaw,
     };
 }
 
@@ -357,6 +377,7 @@ function installTransactionalStore(store: Store) {
             store.artifact = txStore.artifact;
             store.protocolData = txStore.protocolData;
             store.draftState = txStore.draftState;
+            store.failDraftSnapshotRead = txStore.failDraftSnapshotRead;
             store.draftVersions = txStore.draftVersions;
             store.draftCheckpoints = txStore.draftCheckpoints;
             store.notes = txStore.notes;
@@ -378,6 +399,7 @@ describe("artifact review/apply hardening", () => {
             sequence: 11,
             createdAt: new Date("2026-03-20T10:01:00.000Z"),
         });
+        mocks.queryRaw.mockResolvedValue([{ locked: 1 }]);
         mocks.createArtifactCheckpointInTransaction.mockResolvedValue(undefined);
         mocks.markRunDurabilityDegraded.mockResolvedValue(1);
         mocks.noteObservedRunActivity.mockReturnValue(undefined);
@@ -482,9 +504,9 @@ describe("artifact review/apply hardening", () => {
                 title: "Draft revision",
                 payload: { section: "Introduction", content: "New introduction", citations: [], wordCount: 2 },
             }),
+            failDraftSnapshotRead: true,
         });
         installTransactionalStore(store);
-        mocks.getDraftTrusted.mockRejectedValueOnce(new Error("draft snapshot failed"));
 
         await expect(
             reviewArtifact("art-1", "accepted", undefined, undefined, { actorUserId: "user-1" }),
@@ -818,5 +840,24 @@ describe("artifact review/apply hardening", () => {
 
         expect(store.protocolData.researchQuestion).toBe("Old RQ");
         expect(store.artifact.status).toBe("proposed");
+    });
+
+    it("revalidates a reject transition under the artifact lock", async () => {
+        const store = makeStore({
+            artifact: makeArtifact({
+                status: "accepted",
+                appliedAt: new Date("2026-03-20T10:01:00.000Z"),
+            }),
+        });
+        const tx = createTx(store);
+        mocks.transaction.mockImplementation(async (callback: (client: unknown) => Promise<unknown>) => callback(tx));
+        mocks.rootArtifactFindUnique.mockResolvedValue(makeArtifact({ status: "proposed" }));
+
+        await expect(reviewArtifact("art-1", "rejected")).rejects.toMatchObject({
+            errorCode: "ARTIFACT_INVALID_STATE",
+        });
+
+        expect(tx.artifact.update).not.toHaveBeenCalled();
+        expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
     });
 });

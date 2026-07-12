@@ -364,6 +364,70 @@ describe("run recovery", () => {
     expect(stale.recoveryRecommendation).toBe("stop_and_retry");
   });
 
+  it("replays the live auto-applied artifact state from its authoritative review event", async () => {
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-scoping",
+      conversationId: "conv-scoping",
+      status: "completed",
+      runPhase: "finalize",
+      phaseEnteredAt: new Date("2026-07-12T08:00:00.000Z"),
+      model: "gpt-5.2",
+      costTokensIn: 10,
+      costTokensOut: 20,
+      lastActivityAt: new Date("2026-07-12T08:00:01.000Z"),
+      lastDurableProgressAt: new Date("2026-07-12T08:00:01.000Z"),
+      durabilityState: "durable",
+      durabilityDegradedReason: null,
+      finalizationState: "completed",
+      abnormalEndClassification: null,
+    });
+    mocks.runEventFindMany.mockResolvedValue([
+      {
+        sequence: 4,
+        type: "artifact_reviewed",
+        payload: {
+          artifactId: "artifact-scoping",
+          status: "applied",
+          type: "scoping_report",
+        },
+        toolName: null,
+        artifactId: "artifact-scoping",
+        messageRole: null,
+      },
+    ]);
+    mocks.runEventFindFirst.mockResolvedValueOnce({ sequence: 4 });
+    mocks.artifactFindMany.mockResolvedValue([
+      {
+        id: "artifact-scoping",
+        type: "scoping_report",
+        status: "auto_applied",
+        title: "Scoping: Omega-3 and cognition",
+        payload: { topic: "Omega-3 and cognition" },
+        version: 1,
+      },
+    ]);
+
+    const result = await buildRunRecoveryResponse({
+      conversationId: "conv-scoping",
+      runId: "run-scoping",
+    });
+
+    expect(result.replayableEvents).toContainEqual({
+      sequence: 4,
+      chunk: {
+        type: "artifact",
+        artifactId: "artifact-scoping",
+        artifactType: "scoping_report",
+        artifactStatus: "auto_applied",
+        artifactTitle: "Scoping: Omega-3 and cognition",
+        artifactPayload: { topic: "Omega-3 and cognition" },
+        artifactVersion: 1,
+        replay: true,
+        conversationId: "conv-scoping",
+      },
+    });
+  });
+
   it("synthesizes a paused terminal recovery path for running ask-phase runs with persisted input state", async () => {
     mocks.runEventFindMany.mockResolvedValue([
       {

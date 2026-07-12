@@ -6,6 +6,7 @@ import { safeParseJson } from "@/lib/server/ai/json-repair";
 import { isHighConfidenceExclusion } from "@/lib/criteria-matching";
 import { isTieredScreeningEnabled } from "@/lib/agent/feature-flags";
 import type { ScreeningTier, Study } from "@/types/ledger";
+import { isAbortLikeError, throwIfAborted } from "@/lib/abort";
 
 const MAX_BATCH_SIZE = 20;
 const SCREENING_MODEL = "grok-4-1-fast";
@@ -140,7 +141,9 @@ export const bulkScreeningTool: AITool = {
 
         try {
             // Self-heal: ensure protocol row exists (creates empty default for legacy projects)
+            throwIfAborted(context?.signal);
             const protocolData = await ensureProtocol(projectId);
+            throwIfAborted(context?.signal);
             const { inclusion, exclusion } = protocolData.eligibility;
 
             if (inclusion.length === 0 && exclusion.length === 0) {
@@ -159,12 +162,14 @@ export const bulkScreeningTool: AITool = {
                 ];
             }
 
+            throwIfAborted(context?.signal);
             const studies = await prisma.study.findMany({
                 where: whereClause,
                 select: { id: true, title: true, authors: true, year: true, details: true },
                 take: MAX_BATCH_SIZE,
                 orderBy: { createdAt: "asc" },
             });
+            throwIfAborted(context?.signal);
 
             if (studies.length === 0) {
                 return {
@@ -192,6 +197,7 @@ export const bulkScreeningTool: AITool = {
             const results: ScreeningResult[] = [];
 
             for (const study of studies) {
+                throwIfAborted(context?.signal);
                 const details = (study.details as Record<string, unknown>) ?? {};
                 const abstract = (details.abstract as string) || "No abstract available";
 
@@ -235,6 +241,7 @@ ${criteriaText}`;
 
                 let responseContent: string | null = null;
                 try {
+                    throwIfAborted(context?.signal);
                     const response = await aiService.chat(
                         [
                             {
@@ -272,8 +279,10 @@ Return ONLY valid JSON.`,
                             temperature: 0.2,
                             maxTokens: 200,
                             projectId,
+                            signal: context?.signal,
                         }
                     );
+                    throwIfAborted(context?.signal);
 
                     responseContent = response.content;
                     const jsonStr = cleanJsonPayload(responseContent);
@@ -296,7 +305,10 @@ Return ONLY valid JSON.`,
                         screeningTier: "ai",
                         modelUsed: SCREENING_MODEL,
                     });
-                } catch {
+                } catch (error) {
+                    if (context?.signal?.aborted || isAbortLikeError(error)) {
+                        throw error;
+                    }
                     if (tieredScreeningEnabled && responseContent) {
                         const parsedFromRepair = normalizeParsedDecision(
                             safeParseJson(cleanJsonPayload(responseContent))
@@ -342,11 +354,15 @@ Return ONLY valid JSON.`,
                 maybeCount: results.filter((r) => r.recommendation === "maybe").length,
             };
 
+            throwIfAborted(context?.signal);
             return {
                 callId: "",
                 result: { studies: results, summary },
             };
         } catch (error) {
+            if (context?.signal?.aborted || isAbortLikeError(error)) {
+                throw error;
+            }
             return {
                 callId: "",
                 result: null,

@@ -12,6 +12,7 @@ import { searchSemanticMemories } from "./semantic-memory";
 import { runMemoryMaintenanceLoop } from "./maintenance";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import { logServerWarn } from "@/lib/server/logging";
+import { throwIfAborted } from "@/lib/abort";
 import {
     MEMORY_AUTHORITY_LABELS,
     MEMORY_POLARITY_LABELS,
@@ -629,6 +630,7 @@ export async function retrieveMemories(
         includeProject?: boolean;
         includeStudy?: boolean;
         memoryBudgetTokens?: number;
+        signal?: AbortSignal;
     },
 ): Promise<RetrievedMemory[]> {
     const {
@@ -638,7 +640,10 @@ export async function retrieveMemories(
         includeProject = true,
         includeStudy = true,
         memoryBudgetTokens = 2000,
+        signal,
     } = options || {};
+
+    throwIfAborted(signal);
 
     if (context.citedStudyIds?.length && !context.projectId) {
         throw new Error("Project scope is required when retrieving memories for cited studies.");
@@ -646,6 +651,7 @@ export async function retrieveMemories(
 
     // Phase 1: Deterministic scope rules
     const deterministic = await gatherDeterministicMemories(context);
+    throwIfAborted(signal);
     const deterministicIds = new Set(deterministic.map(memoryKey));
 
     // Phase 2: Keyword relevance (skip already-included IDs)
@@ -654,6 +660,7 @@ export async function retrieveMemories(
         { minRelevance, includeUser, includeProject, includeStudy },
         deterministicIds,
     );
+    throwIfAborted(signal);
 
     // Phase 3: Semantic retrieval
     const semantic = await gatherSemanticMemories(
@@ -661,6 +668,7 @@ export async function retrieveMemories(
         { minRelevance, includeUser, includeProject, includeStudy },
         deterministicIds,
     );
+    throwIfAborted(signal);
 
     const useAdvancedRerank = isAdvancedRetrievalRerankEnabled();
     const baseCandidatePool = Math.max(maxMemories, 1);
@@ -687,6 +695,7 @@ export async function retrieveMemories(
         const tokensByLayer = (type: string) =>
             trimmed.filter((m) => m.type === type).reduce((sum, m) => sum + estimateTokens(m.content), 0);
 
+        throwIfAborted(signal);
         await recordRunEvent({
             runId: context.runId,
             type: "context_assembly",
@@ -706,18 +715,22 @@ export async function retrieveMemories(
             },
             logContext: "memory_context_assembly",
         }).catch(() => {}); // Non-critical — don't fail retrieval
+        throwIfAborted(signal);
     }
 
     // Log retrieval for audit trail
     if (trimmed.length > 0) {
         try {
+            throwIfAborted(signal);
             const auditItems = await logMemoryRetrieval({
                 userId: context.userId,
                 projectId: context.projectId,
                 conversationId: context.conversationId,
                 query: context.query || "context-based",
                 memories: trimmed,
+                signal,
             });
+            throwIfAborted(signal);
             for (const memory of trimmed) {
                 const audit = auditItems.get(memoryKey(memory));
                 if (!audit) continue;
@@ -725,6 +738,7 @@ export async function retrieveMemories(
                 memory.retrievalItemId = audit.retrievalItemId;
             }
         } catch (error) {
+            throwIfAborted(signal);
             logServerWarn("memory", "retrieval audit logging failed", {
                 userId: context.userId,
                 projectId: context.projectId ?? null,
@@ -732,10 +746,18 @@ export async function retrieveMemories(
                 error: error instanceof Error ? error.message : String(error),
             });
         }
-        await incrementRetrievalCounters(trimmed).catch(() => {});
-        await runMemoryMaintenanceLoop({ projectId: context.projectId, userId: context.userId }).catch(() => null);
+        throwIfAborted(signal);
+        await incrementRetrievalCounters(trimmed, signal).catch(() => {});
+        throwIfAborted(signal);
+        await runMemoryMaintenanceLoop({
+            projectId: context.projectId,
+            userId: context.userId,
+            signal,
+        });
+        throwIfAborted(signal);
     }
 
+    throwIfAborted(signal);
     return trimmed;
 }
 
@@ -798,6 +820,7 @@ async function logMemoryRetrieval(input: {
     conversationId?: string;
     query: string;
     memories: RetrievedMemory[];
+    signal?: AbortSignal;
 }): Promise<Map<string, { retrievalId: string; retrievalItemId: string }>> {
     const auditItems = new Map<string, { retrievalId: string; retrievalItemId: string }>();
     const memoryIdsByType = input.memories.reduce(
@@ -810,6 +833,7 @@ async function logMemoryRetrieval(input: {
     );
 
     for (const [memoryType, ids] of Object.entries(memoryIdsByType)) {
+        throwIfAborted(input.signal);
         const memories = input.memories.filter((memory) => memory.type === memoryType);
         const created = await prisma.memoryRetrieval.create({
             data: {
@@ -846,6 +870,7 @@ async function logMemoryRetrieval(input: {
                 },
             },
         });
+        throwIfAborted(input.signal);
         for (const item of created.items ?? []) {
             auditItems.set(`${item.memoryType}:${item.memoryId}`, {
                 retrievalId: item.retrievalId,
@@ -856,13 +881,14 @@ async function logMemoryRetrieval(input: {
     return auditItems;
 }
 
-async function incrementRetrievalCounters(memories: RetrievedMemory[]) {
+async function incrementRetrievalCounters(memories: RetrievedMemory[], signal?: AbortSignal) {
     const userIds = [...new Set(memories.filter((m) => m.type === "user").map((m) => m.id))];
     const projectIds = [...new Set(memories.filter((m) => m.type === "project").map((m) => m.id))];
     const studyIds = [...new Set(memories.filter((m) => m.type === "study").map((m) => m.id))];
 
     const updates: Promise<unknown>[] = [];
     if (userIds.length > 0) {
+        throwIfAborted(signal);
         const userIdValues = userIds.map((id) => Prisma.sql`${id}`);
         updates.push(
             prisma.$executeRaw`
@@ -874,6 +900,7 @@ async function incrementRetrievalCounters(memories: RetrievedMemory[]) {
         );
     }
     if (projectIds.length > 0) {
+        throwIfAborted(signal);
         const projectIdValues = projectIds.map((id) => Prisma.sql`${id}`);
         updates.push(
             prisma.$executeRaw`
@@ -885,6 +912,7 @@ async function incrementRetrievalCounters(memories: RetrievedMemory[]) {
         );
     }
     if (studyIds.length > 0) {
+        throwIfAborted(signal);
         const studyIdValues = studyIds.map((id) => Prisma.sql`${id}`);
         updates.push(
             prisma.$executeRaw`
@@ -898,6 +926,7 @@ async function incrementRetrievalCounters(memories: RetrievedMemory[]) {
 
     if (updates.length > 0) {
         await Promise.all(updates);
+        throwIfAborted(signal);
     }
 }
 

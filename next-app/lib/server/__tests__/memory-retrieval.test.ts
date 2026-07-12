@@ -40,10 +40,15 @@ vi.mock("@/lib/server/memory/semantic-memory", () => ({
     searchSemanticMemories: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock("@/lib/server/memory/maintenance", () => ({
+    runMemoryMaintenanceLoop: vi.fn().mockResolvedValue(null),
+}));
+
 const { getUserMemories } = await import("@/lib/server/memory/user-memory");
 const { getProjectMemories, searchProjectMemories } = await import("@/lib/server/memory/project-memory");
 const { getStudyMemoriesForProject, searchStudyMemories } = await import("@/lib/server/memory/study-memory");
 const { searchSemanticMemories } = await import("@/lib/server/memory/semantic-memory");
+const { runMemoryMaintenanceLoop } = await import("@/lib/server/memory/maintenance");
 const { recordRunEvent } = await import("@/lib/server/agent/run-event-recorder");
 const { prisma } = await import("@/lib/server/prisma");
 
@@ -62,6 +67,7 @@ const mockSearchProjectMemories = vi.mocked(searchProjectMemories);
 const mockGetStudyMemoriesForProject = vi.mocked(getStudyMemoriesForProject);
 const mockSearchStudyMemories = vi.mocked(searchStudyMemories);
 const mockSearchSemanticMemories = vi.mocked(searchSemanticMemories);
+const mockRunMemoryMaintenanceLoop = vi.mocked(runMemoryMaintenanceLoop);
 const mockRecordRunEvent = vi.mocked(recordRunEvent);
 const mockMemoryRetrievalCreate = vi.mocked(prisma.memoryRetrieval.create);
 const mockMemoryRetrievalItemUpdateMany = vi.mocked(prisma.memoryRetrievalItem.updateMany);
@@ -100,6 +106,7 @@ beforeEach(() => {
     mockGetStudyMemoriesForProject.mockResolvedValue([]);
     mockSearchStudyMemories.mockResolvedValue([]);
     mockSearchSemanticMemories.mockResolvedValue([]);
+    mockRunMemoryMaintenanceLoop.mockResolvedValue(null);
     mockExecuteRaw.mockResolvedValue(1);
     delete process.env.ENABLE_MEMORY_ADVANCED_RERANKING;
 });
@@ -177,6 +184,51 @@ describe("formatMemoriesForContext", () => {
 });
 
 describe("retrieveMemories — deterministic scope rules", () => {
+    it("does not start retrieval or side effects for a pre-cancelled branch", async () => {
+        const controller = new AbortController();
+        controller.abort();
+
+        await expect(retrieveMemories(
+            { userId: "u1", projectId: "p1", runId: "run-1" },
+            { signal: controller.signal },
+        )).rejects.toMatchObject({ name: "AbortError" });
+
+        expect(mockGetUserMemories).not.toHaveBeenCalled();
+        expect(mockRecordRunEvent).not.toHaveBeenCalled();
+        expect(mockMemoryRetrievalCreate).not.toHaveBeenCalled();
+        expect(mockExecuteRaw).not.toHaveBeenCalled();
+        expect(mockRunMemoryMaintenanceLoop).not.toHaveBeenCalled();
+    });
+
+    it("stops before event, audit, counter, and maintenance writes after branch cancellation", async () => {
+        const controller = new AbortController();
+        mockSearchSemanticMemories.mockImplementationOnce(async () => {
+            controller.abort();
+            return asSemanticSearchResult([{
+                id: "sem-cancelled",
+                type: "project",
+                memoryType: "definition",
+                content: "cancelled retrieval result",
+                relevance: 0.9,
+            }]);
+        });
+
+        await expect(retrieveMemories(
+            {
+                userId: "u1",
+                projectId: "p1",
+                runId: "run-1",
+                query: "cancelled",
+            },
+            { signal: controller.signal },
+        )).rejects.toMatchObject({ name: "AbortError" });
+
+        expect(mockRecordRunEvent).not.toHaveBeenCalled();
+        expect(mockMemoryRetrievalCreate).not.toHaveBeenCalled();
+        expect(mockExecuteRaw).not.toHaveBeenCalled();
+        expect(mockRunMemoryMaintenanceLoop).not.toHaveBeenCalled();
+    });
+
     it("always includes critical ProjectMemory regardless of query", async () => {
         mockGetProjectMemories.mockImplementation(async (_pid, opts) => {
             if (opts?.importance === "critical") {

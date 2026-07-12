@@ -82,10 +82,21 @@ export class LoopState {
 
     /**
      * Record tool calls from one iteration.
+     * Rejects the entire batch before recording any calls when it would exceed
+     * the remaining tool-call budget. Callers must inspect stopReason before
+     * executing the batch.
+     *
      * Returns true when the same tool call repeats consecutively enough times
      * to trigger doom-loop protection.
      */
     recordToolCalls(calls: { name: string; arguments: Record<string, unknown>; repeatKey?: string }[]): boolean {
+        if (this._totalToolCalls + calls.length > this.budget.maxToolCalls) {
+            if (!this._stopReason) {
+                this._stopReason = "max_tool_calls";
+            }
+            return false;
+        }
+
         this._totalToolCalls += calls.length;
         for (const call of calls) {
             const hash = call.repeatKey ?? hashToolCall(call.name, call.arguments);

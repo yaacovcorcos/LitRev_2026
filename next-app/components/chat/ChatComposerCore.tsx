@@ -67,7 +67,7 @@ export type ChatComposerCoreProps = {
         studyId?: string,
         retryModelExpectation?: RetryModelExpectation,
         contextTargets?: ContextCaptureTarget[],
-    ) => void | Promise<void>;
+    ) => boolean | void | Promise<boolean | void>;
     cancelStream: () => void;
     hasQueuedFollowUp?: boolean;
     attachedStack?: "none" | "attached";
@@ -230,6 +230,11 @@ export function ChatComposerCore({
         scheduleTextareaResize();
     }, [scheduleTextareaResize]);
 
+    const restoreComposerInputIfEmpty = useCallback((failedText: string) => {
+        setInput((current) => current.trim() ? current : failedText);
+        scheduleTextareaResize();
+    }, [scheduleTextareaResize]);
+
     const effectiveMode = isManualComposerModeSelection(modeSelection) ? modeSelection.mode : autoMode;
     const modeMeta = AGENT_MODE_META[effectiveMode];
     const resolveCurrentComposerMode = useCallback((message: string) => {
@@ -290,7 +295,7 @@ export function ChatComposerCore({
         });
 
         sendLockRef.current = true;
-        sendMessage(
+        const sendOutcome = sendMessage(
             text,
             page,
             section,
@@ -304,6 +309,24 @@ export function ChatComposerCore({
             clearAttachedContextTargets?.();
         }
         setComposerInput("");
+        if (sendOutcome && typeof (sendOutcome as PromiseLike<unknown>).then === "function") {
+            void (async () => {
+                try {
+                    const outcome = await sendOutcome;
+                    if (outcome === false) restoreComposerInputIfEmpty(rawText);
+                } catch {
+                    restoreComposerInputIfEmpty(rawText);
+                } finally {
+                    sendLockRef.current = false;
+                }
+            })();
+        } else {
+            // Synchronous adapters cannot signal a loading transition. Release
+            // on the next microtask so an adapter failure cannot deadlock input.
+            queueMicrotask(() => {
+                sendLockRef.current = false;
+            });
+        }
         requestAnimationFrame(() => getTextareaElement()?.focus());
         return true;
     }, [
@@ -315,6 +338,7 @@ export function ChatComposerCore({
         modeSelection,
         page,
         pendingAttachment,
+        restoreComposerInputIfEmpty,
         section,
         selectedModel,
         sendMessage,

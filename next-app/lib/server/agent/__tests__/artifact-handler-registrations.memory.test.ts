@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ArtifactType } from "@/types/artifacts";
-import type { ApplyFunction, RestoreFunction, SnapshotReader } from "@/lib/server/agent/artifact-execution";
+import type { AppliedStateReader, ApplyFunction, RestoreFunction, SnapshotReader } from "@/lib/server/agent/artifact-execution";
 import { registerArtifactHandlers } from "@/lib/server/agent/artifact-handler-registrations";
 
 function buildApplyFunction(type: "memory_forget_proposal" | "memory_proposal" = "memory_forget_proposal") {
     const applyFunctions = new Map<ArtifactType, ApplyFunction>();
     const snapshotReaders = new Map<ArtifactType, SnapshotReader>();
+    const appliedStateReaders = new Map<ArtifactType, AppliedStateReader>();
     const restoreFunctions = new Map<ArtifactType, RestoreFunction>();
-    registerArtifactHandlers({ applyFunctions, snapshotReaders, restoreFunctions });
+    registerArtifactHandlers({ applyFunctions, snapshotReaders, appliedStateReaders, restoreFunctions });
     const fn = applyFunctions.get(type);
     if (!fn) throw new Error(`${type} handler missing`);
     return fn;

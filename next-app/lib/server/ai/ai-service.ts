@@ -18,6 +18,7 @@ import type {
 } from "@/types/ai";
 import type { AgentMode } from "@/types/agent";
 import type { ChatUnificationMetricType, ClarificationRuntimePayload } from "@/types/chat-unification";
+import { after } from "next/server";
 import {
     AIErrorWithEnvelope,
     buildStreamErrorChunk,
@@ -34,7 +35,12 @@ import {
     getConversationWithSummaryById,
     autoSummarizeIfNeeded,
 } from "./memory";
-import { validateRateLimits, recordUsage } from "./rate-limiter";
+import {
+    reserveProviderUsageAttempt,
+    tryMarkUsageReservationReconcilable,
+    trySettleUsageReservation,
+    type SettleUsageReservationInput,
+} from "./rate-limiter";
 import { retrieveMemories, formatMemoriesForContext, markMemoriesUsedInAnswer, type RetrievedMemory } from "@/lib/server/memory";
 import { AI_CONFIG, getProviderForModel, getContextBudget } from "@/lib/ai/config";
 import {
@@ -46,7 +52,7 @@ import {
     formatSummaryAsMessage,
     repairConversationHistory,
 } from "@/lib/agent/compaction";
-import { AVAILABLE_TOOLS, executeTool } from "./tools";
+import { AVAILABLE_TOOLS, executeTool, getTool, validateToolInput } from "./tools";
 import {
     isRunOwnershipError,
     startRun,
@@ -63,7 +69,10 @@ import {
     type TerminalRunStatus,
 } from "@/lib/server/agent/run-state-machine";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
-import { createArtifact } from "@/lib/server/agent/artifacts";
+import {
+    createArtifact,
+    createAutoAppliedArtifact,
+} from "@/lib/server/agent/artifacts";
 import { getAutonomyConfig } from "@/lib/server/agent/autonomy";
 import { buildExecutablePlanPayload } from "@/lib/server/agent/plan-payloads";
 import {
@@ -72,6 +81,8 @@ import {
     markPlanExecutionRunning,
     preparePlanExecution,
     resolvePlanExecutionToolNames,
+    resolvePlanStepResult,
+    selectPlanToolCallsForTurn,
     type PlanExecutionStepState,
     type PreparedPlanExecution,
 } from "@/lib/server/agent/plan-execution";
@@ -124,7 +135,8 @@ import {
     buildScopingSearchPackPlan,
     finalizeScopingResponse,
 } from "./tool-helpers";
-import { executeToolWithAutonomy } from "./tool-autonomy";
+import { executeToolWithAutonomy, preRecordToolCallBatchForAutonomy } from "./tool-autonomy";
+import { isRunLineageToolBudgetExceededError } from "@/lib/server/agent/events";
 import {
     applySuccessfulScopingToolResult,
     buildScopingWorkflowInstruction,
@@ -142,7 +154,14 @@ import {
     resolveDecisionBoundaryKey,
     type ClarificationControllerState,
 } from "./clarification-controller";
-import { createLinkedAbortController, isAbortLikeError, type LinkedAbortController } from "@/lib/abort";
+import {
+    createDeadlineAbortController,
+    createLinkedAbortController,
+    isAbortLikeError,
+    throwIfAborted,
+    type DeadlineAbortController,
+    type LinkedAbortController,
+} from "@/lib/abort";
 import {
     registerActiveRunExecutionCancellation,
     startDurableRunCancellationMonitor,
@@ -150,12 +169,193 @@ import {
     type DurableRunCancellationMonitor,
 } from "@/lib/server/agent/run-cancellation";
 import { deriveSearchSourcePolicy } from "@/lib/agent/search-source-policy";
+import {
+    withCriticalContextBranchDeadline,
+    withOptionalContextBranchDeadline,
+} from "./context-branch-runtime";
 
 const MAX_STREAM_RETRY_ATTEMPTS = 3;
 const MAX_OVERFLOW_RECOVERY_ATTEMPTS = 3;
 const RETRY_MIN_DELAY_MS = 500;
 const RETRY_MAX_DELAY_MS = 15_000;
 const RETRY_JITTER = 0.15;
+const CONVERSATION_TITLE_TIMEOUT_MS = 5_000;
+const LOCAL_USAGE_POLICY_CODES = new Set([
+    "AI_RATE_LIMIT_EXCEEDED",
+    "DAILY_TOKEN_LIMIT_EXCEEDED",
+    "AI_SOURCE_DAILY_ATTEMPT_LIMIT_EXCEEDED",
+]);
+
+function createUsageAttemptKey(): string {
+    return crypto.randomUUID();
+}
+
+function shouldRetryProviderOperation(error: unknown): boolean {
+    const classified = classifyAIError(error);
+    if (
+        classified.source === "usage_reservation"
+        && classified.code
+        && LOCAL_USAGE_POLICY_CODES.has(classified.code)
+    ) {
+        return false;
+    }
+    return classified.retryable;
+}
+
+function estimateProviderAttemptTokens(messages: AIMessage[], options?: ChatOptions): number {
+    const messageTokens = estimateMessagesTokensWithSafetyMargin(messages);
+    let toolDefinitionTokens = 0;
+    if (options?.tools?.length) {
+        try {
+            toolDefinitionTokens = Math.ceil(JSON.stringify(options.tools).length / 4 * 1.2);
+        } catch {
+            // A non-serializable tool schema should fail at the provider boundary;
+            // reserve a conservative fixed allowance in the meantime.
+            toolDefinitionTokens = 1_024;
+        }
+    }
+    const configuredDefaultOutputTokens = Number.isFinite(AI_CONFIG.defaultMaxTokens)
+        ? Math.max(0, Math.round(AI_CONFIG.defaultMaxTokens))
+        : 2_048;
+    const outputTokens = Number.isFinite(options?.maxTokens)
+        ? Math.max(0, Math.round(options?.maxTokens ?? 0))
+        : configuredDefaultOutputTokens;
+    const reasoningTokens = Number.isFinite(options?.reasoningBudgetTokens)
+        ? Math.max(0, Math.round(options?.reasoningBudgetTokens ?? 0))
+        : 0;
+    // Provider-side vision tokenization is format- and resolution-dependent.
+    // Hold a conservative allowance until actual provider usage settles it.
+    const attachmentTokens = (options?.userMessageAttachments?.length ?? 0) * 4_096;
+    return Math.max(
+        1,
+        messageTokens
+            + toolDefinitionTokens
+            + attachmentTokens
+            + outputTokens
+            + reasoningTokens,
+    );
+}
+
+function scheduleDeferredUsageSettlement(input: SettleUsageReservationInput): void {
+    try {
+        after(async () => {
+            try {
+                const settled = await trySettleUsageReservation(input, { deadlineMs: 2_000 });
+                if (!settled) {
+                    logServerWarn("ai-service", "usage settlement remains pending after response", {
+                        reservationId: input.reservationId,
+                    });
+                }
+            } catch (error) {
+                logServerWarn("ai-service", "usage settlement retry rejected after response", {
+                    reservationId: input.reservationId,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+        });
+    } catch (error) {
+        // The durable reservation remains a conservative, reconcilable charge.
+        logServerWarn("ai-service", "usage settlement retry was not scheduled", {
+            reservationId: input.reservationId,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
+async function settleUsageAfterProviderAttempt(input: SettleUsageReservationInput): Promise<void> {
+    let settled = false;
+    try {
+        settled = await trySettleUsageReservation(input);
+    } catch (error) {
+        logServerWarn("ai-service", "usage settlement attempt rejected", {
+            reservationId: input.reservationId,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+    if (!settled) {
+        scheduleDeferredUsageSettlement(input);
+    }
+}
+
+async function markUsageAttemptReconcilableWithoutBlocking(
+    reservationId: string,
+    status: "failed" | "unknown",
+    failureCode: string,
+): Promise<void> {
+    try {
+        const marked = await tryMarkUsageReservationReconcilable(
+            reservationId,
+            status,
+            failureCode,
+        );
+        if (marked) return;
+
+        try {
+            after(async () => {
+                const retried = await tryMarkUsageReservationReconcilable(
+                    reservationId,
+                    status,
+                    failureCode,
+                    { deadlineMs: 2_000 },
+                );
+                if (!retried) {
+                    logServerWarn("ai-service", "usage reservation outcome remains pending", {
+                        reservationId,
+                        status,
+                        failureCode,
+                    });
+                }
+            });
+        } catch (error) {
+            logServerWarn("ai-service", "usage reservation outcome retry was not scheduled", {
+                reservationId,
+                status,
+                failureCode,
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    } catch (error) {
+        // An active reservation is already durable and counts conservatively.
+        logServerWarn("ai-service", "usage reservation outcome update rejected", {
+            reservationId,
+            status,
+            failureCode,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
+function schedulePostResponseTask({
+    taskName,
+    conversationId,
+    runId,
+    task,
+}: {
+    taskName: string;
+    conversationId: string;
+    runId: string;
+    task: () => Promise<unknown>;
+}): void {
+    try {
+        after(async () => {
+            try {
+                await task();
+            } catch (error) {
+                logServerWarn("ai-service", `${taskName} failed after response`, {
+                    conversationId,
+                    runId,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+        });
+    } catch (error) {
+        logServerWarn("ai-service", `${taskName} was not scheduled`, {
+            conversationId,
+            runId,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
 
 const PUSH_PROTOCOL_CONTEXT_MODES = new Set<AgentMode>(["protocol", "screening", "drafting"]);
 const PUSH_LEDGER_CONTEXT_MODES = new Set<AgentMode>(["screening", "search"]);
@@ -175,6 +375,7 @@ type ContextBranchName =
 type ContextFailureClass =
     | "database_connection_timeout"
     | "database_connection_failed"
+    | "critical_timeout"
     | "semantic_timeout"
     | "unknown_context_failure";
 type ContextBranchRecord = {
@@ -199,6 +400,12 @@ function normalizeContextFailure(error: unknown): { failureClass: ContextFailure
     }
     if (errorMeta.code === "DATABASE_CONNECTION_FAILED" || errorMeta.kind === "database_connection") {
         return { failureClass: "database_connection_failed", errorMeta };
+    }
+    if (errorMeta.code === "CRITICAL_CONTEXT_BRANCH_TIMEOUT") {
+        return { failureClass: "critical_timeout", errorMeta };
+    }
+    if (errorMeta.code === "CONTEXT_BRANCH_TIMEOUT") {
+        return { failureClass: "semantic_timeout", errorMeta };
     }
     if (/semantic/i.test(errorMeta.message) && /timed?\s*out/i.test(errorMeta.message)) {
         return { failureClass: "semantic_timeout", errorMeta };
@@ -270,6 +477,7 @@ function logContextSummary(params: {
 async function runCriticalContextBranch<T>(params: {
     branch: ContextBranchName;
     operation: () => Promise<T>;
+    signal?: AbortSignal;
     meta: {
         runId?: string | null;
         conversationId?: string | null;
@@ -279,7 +487,51 @@ async function runCriticalContextBranch<T>(params: {
 }): Promise<{ value: T; record: ContextBranchRecord }> {
     const startedAt = Date.now();
     try {
+        // This path may perform admission or creation writes. Do not race it:
+        // Prisma cannot cancel an in-flight write safely from an AbortSignal.
+        throwIfAborted(params.signal);
         const value = await params.operation();
+        throwIfAborted(params.signal);
+        const record: ContextBranchRecord = {
+            branch: params.branch,
+            critical: true,
+            durationMs: Date.now() - startedAt,
+            success: true,
+        };
+        logContextBranch(record, params.meta);
+        return { value, record };
+    } catch (error) {
+        const normalized = normalizeContextFailure(error);
+        const record: ContextBranchRecord = {
+            branch: params.branch,
+            critical: true,
+            durationMs: Date.now() - startedAt,
+            success: false,
+            failureClass: normalized.failureClass,
+            errorMeta: normalized.errorMeta,
+        };
+        logContextBranch(record, params.meta);
+        throw error;
+    }
+}
+
+async function runCriticalReadContextBranch<T>(params: {
+    branch: ContextBranchName;
+    operation: (signal: AbortSignal) => Promise<T>;
+    signal?: AbortSignal;
+    meta: {
+        runId?: string | null;
+        conversationId?: string | null;
+        projectId?: string | null;
+        agentMode?: AgentMode;
+    };
+}): Promise<{ value: T; record: ContextBranchRecord }> {
+    const startedAt = Date.now();
+    try {
+        const value = await withCriticalContextBranchDeadline(params.operation, {
+            signal: params.signal,
+            branch: params.branch,
+        });
         const record: ContextBranchRecord = {
             branch: params.branch,
             critical: true,
@@ -305,7 +557,8 @@ async function runCriticalContextBranch<T>(params: {
 
 async function runOptionalContextBranch<T>(params: {
     branch: ContextBranchName;
-    operation: () => Promise<T>;
+    operation: (signal: AbortSignal) => Promise<T>;
+    signal?: AbortSignal;
     meta: {
         runId?: string | null;
         conversationId?: string | null;
@@ -315,7 +568,10 @@ async function runOptionalContextBranch<T>(params: {
 }): Promise<{ value: T; record: ContextBranchRecord } | { value: null; record: ContextBranchRecord }> {
     const startedAt = Date.now();
     try {
-        const value = await params.operation();
+        const value = await withOptionalContextBranchDeadline(params.operation, {
+            signal: params.signal,
+            branch: params.branch,
+        });
         const record: ContextBranchRecord = {
             branch: params.branch,
             critical: false,
@@ -325,6 +581,9 @@ async function runOptionalContextBranch<T>(params: {
         logContextBranch(record, params.meta);
         return { value, record };
     } catch (error) {
+        if (params.signal?.aborted || isAbortLikeError(error)) {
+            throw error;
+        }
         const normalized = normalizeContextFailure(error);
         const record: ContextBranchRecord = {
             branch: params.branch,
@@ -388,6 +647,7 @@ export type ToolRuntimeContext = {
         ledgerContext?: string;
         memoryContext?: string;
         autonomyContext?: string;
+        selectedModel?: string;
     };
     protocolData?: ProtocolData | null;
     autonomyConfig?: {
@@ -395,6 +655,7 @@ export type ToolRuntimeContext = {
         toolOverrides: Record<string, unknown>;
     };
     allowedToolNames?: string[];
+    preRecordedAutonomyLevels?: ReadonlyMap<string, number>;
 };
 
 function latestUserMessageContent(messages: AIMessage[]): string {
@@ -434,16 +695,47 @@ class AIService {
         this.toolMiddlewares.length = 0;
     }
 
-    async executeToolWithMiddleware(request: ToolExecutionRequest): Promise<ToolResult> {
+    async executeToolWithMiddleware(
+        request: ToolExecutionRequest,
+        finalizeResult?: (
+            result: ToolResult,
+            request: ToolExecutionRequest,
+        ) => Promise<ToolResult>,
+    ): Promise<ToolResult> {
+        // Validate and normalize before persistence/idempotency middleware.
+        // This keeps malformed or adversarially deep provider arguments away
+        // from fingerprinting and guarantees middleware keys use Zod-normalized
+        // values rather than an untrusted transport object.
+        const tool = getTool(request.name);
+        if (tool) {
+            const inputValidation = validateToolInput(tool, request.args);
+            if (!inputValidation.success) {
+                return {
+                    callId: request.callId,
+                    result: null,
+                    error: inputValidation.error,
+                    errorMeta: inputValidation.errorMeta,
+                };
+            }
+            request = {
+                ...request,
+                args: inputValidation.data as Record<string, unknown>,
+            };
+        }
         return executeWithToolMiddleware(
             request,
             this.toolMiddlewares,
-            async (resolvedRequest) => executeTool(
-                resolvedRequest.name,
-                resolvedRequest.args,
-                resolvedRequest.callId,
-                resolvedRequest.context
-            ),
+            async (resolvedRequest) => {
+                const result = await executeTool(
+                    resolvedRequest.name,
+                    resolvedRequest.args,
+                    resolvedRequest.callId,
+                    resolvedRequest.context,
+                );
+                return finalizeResult
+                    ? finalizeResult(result, resolvedRequest)
+                    : result;
+            },
         );
     }
 
@@ -524,10 +816,11 @@ class AIService {
     private async maybeGenerateConversationTitle(params: {
         conversationId: string;
         projectId?: string;
-        model?: string;
         historicalAssistantCount: number;
         firstUserMessage: string;
         assistantMessage: string;
+        fallbackTitle: string;
+        signal?: AbortSignal;
     }): Promise<string | null> {
         const {
             conversationId,
@@ -535,6 +828,8 @@ class AIService {
             historicalAssistantCount,
             firstUserMessage,
             assistantMessage,
+            fallbackTitle,
+            signal,
         } = params;
 
         // Only name a conversation on its first assistant reply.
@@ -542,45 +837,52 @@ class AIService {
         if (!assistantMessage.trim()) return null;
         if (!firstUserMessage.trim()) return null;
 
-        const existing = await prisma.aIConversation.findUnique({
-            where: { id: conversationId },
-            select: { title: true },
-        });
-        if (!existing || existing.title) return null;
-
         const fallbackSeed = firstUserMessage || assistantMessage;
-        let candidate = buildFallbackConversationTitle(fallbackSeed);
+        let candidate: string;
 
         try {
-            const response = await this.chat(
-                [
+            const response = await withOptionalContextBranchDeadline(
+                (branchSignal) => this.chat(
+                    [
+                        {
+                            id: "title-system",
+                            role: "system",
+                            content: "Generate a concise conversation title. Max 8 words. No quotes. Return only the title text.",
+                            createdAt: new Date().toISOString(),
+                        },
+                        {
+                            id: "title-user",
+                            role: "user",
+                            content: `User message:\n${firstUserMessage.slice(0, 220)}\n\nAssistant response:\n${assistantMessage.slice(0, 220)}`,
+                            createdAt: new Date().toISOString(),
+                        },
+                    ],
                     {
-                        id: "title-system",
-                        role: "system",
-                        content: "Generate a concise conversation title. Max 8 words. No quotes. Return only the title text.",
-                        createdAt: new Date().toISOString(),
+                        projectId,
+                        model: "grok-4-1-fast",
+                        temperature: 0.2,
+                        maxTokens: 24,
+                        signal: branchSignal,
                     },
-                    {
-                        id: "title-user",
-                        role: "user",
-                        content: `User message:\n${firstUserMessage.slice(0, 220)}\n\nAssistant response:\n${assistantMessage.slice(0, 220)}`,
-                        createdAt: new Date().toISOString(),
-                    },
-                ],
+                ),
                 {
-                    projectId,
-                    model: "grok-4-1-fast",
-                    temperature: 0.2,
-                    maxTokens: 24,
-                }
+                    branch: "conversation_title",
+                    signal,
+                    timeoutMs: CONVERSATION_TITLE_TIMEOUT_MS,
+                },
             );
             candidate = sanitizeGeneratedConversationTitle(response.content, fallbackSeed);
         } catch {
-            // Fall back to deterministic truncation when title generation fails.
+            throwIfAborted(signal);
+            // The deterministic title is already durable and visible.
+            return null;
         }
 
+        if (candidate === fallbackTitle) return null;
+        throwIfAborted(signal);
         const updated = await prisma.aIConversation.updateMany({
-            where: { id: conversationId, title: null },
+            // Never overwrite a user edit or another writer's refinement.
+            where: { id: conversationId, title: fallbackTitle },
             data: { title: candidate },
         });
         return updated.count > 0 ? candidate : null;
@@ -596,43 +898,59 @@ class AIService {
         const identity = resolveAuthenticatedIdentity(options);
         const projectId = options?.projectId ?? null;
         const optionsWithAttribution = options as ChatOptions & { page?: string };
-
-        // Validate rate limits
-        await validateRateLimits({
-            projectId,
-            userId: identity.userId,
-            workspaceId: identity.workspaceId ?? null,
-        });
-
         const provider = this.resolveProvider(options?.model);
         const effectiveOptions = this.withProviderReasoningPolicy(options);
+        let attemptKey = createUsageAttemptKey();
         const response = await retryAsync(
-            () => provider.chat(messages, effectiveOptions),
+            async () => {
+                const reservation = await reserveProviderUsageAttempt({
+                    attemptKey,
+                    scope: {
+                        projectId,
+                        userId: identity.userId,
+                        workspaceId: identity.workspaceId ?? null,
+                    },
+                    provider: provider.id,
+                    model: effectiveOptions.model ?? AI_CONFIG.defaultModel,
+                    estimatedTokens: estimateProviderAttemptTokens(messages, effectiveOptions),
+                    source: projectId ? "project_copilot" : "ai_page",
+                    contextPage: optionsWithAttribution?.page ?? (projectId ? "legacy_unknown" : "ai"),
+                    conversationId: options?.conversationId ?? null,
+                });
+                let response: AIResponse;
+                try {
+                    // Admission retries reuse the same key. Once provider invocation
+                    // starts, a later provider retry is a distinct billable attempt.
+                    attemptKey = createUsageAttemptKey();
+                    response = await provider.chat(messages, effectiveOptions);
+                } catch (error) {
+                    const classified = classifyAIError(error);
+                    await markUsageAttemptReconcilableWithoutBlocking(
+                        reservation.id,
+                        "failed",
+                        classified.code ?? "PROVIDER_ATTEMPT_FAILED",
+                    );
+                    throw error;
+                }
+
+                await settleUsageAfterProviderAttempt({
+                    reservationId: reservation.id,
+                    model: response.model,
+                    inputTokens: response.usage.inputTokens,
+                    outputTokens: response.usage.outputTokens,
+                    cachedInputTokens: response.usage.cachedInputTokens,
+                });
+                return response;
+            },
             {
                 attempts: MAX_STREAM_RETRY_ATTEMPTS,
                 minDelayMs: RETRY_MIN_DELAY_MS,
                 maxDelayMs: RETRY_MAX_DELAY_MS,
                 jitter: RETRY_JITTER,
                 signal: effectiveOptions?.signal,
-                shouldRetry: (error) => classifyAIError(error).retryable,
+                shouldRetry: shouldRetryProviderOperation,
                 retryAfterMs: (error) => classifyAIError(error).retryAfterMs,
             }
-        );
-
-        // Record usage
-        await recordUsage(
-            projectId,
-            response.model,
-            response.usage.inputTokens,
-            response.usage.outputTokens,
-            {
-                cachedInputTokens: response.usage.cachedInputTokens,
-                userId: identity.userId,
-                workspaceId: identity.workspaceId ?? null,
-                source: projectId ? "project_copilot" : "ai_page",
-                contextPage: optionsWithAttribution.page ?? (projectId ? "legacy_unknown" : "ai"),
-                conversationId: options?.conversationId ?? null,
-            },
         );
 
         return response;
@@ -648,53 +966,77 @@ class AIService {
         const identity = resolveAuthenticatedIdentity(options);
         const projectId = options?.projectId ?? null;
         const optionsWithAttribution = options as ChatOptions & { page?: string };
-
-        // Validate rate limits
-        await validateRateLimits({
-            projectId,
-            userId: identity.userId,
-            workspaceId: identity.workspaceId ?? null,
-        });
-
         const provider = this.resolveProvider(options?.model);
         const effectiveOptions = this.withProviderReasoningPolicy(options);
+        // A generator invocation is one provider attempt. Never share this key
+        // through caller-owned options: the same options object may drive
+        // concurrent streams, and every provider call needs its own reservation.
+        const attemptKey = createUsageAttemptKey();
+        const reservation = await reserveProviderUsageAttempt({
+            attemptKey,
+            scope: {
+                projectId,
+                userId: identity.userId,
+                workspaceId: identity.workspaceId ?? null,
+            },
+            provider: provider.id,
+            model: effectiveOptions.model ?? AI_CONFIG.defaultModel,
+            estimatedTokens: estimateProviderAttemptTokens(messages, effectiveOptions),
+            source: projectId ? "project_copilot" : "ai_page",
+            contextPage: optionsWithAttribution?.page ?? (projectId ? "legacy_unknown" : "ai"),
+            conversationId: options?.conversationId ?? null,
+        });
 
         let totalInputTokens = 0;
         let totalOutputTokens = 0;
         let totalCachedInputTokens = 0;
         let observedModel: string | null = null;
+        let observedUsage = false;
+        let observedProviderChunk = false;
+        let observedProviderError = false;
+        let failureCode = "PROVIDER_STREAM_INCOMPLETE";
 
-        for await (const chunk of provider.streamChat(messages, effectiveOptions)) {
-            if (chunk.type === "done") {
-                if (chunk.usage) {
-                    totalInputTokens = chunk.usage.inputTokens;
-                    totalOutputTokens = chunk.usage.outputTokens;
-                    totalCachedInputTokens = chunk.usage.cachedInputTokens ?? 0;
+        try {
+            for await (const chunk of provider.streamChat(messages, effectiveOptions)) {
+                observedProviderChunk = true;
+                if (chunk.type === "done") {
+                    if (chunk.usage) {
+                        observedUsage = true;
+                        totalInputTokens = chunk.usage.inputTokens;
+                        totalOutputTokens = chunk.usage.outputTokens;
+                        totalCachedInputTokens = chunk.usage.cachedInputTokens ?? 0;
+                    }
+                    if (typeof chunk.actualModel === "string" && chunk.actualModel.trim().length > 0) {
+                        observedModel = chunk.actualModel;
+                    }
+                } else if (chunk.type === "error") {
+                    observedProviderError = true;
+                    failureCode = chunk.errorCode ?? chunk.errorMeta?.code ?? "PROVIDER_STREAM_ERROR";
                 }
-                if (typeof chunk.actualModel === "string" && chunk.actualModel.trim().length > 0) {
-                    observedModel = chunk.actualModel;
-                }
+                yield chunk;
             }
-            yield chunk;
+        } catch (error) {
+            const classified = classifyAIError(error);
+            failureCode = classified.code ?? "PROVIDER_STREAM_FAILED";
+            observedProviderError = true;
+            throw error;
+        } finally {
+            if (observedUsage && !observedProviderError) {
+                await settleUsageAfterProviderAttempt({
+                    reservationId: reservation.id,
+                    model: observedModel ?? effectiveOptions?.model ?? AI_CONFIG.defaultModel,
+                    inputTokens: totalInputTokens,
+                    outputTokens: totalOutputTokens,
+                    cachedInputTokens: totalCachedInputTokens,
+                });
+            } else {
+                await markUsageAttemptReconcilableWithoutBlocking(
+                    reservation.id,
+                    observedProviderChunk ? "unknown" : "failed",
+                    failureCode,
+                );
+            }
         }
-
-        const usageModel = observedModel ?? effectiveOptions?.model ?? AI_CONFIG.defaultModel;
-
-        // Record usage after streaming completes
-        await recordUsage(
-            projectId,
-            usageModel,
-            totalInputTokens,
-            totalOutputTokens,
-            {
-                cachedInputTokens: totalCachedInputTokens,
-                userId: identity.userId,
-                workspaceId: identity.workspaceId ?? null,
-                source: projectId ? "project_copilot" : "ai_page",
-                contextPage: optionsWithAttribution.page ?? (projectId ? "legacy_unknown" : "ai"),
-                conversationId: options?.conversationId ?? null,
-            },
-        );
     }
 
     /**
@@ -726,13 +1068,20 @@ class AIService {
             return;
         }
 
-        const optionsWithTools: ChatOptions = { ...options, tools: toolDefs };
         const currentMessages = [...messages];
         const loop = new LoopState();
+        const loopDeadline = createDeadlineAbortController(
+            loop.budget?.maxWallTimeMs ?? 120_000,
+            [options?.signal],
+        );
+        const loopSignal = loopDeadline.signal;
+        const optionsWithTools: ChatOptions = { ...options, tools: toolDefs, signal: loopSignal };
         const budget = getContextBudget(options?.model);
 
-        while (true) {
-            const check = loop.shouldContinue(options?.signal);
+        try {
+            while (true) {
+            if (loopDeadline.timedOut()) loop.markStopped("wall_time");
+            const check = loop.shouldContinue(loopSignal);
             if (!check.continue) {
                 yield {
                     type: "done",
@@ -774,7 +1123,6 @@ class AIService {
                         if (chunk.type === "tool_call" && chunk.toolCall) {
                             hadVisibleOutput = true;
                             collectedToolCalls.push(chunk.toolCall);
-                            yield chunk;
                         } else if (
                             chunk.type === "reasoning_start"
                             || chunk.type === "reasoning_delta"
@@ -799,7 +1147,7 @@ class AIService {
                                 shouldRecoverOverflow = true;
                                 break;
                             }
-                            if (!hadVisibleOutput && classified.retryable && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
+                            if (!hadVisibleOutput && shouldRetryProviderOperation(errorMeta) && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
                                 shouldRetry = true;
                                 retryAfterMs = classified.retryAfterMs;
                                 break;
@@ -809,10 +1157,13 @@ class AIService {
                         }
                     }
                 } catch (error) {
+                    if (loopDeadline.timedOut() && isAbortLikeError(error)) {
+                        throw error;
+                    }
                     const classified = classifyAIError(error);
                     if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
                         shouldRecoverOverflow = true;
-                    } else if (!hadVisibleOutput && classified.retryable && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
+                    } else if (!hadVisibleOutput && shouldRetryProviderOperation(error) && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
                         shouldRetry = true;
                         retryAfterMs = classified.retryAfterMs;
                     } else {
@@ -835,13 +1186,14 @@ class AIService {
                 if (shouldRetry) {
                     retryCount += 1;
                     const delayMs = computeRetryDelayMs(retryCount, retryAfterMs);
-                    await sleep(delayMs, options?.signal).catch(() => {});
-                    if (options?.signal?.aborted) {
-                        loop.markStopped("cancelled");
+                    await sleep(delayMs, loopSignal).catch(() => {});
+                    if (loopSignal.aborted) {
+                        const stopReason = loopDeadline.timedOut() ? "wall_time" : "cancelled";
+                        loop.markStopped(stopReason);
                         yield {
                             type: "done",
-                            content: stopReasonMessage("cancelled"),
-                            stopReason: "cancelled",
+                            content: stopReasonMessage(stopReason),
+                            stopReason,
                         };
                         return;
                     }
@@ -886,14 +1238,27 @@ class AIService {
                 }),
             })));
 
-            // Check for repeated tool calls
-            if (loop.recordToolCalls(repeatKeyedToolCalls)) {
+            // Reserve capacity before any executor can observe this batch.
+            const repeatDetected = loop.recordToolCalls(repeatKeyedToolCalls);
+            if (loop.stopReason === "max_tool_calls") {
+                yield {
+                    type: "done",
+                    content: stopReasonMessage("max_tool_calls"),
+                    stopReason: "max_tool_calls",
+                };
+                return;
+            }
+            if (repeatDetected) {
                 yield {
                     type: "done",
                     content: stopReasonMessage("repeat_detected"),
                     stopReason: "repeat_detected",
                 };
                 return;
+            }
+
+            for (const toolCall of collectedToolCalls) {
+                yield { type: "tool_call", toolCall };
             }
 
             const assistantMsg: AIMessage = {
@@ -915,6 +1280,8 @@ class AIService {
                         studyId: options?.studyId,
                         userId: identity.userId,
                         allowedToolNames,
+                        systemContexts: { selectedModel: options?.model },
+                        signal: loopSignal,
                     },
                 });
                 yield { type: "tool_result", toolName: tc.name, toolResult: result };
@@ -935,6 +1302,20 @@ class AIService {
                 };
                 currentMessages.push(toolMsg);
             }
+            }
+        } catch (error) {
+            if (loopDeadline.timedOut() && isAbortLikeError(error)) {
+                loop.markStopped("wall_time");
+                yield {
+                    type: "done",
+                    content: stopReasonMessage("wall_time"),
+                    stopReason: "wall_time",
+                };
+                return;
+            }
+            throw error;
+        } finally {
+            loopDeadline.dispose();
         }
     }
 
@@ -974,6 +1355,7 @@ class AIService {
         let runExecutionCancellation: ActiveRunExecutionCancellation | null = null;
         let durableRunCancellationMonitor: DurableRunCancellationMonitor | null = null;
         let linkedExecutionCancellation: LinkedAbortController | null = null;
+        let runLoopDeadline: DeadlineAbortController | null = null;
         let executionSignal: AbortSignal | undefined = options?.signal;
         const identity = resolveAuthenticatedIdentity({
             userId: options?.userId,
@@ -990,17 +1372,18 @@ class AIService {
         const contextBranchRecords: ContextBranchRecord[] = [];
         let preparedPlanExecution: PreparedPlanExecution | null = null;
         if (executionMode && options?.planId && options?.selectedSteps) {
-            const planExecutionResult = await runCriticalContextBranch({
-                    branch: "plan_execution",
-                    operation: () => preparePlanExecution(
-                        options.planId!,
-                        options.selectedSteps!,
-                        projectId,
-                    ),
-                    meta: {
-                        projectId: projectId ?? null,
-                    },
-                });
+            const planExecutionResult = await runCriticalReadContextBranch({
+                branch: "plan_execution",
+                operation: () => preparePlanExecution(
+                    options.planId!,
+                    options.selectedSteps!,
+                    projectId,
+                ),
+                signal: options?.signal,
+                meta: {
+                    projectId: projectId ?? null,
+                },
+            });
             contextBranchRecords.push(planExecutionResult.record);
             preparedPlanExecution = planExecutionResult.value;
             projectId = preparedPlanExecution.projectId ?? projectId;
@@ -1015,27 +1398,35 @@ class AIService {
         // When conversationId is provided, load by ID and treat its scope as canonical.
         // This prevents cross-conversation writes when client scope drifts from the actual thread.
         const authoritativeConversationId = preparedPlanExecution?.conversationId ?? options?.conversationId;
-        const conversationResult = await runCriticalContextBranch({
+        const conversationResult = authoritativeConversationId
+            ? await runCriticalReadContextBranch({
                 branch: "conversation",
                 operation: async () => {
-                    if (authoritativeConversationId) {
-                        const byId = await getConversationWithSummaryById(
-                            authoritativeConversationId,
-                            userId,
-                            workspaceId,
-                        );
-                        if (!byId) {
-                            throw new Error(`Invalid, archived, or inaccessible conversationId: ${authoritativeConversationId}`);
-                        }
-                        return byId;
-                    }
-                    return getConversationWithSummary(
-                        context,
-                        projectId,
-                        studyId,
-                        workspaceId ? { userId, workspaceId } : undefined,
+                    const byId = await getConversationWithSummaryById(
+                        authoritativeConversationId,
+                        userId,
+                        workspaceId,
                     );
+                    if (!byId) {
+                        throw new Error(`Invalid, archived, or inaccessible conversationId: ${authoritativeConversationId}`);
+                    }
+                    return byId;
                 },
+                signal: options?.signal,
+                meta: {
+                    projectId: projectId ?? null,
+                    agentMode,
+                },
+            })
+            : await runCriticalContextBranch({
+                branch: "conversation",
+                operation: () => getConversationWithSummary(
+                    context,
+                    projectId,
+                    studyId,
+                    workspaceId ? { userId, workspaceId } : undefined,
+                ),
+                signal: options?.signal,
                 meta: {
                     projectId: projectId ?? null,
                     agentMode,
@@ -1055,6 +1446,7 @@ class AIService {
             operation: () => ensureConversationRunAvailability(conversation.id, {
                 replaceRunId: options?.replaceRunId,
             }),
+            signal: options?.signal,
             meta: {
                 conversationId: conversation.id,
                 projectId: projectId ?? null,
@@ -1065,6 +1457,8 @@ class AIService {
 
         // Declared outside try so catch block can access them for plan finalization
         const planData: PreparedPlanExecution | null = preparedPlanExecution;
+        let planExecutionAttemptId: string | null = null;
+        let planExecutionSettled = false;
         let stepQueue: PlanExecutionStepState[] = [];
         let fullContent = "";
         const historicalAssistantCount = conversation.messages.filter((m) => m.role === "assistant").length;
@@ -1324,9 +1718,10 @@ class AIService {
                 agentMode,
             };
 
-            const autonomyConfigResult = await runCriticalContextBranch({
+            const autonomyConfigResult = await runCriticalReadContextBranch({
                 branch: "autonomy_config",
                 operation: () => getAutonomyConfig(userId, projectId),
+                signal: executionSignal,
                 meta: contextMeta,
             });
             contextBranchRecords.push(autonomyConfigResult.record);
@@ -1335,19 +1730,24 @@ class AIService {
             const optionalBranchResults = await Promise.all([
                 runOptionalContextBranch({
                     branch: "memories",
-                    operation: () => retrieveMemories({
-                        userId,
-                        projectId,
-                        studyId,
-                        conversationId: conversation.id,
-                        query: runtimeQueryText,
-                        agentMode,
-                        runId: activeRun.id,
-                    }),
+                    signal: executionSignal,
+                    operation: (branchSignal) => retrieveMemories(
+                        {
+                            userId,
+                            projectId,
+                            studyId,
+                            conversationId: conversation.id,
+                            query: runtimeQueryText,
+                            agentMode,
+                            runId: activeRun.id,
+                        },
+                        { signal: branchSignal },
+                    ),
                     meta: contextMeta,
                 }),
                 runOptionalContextBranch({
                     branch: "protocol",
+                    signal: executionSignal,
                     operation: () => projectId
                         ? prisma.protocol.findFirst({ where: { projectId }, select: { data: true } })
                         : Promise.resolve(null),
@@ -1355,6 +1755,7 @@ class AIService {
                 }),
                 runOptionalContextBranch({
                     branch: "ledger",
+                    signal: executionSignal,
                     operation: async () => {
                         if (!projectId) return null;
                         if (needsFullLedgerSnapshot) {
@@ -1366,6 +1767,7 @@ class AIService {
                 }),
                 runOptionalContextBranch({
                     branch: "study",
+                    signal: executionSignal,
                     operation: () => studyId
                         ? prisma.study.findUnique({
                             where: { id: studyId },
@@ -1376,6 +1778,7 @@ class AIService {
                 }),
                 runOptionalContextBranch({
                     branch: "project",
+                    signal: executionSignal,
                     operation: () => projectId
                         ? prisma.project.findUnique({ where: { id: projectId }, select: { name: true } })
                         : Promise.resolve(null),
@@ -1759,7 +2162,8 @@ class AIService {
                         message: "Plan execution context could not be prepared.",
                     }));
                 }
-                await markPlanExecutionRunning(options.planId);
+                planExecutionAttemptId = activeRun.id;
+                await markPlanExecutionRunning(options.planId, planExecutionAttemptId);
 
                 const resolvedExecutionTools = resolvePlanExecutionToolNames({
                     selectedSteps: planData.selectedSteps,
@@ -1817,6 +2221,11 @@ class AIService {
             let observedRunModel: string | null = null;
             let invokedModel = false;
             const loop = new LoopState();
+            runLoopDeadline = createDeadlineAbortController(
+                loop.budget?.maxWallTimeMs ?? 120_000,
+                [executionSignal],
+            );
+            const loopSignal = runLoopDeadline.signal;
             let forcedClarificationStop: {
                 content: string;
                 fallbackAction: ClarificationFallbackAction;
@@ -1825,7 +2234,8 @@ class AIService {
             const scopingWorkflowMessageId = "scoping-workflow";
 
             while (true) {
-                const check = loop.shouldContinue(executionSignal);
+                if (runLoopDeadline.timedOut()) loop.markStopped("wall_time");
+                const check = loop.shouldContinue(loopSignal);
                 if (!check.continue) break;
 
                 const repaired = repairConversationHistory(currentMessages, { stopReason: "completed" });
@@ -1868,7 +2278,7 @@ class AIService {
                 const iterationToolNames = iterationToolDefs.map((tool) => tool.name);
                 const iterationChatOptions: ChatOptions = {
                     ...baseChatOptions,
-                    signal: executionSignal,
+                    signal: loopSignal,
                     ...(iterationToolDefs.length > 0 ? { tools: iterationToolDefs } : {}),
                 };
 
@@ -1900,9 +2310,6 @@ class AIService {
                             if (chunk.type === "tool_call" && chunk.toolCall) {
                                 hadVisibleOutput = true;
                                 collectedToolCalls.push(chunk.toolCall);
-                                if (!(effectiveHandoffSelection && !protocolHandoffExecuted)) {
-                                    yield { ...chunk, conversationId: conversation.id };
-                                }
                             } else if (
                                 chunk.type === "reasoning_start"
                                 || chunk.type === "reasoning_delta"
@@ -1934,7 +2341,7 @@ class AIService {
                                     shouldRecoverOverflow = true;
                                     break;
                                 }
-                                if (!hadVisibleOutput && classified.retryable && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
+                                if (!hadVisibleOutput && shouldRetryProviderOperation(errorMeta) && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
                                     shouldRetry = true;
                                     retryAfterMs = classified.retryAfterMs;
                                     break;
@@ -1951,10 +2358,14 @@ class AIService {
                             }
                         }
                     } catch (error) {
+                        if (loopSignal.aborted || isAbortLikeError(error)) {
+                            genSpan.end();
+                            throw error;
+                        }
                         const classified = classifyAIError(error);
                         if (!hadVisibleOutput && classified.reason === "context_overflow" && overflowRecoveryCount < MAX_OVERFLOW_RECOVERY_ATTEMPTS) {
                             shouldRecoverOverflow = true;
-                        } else if (!hadVisibleOutput && classified.retryable && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
+                        } else if (!hadVisibleOutput && shouldRetryProviderOperation(error) && retryCount < MAX_STREAM_RETRY_ATTEMPTS) {
                             shouldRetry = true;
                             retryAfterMs = classified.retryAfterMs;
                         } else {
@@ -1988,9 +2399,9 @@ class AIService {
                     if (shouldRetry) {
                         retryCount += 1;
                         const delayMs = computeRetryDelayMs(retryCount, retryAfterMs);
-                        await sleep(delayMs, executionSignal).catch(() => {});
-                        if (executionSignal?.aborted) {
-                            loop.markStopped("cancelled");
+                        await sleep(delayMs, loopSignal).catch(() => {});
+                        if (loopSignal.aborted) {
+                            loop.markStopped(runLoopDeadline.timedOut() ? "wall_time" : "cancelled");
                             break;
                         }
                         continue;
@@ -2059,6 +2470,18 @@ class AIService {
                     collectedToolCalls = sanitizedToolCalls.toolCalls;
                 }
 
+                if (executionMode) {
+                    const planToolCallSelection = selectPlanToolCallsForTurn(collectedToolCalls);
+                    if (planToolCallSelection.deferredToolCalls.length > 0) {
+                        logServerWarn("ai-service", "deferred speculative plan tool calls until a result-dependent turn", {
+                            planId: options?.planId,
+                            admittedToolCallId: planToolCallSelection.admittedToolCalls[0]?.id,
+                            deferredToolCallIds: planToolCallSelection.deferredToolCalls.map((toolCall) => toolCall.id),
+                        });
+                    }
+                    collectedToolCalls = planToolCallSelection.admittedToolCalls;
+                }
+
                 if (collectedToolCalls.length === 0) {
                     loop.markStopped("natural");
                     break;
@@ -2076,9 +2499,40 @@ class AIService {
                     }),
                 })));
 
-                // Check for repeated tool calls
-                if (loop.recordToolCalls(repeatKeyedToolCalls)) {
+                // Reserve capacity before any executor can observe this batch.
+                const repeatDetected = loop.recordToolCalls(repeatKeyedToolCalls);
+                if (loop.stopReason === "max_tool_calls") {
+                    break;
+                }
+                if (repeatDetected) {
                     break; // repeat_detected — shouldContinue will catch it next iteration
+                }
+
+                let preRecordedAutonomyLevels: ReadonlyMap<string, number>;
+                try {
+                    preRecordedAutonomyLevels = await preRecordToolCallBatchForAutonomy({
+                        runId: activeRun.id,
+                        toolCalls: collectedToolCalls,
+                        projectId,
+                        userId,
+                        agentMode,
+                        allowedToolNames: iterationToolNames,
+                        cachedAutonomyConfig: autonomyConfig,
+                    });
+                } catch (error) {
+                    if (isRunLineageToolBudgetExceededError(error)) {
+                        loop.markStopped("max_tool_calls");
+                        break;
+                    }
+                    throw error;
+                }
+
+                for (const toolCall of collectedToolCalls) {
+                    yield {
+                        type: "tool_call",
+                        toolCall,
+                        conversationId: conversation.id,
+                    };
                 }
 
                 const assistantMsg: AIMessage = {
@@ -2145,16 +2599,18 @@ class AIService {
                         studyId,
                         autonomyConfig,
                         {
-                            signal: executionSignal,
+                            signal: loopSignal,
                             rootRunId: activeRun.rootRunId ?? activeRun.id,
                             protocolData: (protocolRow?.data as ProtocolData | null) ?? null,
                             allowedToolNames: iterationToolNames,
+                            preRecordedAutonomyLevels,
                             systemContexts: {
                                 projectContext,
                                 protocolContext,
                                 ledgerContext,
                                 memoryContext: memoriesContext || undefined,
                                 autonomyContext,
+                                selectedModel: iterationChatOptions.model,
                             },
                         },
                     );
@@ -2171,7 +2627,7 @@ class AIService {
 
                     // Plan step tracking: mark completed or failed based on tool result
                     if (executionMode && matchedStep) {
-                        const stepStatus = toolResult.error ? "failed" : "completed";
+                        const { stepStatus } = resolvePlanStepResult(toolResult);
                         matchedStep.finalStatus = stepStatus;
                         yield { type: "plan_step_update", planId: options!.planId!, stepIndex: matchedStep.originalIndex, stepStatus, conversationId: conversation.id };
                     }
@@ -2313,6 +2769,11 @@ class AIService {
                         createdAt: new Date().toISOString(),
                     };
                     currentMessages.push(toolMsg);
+
+                    if (executionMode && resolvePlanStepResult(toolResult).shouldStop) {
+                        loop.markStopped("error");
+                        break;
+                    }
                 }
 
                 if (effectiveHandoffSelection && protocolHandoffExecuted) {
@@ -2345,18 +2806,37 @@ class AIService {
 
                 // Determine plan outcome: every selected step must complete.
                 const allCompleted = stepQueue.length > 0 && stepQueue.every(s => s.finalStatus === "completed");
-                if (!allCompleted || finalStopReason === "cancelled" || finalStopReason === "error") {
+                if (
+                    !allCompleted
+                    || finalStopReason === "cancelled"
+                    || finalStopReason === "error"
+                    || finalStopReason === "paused_for_input"
+                ) {
                     const reason = finalStopReason === "cancelled"
                         ? "Cancelled by user"
                         : finalStopReason === "error"
                             ? "Execution error"
                             : "Plan did not complete all selected steps";
-                    await failPlanExecution(options.planId, finalSteps, reason);
+                    if (!planExecutionAttemptId) {
+                        throw new AIErrorWithEnvelope(createPlanExecutionErrorEnvelope({
+                            code: "PLAN_EXECUTION_ATTEMPT_MISSING",
+                            message: "Plan execution lost its runtime ownership token.",
+                        }));
+                    }
+                    await failPlanExecution(options.planId, finalSteps, reason, planExecutionAttemptId);
+                    planExecutionSettled = true;
                     if (finalStopReason !== "cancelled" && finalStopReason !== "paused_for_input") {
                         runFacts.hadDeterministicNonRetryableFailure = true;
                     }
                 } else {
-                    await completePlanExecution(options.planId, finalSteps);
+                    if (!planExecutionAttemptId) {
+                        throw new AIErrorWithEnvelope(createPlanExecutionErrorEnvelope({
+                            code: "PLAN_EXECUTION_ATTEMPT_MISSING",
+                            message: "Plan execution lost its runtime ownership token.",
+                        }));
+                    }
+                    await completePlanExecution(options.planId, finalSteps, planExecutionAttemptId);
+                    planExecutionSettled = true;
                     runFacts.hadSuccessfulToolOrArtifact = true;
                 }
             }
@@ -2404,37 +2884,68 @@ class AIService {
                 if (forcedClarificationStop) {
                     yield { type: "content", content: fullContent, conversationId: conversation.id };
                 }
-                await addAssistantMessageToConversationForRun({
+                const titleSeed = firstPersistedUserMessage || persistedUserContentForTitle || userMessage;
+                const fallbackConversationTitle = !executionMode
+                    && historicalAssistantCount === 0
+                    && titleSeed.trim()
+                    ? buildFallbackConversationTitle(titleSeed)
+                    : undefined;
+                const persistedAssistantMessage = await addAssistantMessageToConversationForRun({
                     runId: activeRun.id,
                     conversationId: conversation.id,
                     content: fullContent,
+                    fallbackConversationTitle,
                 });
-                await markMemoriesUsedInAnswer(retrievedMemoriesForRun, fullContent).catch(() => {});
+                // Keep bookkeeping off the terminal delivery path while giving
+                // the serverless runtime time to finish it after the response.
+                const memoriesToAttribute = [...retrievedMemoriesForRun];
+                const answerForAttribution = fullContent;
+                schedulePostResponseTask({
+                    taskName: "memory-use attribution",
+                    conversationId: conversation.id,
+                    runId: activeRun.id,
+                    task: () => markMemoriesUsedInAnswer(memoriesToAttribute, answerForAttribution),
+                });
 
-                if (!executionMode) {
+                if (persistedAssistantMessage.conversationTitle) {
+                    const durableFallbackTitle = persistedAssistantMessage.conversationTitle;
+                    // The deterministic title is committed with the assistant
+                    // message, so it is immediately visible even if refinement
+                    // is slow or the serverless request ends.
                     try {
-                        const generatedTitle = await this.maybeGenerateConversationTitle({
-                            conversationId: conversation.id,
-                            projectId: projectId || undefined,
-                            model: options?.model,
-                            historicalAssistantCount,
-                            firstUserMessage: firstPersistedUserMessage || persistedUserContentForTitle || userMessage,
-                            assistantMessage: fullContent,
+                        after(async () => {
+                            try {
+                                await this.maybeGenerateConversationTitle({
+                                    conversationId: conversation.id,
+                                    projectId: projectId || undefined,
+                                    historicalAssistantCount,
+                                    firstUserMessage: titleSeed,
+                                    assistantMessage: fullContent,
+                                    fallbackTitle: durableFallbackTitle,
+                                    signal: executionSignal,
+                                });
+                            } catch (error) {
+                                logServerWarn("ai-service", "failed to refine conversation title", {
+                                    conversationId: conversation.id,
+                                    runId: activeRun.id,
+                                    error: error instanceof Error ? error.message : String(error),
+                                });
+                            }
                         });
-                        if (generatedTitle) {
-                            yield {
-                                type: "conversation_title",
-                                conversationId: conversation.id,
-                                conversationTitle: generatedTitle,
-                            };
-                        }
                     } catch (error) {
-                        logServerWarn("ai-service", "failed to generate conversation title", {
+                        // The durable fallback remains authoritative when the
+                        // runtime has no request-scoped after() context.
+                        logServerWarn("ai-service", "conversation title refinement was not scheduled", {
                             conversationId: conversation.id,
                             runId: activeRun.id,
                             error: error instanceof Error ? error.message : String(error),
                         });
                     }
+                    yield {
+                        type: "conversation_title",
+                        conversationId: conversation.id,
+                        conversationTitle: durableFallbackTitle,
+                    };
                 }
             } else {
                 const noAnswerOutcome = deriveRunOutcome({
@@ -2456,7 +2967,7 @@ class AIService {
             if (scopingReportPayload) {
                 const topic = scopingReportPayload.topic?.trim();
                 const title = topic ? `Scoping: ${topic}`.slice(0, 120) : "Scoping Report";
-                const artifact = await createArtifact({
+                const artifact = await createAutoAppliedArtifact({
                     runId: activeRun.id,
                     projectId: projectId || null,
                     conversationId: conversation.id,
@@ -2464,22 +2975,14 @@ class AIService {
                     type: "scoping_report",
                     title,
                     payload: scopingReportPayload,
-                });
-
-                const finalized = await prisma.artifact.update({
-                    where: { id: artifact.id },
-                    data: {
-                        status: "auto_applied",
-                        appliedAt: new Date(),
-                        applyId: artifact.id,
-                    },
+                    applyId: `scoping-report:${activeRun.id}`,
                 });
 
                 yield {
                     type: "artifact",
                     artifactId: artifact.id,
                     artifactType: "scoping_report",
-                    artifactStatus: finalized.status,
+                    artifactStatus: artifact.status,
                     artifactTitle: artifact.title,
                     artifactPayload: artifact.payload,
                     artifactVersion: artifact.version,
@@ -2509,19 +3012,18 @@ class AIService {
             // Auxiliary follow-on work must never retro-fail an already completed answer.
             const totalMsgs = conversation.messages.length + 2; // +user +assistant
             const currentTokens = estimateMessagesTokensWithSafetyMargin(conversation.messages);
-            try {
-                await autoSummarizeIfNeeded(
-                    conversation.id, totalMsgs,
+            schedulePostResponseTask({
+                taskName: "auto-summarization",
+                conversationId: conversation.id,
+                runId: activeRun.id,
+                task: () => autoSummarizeIfNeeded(
+                    conversation.id,
+                    totalMsgs,
                     conversation.summaryData?.messageCount ?? 0,
-                    budget, currentTokens
-                );
-            } catch (error) {
-                logServerWarn("ai-service", "auto-summarization failed after run completion", {
-                    conversationId: conversation.id,
-                    runId: activeRun.id,
-                    error: error instanceof Error ? error.message : String(error),
-                });
-            }
+                    budget,
+                    currentTokens,
+                ),
+            });
 
             try {
                 await closeTraceOnce({
@@ -2560,6 +3062,11 @@ class AIService {
             const isAbortError =
                 executionSignal?.aborted ||
                 isAbortLikeError(error);
+            const isWallTimeAbort = Boolean(
+                runLoopDeadline?.timedOut()
+                && isAbortLikeError(error)
+                && !executionSignal?.aborted,
+            );
 
             if (isRunOwnershipError(error)) {
                 logServerWarn("ai-service", "run ownership lost during stream; suppressing stale writer", {
@@ -2593,19 +3100,75 @@ class AIService {
                 return;
             }
 
+            if (isWallTimeAbort) {
+                const activeRunId = run?.id;
+                const errorMeta: AIErrorEnvelope = {
+                    kind: "runtime",
+                    code: "AGENT_LOOP_WALL_TIME_EXCEEDED",
+                    retryable: true,
+                    source: "runtime",
+                    message: "The agent reached its wall-time budget before the current provider or tool operation completed.",
+                };
+                const terminalErrorChunk = buildStreamErrorChunk(errorMeta, {
+                    conversationId: conversation.id,
+                });
+                await persistRecoveryErrorChunk(terminalErrorChunk);
+                if (activeRunId) {
+                    await markRunAbnormalEndClassification(activeRunId, "unknown", {
+                        requireActive: true,
+                    }).catch((markError) => {
+                        if (!isRunOwnershipError(markError)) {
+                            logServerError("ai-service", "failed to persist wall-time abnormal classification", {
+                                runId: activeRunId,
+                                error: markError,
+                            });
+                        }
+                    });
+                }
+                await closeTraceOnce({ wallTimeBudgetExceeded: true });
+                const finalized = await finalizeRunOnce("failed");
+                yield terminalErrorChunk;
+                if (activeRunId && finalized) {
+                    const terminalStatus = finalizedRunStatus ?? "failed";
+                    const runModelMeta = resolveRunActualModelMeta(options?.model, null, false);
+                    yield {
+                        type: "run_end",
+                        runId: activeRunId,
+                        runStatus: terminalStatus,
+                        stopReason: "wall_time",
+                        conversationId: conversation.id,
+                        actualModel: runModelMeta.actualModel ?? undefined,
+                        actualModelSource: runModelMeta.actualModelSource,
+                    };
+                }
+                return;
+            }
+
             if (isAbortError) {
                 runFacts.cancelledByUser = true;
                 const isSemanticRunCancel =
                     Boolean(runExecutionCancellation?.signal.aborted)
                     && !options?.signal?.aborted;
                 const activeRunId = run?.id;
-                if (fullContent) {
+                // A durable semantic cancel owns the terminal state. Do not race
+                // it with a stale partial assistant write from the aborted worker.
+                if (fullContent && !isSemanticRunCancel) {
                     if (activeRunId) {
-                        await addAssistantMessageToConversationForRun({
-                            runId: activeRunId,
-                            conversationId: conversation.id,
-                            content: fullContent,
-                        });
+                        try {
+                            await addAssistantMessageToConversationForRun({
+                                runId: activeRunId,
+                                conversationId: conversation.id,
+                                content: fullContent,
+                            });
+                        } catch (writeError) {
+                            if (!isRunOwnershipError(writeError)) {
+                                throw writeError;
+                            }
+                            logServerWarn("ai-service", "partial assistant write lost run ownership during abort", {
+                                runId: activeRunId,
+                                status: writeError.status,
+                            });
+                        }
                     }
                 }
 
@@ -2641,7 +3204,7 @@ class AIService {
             }
 
             // ── Plan execution failure finalization ──
-            if (executionMode && options?.planId && planData) {
+            if (executionMode && options?.planId && planData && planExecutionAttemptId) {
                 try {
                     const { failPlanExecution } = await import("@/lib/server/agent/plan-execution");
                     for (const step of stepQueue) {
@@ -2651,7 +3214,13 @@ class AIService {
                         const queued = stepQueue.find(q => q.originalIndex === i);
                         return { ...s, status: queued?.finalStatus ?? s.status };
                     });
-                    await failPlanExecution(options.planId, finalSteps, error instanceof Error ? error.message : "Unknown error");
+                    await failPlanExecution(
+                        options.planId,
+                        finalSteps,
+                        error instanceof Error ? error.message : "Unknown error",
+                        planExecutionAttemptId,
+                    );
+                    planExecutionSettled = true;
                 } catch (planError) {
                     // Best-effort — don't mask the original error
                     logServerError("ai-service", "failed to persist plan execution failure", {
@@ -2725,6 +3294,38 @@ class AIService {
                 };
             }
         } finally {
+            if (
+                executionMode
+                && options?.planId
+                && planData
+                && planExecutionAttemptId
+                && !planExecutionSettled
+            ) {
+                for (const step of stepQueue) {
+                    if (!step.consumed) step.finalStatus = "failed";
+                }
+                const finalSteps = planData.plan.steps.map((step, index) => {
+                    const queued = stepQueue.find((candidate) => candidate.originalIndex === index);
+                    return { ...step, status: queued?.finalStatus ?? step.status };
+                });
+                try {
+                    await failPlanExecution(
+                        options.planId,
+                        finalSteps,
+                        "Execution ended before every selected step completed",
+                        planExecutionAttemptId,
+                    );
+                    planExecutionSettled = true;
+                } catch (planError) {
+                    logServerError("ai-service", "failed to release unfinished plan execution lease", {
+                        planId: options.planId,
+                        runId: run?.id ?? null,
+                        executionAttemptId: planExecutionAttemptId,
+                    }, planError);
+                }
+            }
+            runLoopDeadline?.dispose();
+            runLoopDeadline = null;
             stopRunLivenessControllers();
             linkedExecutionCancellation?.dispose();
             linkedExecutionCancellation = null;

@@ -1,4 +1,4 @@
-name: Mobile Foundation
+name: Browser Foundation
 on:
   push:
     branches: [main]
@@ -13,7 +13,16 @@ on:
       - "next-app/package.json"
       - "next-app/package-lock.json"
       - "next-app/lib/mobile/**"
-      - "next-app/lib/ai/reliability-telemetry.ts"
+      - "next-app/lib/ai/**"
+      - "next-app/lib/artifacts/**"
+      - "next-app/lib/project-data-events.ts"
+      - "next-app/lib/project-conversation*.ts"
+      - "next-app/lib/server/agent/**"
+      - "next-app/lib/server/ai/**"
+      - "next-app/contexts/**"
+      - "next-app/hooks/**"
+      - "next-app/types/**"
+      - "next-app/prisma/**"
       - "next-app/app/PerformanceVitalsReporter.tsx"
       - ".github/workflows/**"
   workflow_dispatch:
@@ -22,7 +31,7 @@ permissions:
   contents: read
 
 jobs:
-  mobile-foundation:
+  browser-foundation:
     runs-on: ubuntu-latest
 
     services:
@@ -61,5 +70,13 @@ jobs:
       - name: Install Playwright browser
         run: cd next-app && npx playwright install --with-deps chromium
 
-      - name: Run mobile foundation e2e
-        run: cd next-app && npm run test:e2e:mobile:foundation
+      - name: Run browser foundation e2e
+        run: cd next-app && npm run test:e2e:foundation
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-foundation-playwright-report
+          path: next-app/playwright-report
+          if-no-files-found: ignore

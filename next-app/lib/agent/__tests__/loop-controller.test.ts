@@ -86,6 +86,37 @@ describe("LoopState", () => {
         expect(state.shouldContinue()).toEqual({ continue: false, stopReason: "max_tool_calls" });
     });
 
+    it("rejects an oversized tool-call batch before any call can execute", () => {
+        const state = new LoopState({ maxIterations: 100, maxToolCalls: 2 });
+        state.shouldContinue();
+
+        expect(state.recordToolCalls([
+            { name: "a", arguments: { x: 1 } },
+            { name: "b", arguments: { x: 2 } },
+            { name: "c", arguments: { x: 3 } },
+        ])).toBe(false);
+        expect(state.totalToolCalls).toBe(0);
+        expect(state.stopReason).toBe("max_tool_calls");
+        expect(state.shouldContinue()).toEqual({ continue: false, stopReason: "max_tool_calls" });
+    });
+
+    it("rejects a batch that would cross the remaining tool-call capacity", () => {
+        const state = new LoopState({ maxIterations: 100, maxToolCalls: 3 });
+        state.shouldContinue();
+        state.recordToolCalls([
+            { name: "a", arguments: { x: 1 } },
+            { name: "b", arguments: { x: 2 } },
+        ]);
+
+        state.shouldContinue();
+        expect(state.recordToolCalls([
+            { name: "c", arguments: { x: 3 } },
+            { name: "d", arguments: { x: 4 } },
+        ])).toBe(false);
+        expect(state.totalToolCalls).toBe(2);
+        expect(state.stopReason).toBe("max_tool_calls");
+    });
+
     it("detects doom loop after threshold consecutive identical calls", () => {
         const state = new LoopState();
         state.shouldContinue(); // iteration 1

@@ -9,8 +9,11 @@ import { prisma } from "@/lib/server/prisma";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import {
     findDecisionRequestRecordForUserInput,
+    isDecisionResolutionAlreadyClaimedError,
+    isMatchingPersistedDecisionResolution,
     parseDecisionRequestRecordRequest,
     resolveDecisionRequestForUserInputWithinTransaction,
+    upsertDecisionRequestForUserInputWithinTransaction,
 } from "@/lib/server/ai/decision-request-store";
 import type {
     ClarificationFallbackAction,
@@ -28,6 +31,8 @@ type ClarificationLineageRunRecord = {
     id: string;
     conversationId: string | null;
     rootRunId: string | null;
+    projectId: string | null;
+    userId: string | null;
 };
 
 type ClarificationLineageEventRecord = {
@@ -426,17 +431,33 @@ export async function resolvePendingUserInputSource(params: {
     sourceRunId: string;
     conversationId?: string | null;
     callId: string;
+    actor: {
+        userId: string;
+        workspaceId: string;
+    };
 }): Promise<PendingUserInputSource> {
     const run = await prisma.agentRun.findFirst({
         where: {
             id: params.sourceRunId,
             ...(params.conversationId ? { conversationId: params.conversationId } : {}),
+            OR: [
+                { userId: params.actor.userId },
+                {
+                    project: {
+                        ownerId: params.actor.userId,
+                        workspaceId: params.actor.workspaceId,
+                    },
+                },
+            ],
         },
         select: {
             id: true,
             conversationId: true,
+            rootRunId: true,
+            projectId: true,
+            userId: true,
         },
-    }) as Pick<ClarificationLineageRunRecord, "id" | "conversationId"> | null;
+    }) as ClarificationLineageRunRecord | null;
 
     if (!run) {
         throw new Error("The pending clarification source run could not be found.");
@@ -448,8 +469,8 @@ export async function resolvePendingUserInputSource(params: {
         callId: params.callId,
     });
     if (decisionRecord) {
-        if (decisionRecord.status !== "pending") {
-            throw new Error("That clarification request has already been resolved.");
+        if (decisionRecord.userId && decisionRecord.userId !== params.actor.userId) {
+            throw new Error("The pending clarification source run could not be found.");
         }
         const request = parseDecisionRequestRecordRequest(decisionRecord);
         if (!request?.callId) {
@@ -513,7 +534,24 @@ export async function resolvePendingUserInputSource(params: {
     const normalizedRequest = normalizeUserInputRequestWithDecisionRequest({
         request,
         sourceRunId: run.id,
+        rootRunId: run.rootRunId,
         conversationId: run.conversationId ?? null,
+        projectId: run.projectId,
+        userId: run.userId ?? params.actor.userId,
+    });
+
+    // Promote legacy event-only clarification requests to the first-class
+    // decision store before returning them. Resolution can then use the same
+    // atomic pending -> resolved compare-and-swap as newer requests.
+    await prisma.$transaction(async (tx) => {
+        await upsertDecisionRequestForUserInputWithinTransaction(tx, {
+            request: normalizedRequest,
+            sourceRunId: run.id,
+            rootRunId: run.rootRunId,
+            conversationId: run.conversationId,
+            projectId: run.projectId,
+            userId: run.userId ?? params.actor.userId,
+        });
     });
 
     return {
@@ -531,24 +569,41 @@ export async function resolvePendingUserInputSource(params: {
 export async function persistUserInputResolution(params: {
     resolution: UserInputResolution;
     request?: UserInputRequest;
+    actorUserId: string;
 }): Promise<void> {
     const request = params.request;
-    await recordRunEvent({
-        runId: params.resolution.sourceRunId,
-        type: "user_input_resolved",
-        payload: params.resolution,
-        afterCreateInTransaction: request
-            ? async (tx) => {
-                await resolveDecisionRequestForUserInputWithinTransaction(tx, {
-                    request,
-                    resolution: params.resolution,
-                });
-            }
-            : undefined,
-        failureMode: "strict",
-        degradationReason: "user_input_resolved_persistence_failed",
-        logContext: "user_input_resolved",
-    });
+    try {
+        await recordRunEvent({
+            runId: params.resolution.sourceRunId,
+            type: "user_input_resolved",
+            payload: params.resolution,
+            afterCreateInTransaction: request
+                ? async (tx) => {
+                    await resolveDecisionRequestForUserInputWithinTransaction(tx, {
+                        request,
+                        resolution: params.resolution,
+                        actorUserId: params.actorUserId,
+                    });
+                }
+                : undefined,
+            failureMode: "strict",
+            degradationReason: "user_input_resolved_persistence_failed",
+            logContext: "user_input_resolved",
+        });
+    } catch (error) {
+        if (
+            request
+            && isDecisionResolutionAlreadyClaimedError(error)
+            && await isMatchingPersistedDecisionResolution({
+                request,
+                resolution: params.resolution,
+                actorUserId: params.actorUserId,
+            })
+        ) {
+            return;
+        }
+        throw error;
+    }
 }
 
 export function buildUserInputResolutionContinuationContext(params: {

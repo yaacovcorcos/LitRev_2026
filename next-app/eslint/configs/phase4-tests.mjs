@@ -7,6 +7,11 @@ export const PHASE4_REQUIRE_TESTS_GLOBS = [
   "lib/agent/**/*.{ts,tsx,js,jsx,mjs,cjs}",
   "lib/server/agent/**/*.{ts,tsx,js,jsx,mjs,cjs}",
   "lib/server/ai/tools/**/*.{ts,tsx,js,jsx,mjs,cjs}",
+  "lib/server/ai/ai-service.ts",
+  "lib/server/ai/providers/{anthropic,google,openai,stream-termination,xai}.ts",
+  "lib/server/ai/tool-middleware.ts",
+  "app/actions/agent.ts",
+  "app/api/ai/stream/route.ts",
 ];
 
 export const PHASE4_PREFER_COLOCATED_GLOBS = [

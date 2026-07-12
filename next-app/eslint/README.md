@@ -71,6 +71,11 @@ Contracts:
     - `lib/agent/**`
     - `lib/server/agent/**`
     - `lib/server/ai/tools/**`
+    - `lib/server/ai/ai-service.ts`
+    - critical provider implementations and stream-termination policy
+    - `lib/server/ai/tool-middleware.ts`
+    - `app/actions/agent.ts`
+    - `app/api/ai/stream/route.ts`
   - `litrev/prefer-colocated-tests-in-selected-domains`
     - `lib/agent/**`
 - `npm run lint:governance:phase4-policy` is the stable umbrella verifier for the completed Phase 4 policy surface:
@@ -87,7 +92,10 @@ Contracts:
 - `npm run check:runtime-test-impact` is the stable changed-file companion to the Phase 4 test-governance contract:
   - it consumes the same governed domains and waiver file as the two lint rules
   - it does not carry parallel domain logic
-  - it accepts only one-file waivers with concrete test paths
+  - local evaluation unions committed branch diff, staged changes, unstaged changes, and untracked files
+  - deleted governed runtime files remain visible in `deletedRuntimeFiles` but do not require a surviving test; modified and added runtime files still require changed coverage
+  - accepted central test families count only when a matching family test changed
+  - it accepts only one-file waivers with concrete test paths, and the referenced test must change with the runtime file
 - `npm run test:governance` is the canonical local reproduction command for the required governance portion of GitHub `check`:
   - `npm run governance:check`
   - `npm run test:eslint-rules`

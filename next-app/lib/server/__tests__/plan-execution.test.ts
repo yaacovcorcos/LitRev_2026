@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
     updateMany: vi.fn(),
-    update: vi.fn(),
     findUniqueOrThrow: vi.fn(),
 }));
 
@@ -10,7 +9,6 @@ vi.mock("@/lib/server/prisma", () => ({
     prisma: {
         artifact: {
             updateMany: mocks.updateMany,
-            update: mocks.update,
             findUniqueOrThrow: mocks.findUniqueOrThrow,
         },
     },
@@ -22,7 +20,9 @@ import {
     completePlanExecution,
     failPlanExecution,
     preparePlanExecution,
+    resolvePlanStepResult,
     resolvePlanExecutionToolNames,
+    selectPlanToolCallsForTurn,
     startPlanExecution,
     type PlanExecutionStepState,
 } from "@/lib/server/agent/plan-execution";
@@ -99,12 +99,17 @@ describe("plan execution lifecycle", () => {
             projectId: "project-1",
             payload: executablePlan,
         });
-        mocks.update.mockResolvedValue({});
+        mocks.updateMany.mockResolvedValue({ count: 1 });
 
-        await completePlanExecution("plan-1", finalSteps);
+        await completePlanExecution("plan-1", finalSteps, "attempt-1");
 
-        expect(mocks.update).toHaveBeenCalledWith({
-            where: { id: "plan-1" },
+        expect(mocks.updateMany).toHaveBeenCalledWith({
+            where: {
+                id: "plan-1",
+                type: "plan",
+                status: "running",
+                applyId: "attempt-1",
+            },
             data: {
                 status: "accepted",
                 payload: {
@@ -136,14 +141,20 @@ describe("plan execution lifecycle", () => {
             projectId: "project-1",
             payload: executablePlan,
         });
-        mocks.update.mockResolvedValue({});
+        mocks.updateMany.mockResolvedValue({ count: 1 });
 
-        await failPlanExecution("plan-1", finalSteps, "boom");
+        await failPlanExecution("plan-1", finalSteps, "boom", "attempt-1");
 
-        expect(mocks.update).toHaveBeenCalledWith({
-            where: { id: "plan-1" },
+        expect(mocks.updateMany).toHaveBeenCalledWith({
+            where: {
+                id: "plan-1",
+                type: "plan",
+                status: "running",
+                applyId: "attempt-1",
+            },
             data: {
                 status: "proposed",
+                applyId: null,
                 payload: {
                     ...executablePlan,
                     steps: finalSteps,
@@ -151,6 +162,59 @@ describe("plan execution lifecycle", () => {
                 reviewNote: "Execution failed: boom",
             },
         });
+    });
+
+    it("canonicalizes duplicate and out-of-order selected indexes to plan order", async () => {
+        const executablePlan = buildExecutablePlanPayload({
+            steps: [
+                { label: "Search", toolName: "search_pubmed", status: "pending" },
+                { label: "Screen", toolName: "bulk_screening", status: "pending" },
+            ],
+            estimatedActions: 2,
+        }, {
+            originAgentMode: "search",
+            conversationId: "conv-1",
+            projectId: "project-1",
+            allowedToolNames: ["search_pubmed", "bulk_screening"],
+        });
+        mocks.findUniqueOrThrow.mockResolvedValue({
+            id: "plan-1",
+            type: "plan",
+            status: "proposed",
+            projectId: "project-1",
+            payload: executablePlan,
+            conversationId: "conv-1",
+        });
+
+        const prepared = await preparePlanExecution("plan-1", [1, 0, 1], "project-1");
+
+        expect(prepared.selectedSteps.map((step) => step.originalIndex)).toEqual([0, 1]);
+    });
+
+    it("refuses stale execution attempts when finalizing a plan", async () => {
+        const executablePlan = buildExecutablePlanPayload({
+            steps: [{ label: "Search", toolName: "search_pubmed", status: "running" }],
+            estimatedActions: 1,
+        }, {
+            originAgentMode: "search",
+            conversationId: "conv-1",
+            projectId: "project-1",
+            allowedToolNames: ["search_pubmed"],
+        });
+        mocks.findUniqueOrThrow.mockResolvedValue({
+            id: "plan-1",
+            type: "plan",
+            status: "running",
+            projectId: "project-1",
+            payload: executablePlan,
+        });
+        mocks.updateMany.mockResolvedValue({ count: 0 });
+
+        await expect(completePlanExecution(
+            "plan-1",
+            [{ label: "Search", toolName: "search_pubmed", status: "completed" }],
+            "stale-attempt",
+        )).rejects.toThrow("superseded before completion");
     });
 
     it("binds execution to metadata conversation context when client conversation drifts", async () => {
@@ -241,5 +305,38 @@ describe("plan execution lifecycle", () => {
 
         expect(first.originalIndex).toBe(0);
         expect(second.originalIndex).toBe(2);
+    });
+
+    it("admits only one result-dependent plan tool call per model turn", () => {
+        const first = { id: "tc-1", name: "search_pubmed", arguments: { query: "a" } };
+        const speculative = { id: "tc-2", name: "bulk_screening", arguments: { projectId: "p1" } };
+
+        const selection = selectPlanToolCallsForTurn([first, speculative]);
+
+        expect(selection.admittedToolCalls).toEqual([first]);
+        expect(selection.deferredToolCalls).toEqual([speculative]);
+    });
+
+    it("stops plan execution after a failed tool step", () => {
+        expect(resolvePlanStepResult({ error: "tool failed" })).toEqual({
+            stepStatus: "failed",
+            shouldStop: true,
+        });
+        expect(resolvePlanStepResult({})).toEqual({
+            stepStatus: "completed",
+            shouldStop: false,
+        });
+    });
+
+    it("does not complete plan steps that only suggest, block, or pause for input", () => {
+        for (const result of [
+            { blockedByAutonomy: true },
+            { requiresUserInput: true },
+        ]) {
+            expect(resolvePlanStepResult(result)).toEqual({
+                stepStatus: "failed",
+                shouldStop: true,
+            });
+        }
     });
 });

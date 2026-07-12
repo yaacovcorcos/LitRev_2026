@@ -92,7 +92,7 @@ npm aliases: `npm run db:ops -- <subcommand>`, `npm run db:doctor`, `npm run db:
    └── Run: db-ops.sh gate
 ```
 
-## Critical Indexes (30 total)
+## Critical Indexes (34 total)
 
 These must exist in production. The gate script verifies all of them.
 
@@ -127,6 +127,10 @@ ToolIdempotencyRecord_scopeKey_createdAt_idx
 DecisionRequestRecord_sourceRunId_callId_key
 DecisionRequestRecord_conversationId_status_createdAt_idx
 DecisionResolutionRecord_requestId_key
+AIUsageReservation_attemptKey_key
+AIUsageReservation_scopeKey_createdAt_idx
+AIUsageReservation_scopeKey_status_createdAt_idx
+AIUsage_reservationId_key
 ```
 
 ## Hardcoded References

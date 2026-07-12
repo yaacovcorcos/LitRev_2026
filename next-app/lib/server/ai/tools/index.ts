@@ -10,6 +10,7 @@ export {
     isToolAllowedInScope,
     executeTool,
     getTool,
+    validateToolInput,
     resolveAutonomyLevel,
 } from "./base";
 export { pubmedSearchTool } from "./pubmed-search";

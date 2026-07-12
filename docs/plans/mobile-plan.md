@@ -26,9 +26,10 @@ This plan is the long-term implementation contract for how LitRev adapts across 
 - Shell responsive adoption is now gated behind `NEXT_PUBLIC_MOBILE_SHELL_V2`; home, auth, protocol, and admin follow-up waves are not yet organized behind dedicated public flags.
 - Shared agent-platform/runtime direction exists for `/ai` and project copilot via `plan-agentic.md`; popup remains a truthful reduced subset, and later runtime sign-off/cleanup work now flows through `plan-agentic.md` and `plan-agent-quality.md`.
 - Shared interaction ergonomics now use the existing `--touch-target-min` baseline across the highest-friction phone controls, including mobile nav, project tabs, toast dismiss, popup dismiss, study-file actions, export-history actions, and copilot remove/clear controls.
-- Responsive foundation certification now exists as a real route-level contract for home, auth, project shell, protocol, and `/ai` entry, backed by reliability telemetry, `test:e2e:mobile:foundation`, and the responsive certification runbook.
+- Responsive foundation certification now exists as a real route-level contract for home, auth, project shell, protocol, and authenticated `/ai` behavior, backed by reliability telemetry, the shared `test:e2e:foundation` browser lane, and the responsive certification runbook.
 - Required foundation certification hardening is now shipped:
-  - `test:e2e:mobile:foundation` is the required blocking route-certification gate
+  - `test:e2e:foundation` is the automated browser-certification gate across mobile route specs and shared desktop/mobile agent specs
+  - `test:e2e:mobile:foundation` remains the targeted mobile-only reproduction command
   - broader mobile smoke runs separately as `test:e2e:mobile:smoke`
   - foundation Playwright setup uses seeded dev fixture routes for auth, home empty-workspace/workspace, sample/demo setup, blank project setup, and protocol-ready flows
   - Playwright runs with explicit E2E telemetry mode so operational reliability/performance telemetry does not ship during certification runs, with ingest logging quieted as a backstop
@@ -223,8 +224,8 @@ Primary KPI lenses:
   - Replaced ambient UI-state discovery as test setup with deterministic seeded route-state control for empty workspace, populated workspace, project shell, and protocol-ready flows.
   - Proved foundation setup isolation well enough to allow `test:e2e:mobile:foundation` to run with `--workers=2`.
 - [x] `MOB-FND-010` Mobile certification harness hardening completed:
-  - Split required route-certification from broader smoke in `next-app/package.json`, `.github/workflows/ci.yml`, and `.github/workflows/mobile-smoke.yml`.
-  - Kept `test:e2e:mobile:foundation` as the required blocking responsive foundation gate and moved broader mobile smoke to a separate workflow/status.
+  - Split required route-certification from broader smoke in `next-app/package.json`, `.github/workflows/ci.yml`, and the current `.github/workflows/browser-foundation.yml`.
+  - Kept `test:e2e:mobile:foundation` as the targeted mobile-only reproduction command; the shared `test:e2e:foundation` browser status owns CI certification and broader mobile smoke remains separate.
   - Left broader mobile smoke intentionally conservative while the foundation certification path became seeded, parallel-safe, and operationally distinct.
 - [x] `MOB-FND-009` Admin/settings responsive audit completed:
   - Recorded the durable audit artifact in `docs/plans/mobile-admin-audit.md`.
@@ -232,7 +233,7 @@ Primary KPI lenses:
   - Closed the task without a dedicated implementation wave because the current admin surfaces remain usable on transitional shell/layout semantics and did not show enough breakage to justify a standalone mobile rollout.
 - [x] `MOB-FND-008` Reliability telemetry + responsive e2e certification completed:
   - Reused the reliability telemetry pipeline for responsive canary signals and normalized responsive route evidence to the shared tier contract.
-  - Added behavior-level responsive certification coverage for home, login/signup, project shell, protocol, and `/ai` entry, backed by the dedicated `test:e2e:mobile:foundation` gate and responsive certification runbook.
+  - Added behavior-level responsive certification coverage for home, login/signup, project shell, protocol, and authenticated `/ai` behavior, backed by the shared `test:e2e:foundation` gate and responsive certification runbook.
   - Hardened project/home route resolution and the mobile certification helpers enough to make route-level mobile readiness observable and reproducible instead of ad hoc.
 - [x] `MOB-FND-007` Shared touch-target and density pass completed:
   - Reused the existing `--touch-target-min` baseline and hardened the highest-friction shared phone controls instead of inventing a second interaction token system.
@@ -313,7 +314,7 @@ After changing any `NEXT_PUBLIC_*` value, redeploy to apply.
 Per rollout step and per significant responsive behavior change:
 1. `cd next-app && npx tsc --noEmit`
 2. `cd next-app && npx vitest run`
-3. `cd next-app && npm run test:e2e:mobile:foundation`
+3. `cd next-app && npm run test:e2e:foundation`
 4. `cd next-app && npm run test:e2e:mobile` for the broader mobile smoke suite when the wave affects shared mobile flows beyond the minimum certification routes
 5. Manual pass on iOS Safari + Chrome Android:
   - no dead/double scroll

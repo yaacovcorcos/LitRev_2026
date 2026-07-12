@@ -752,6 +752,16 @@ describe("/api/ai/stream route", () => {
       request: expect.objectContaining({
         callId: "ask-1",
       }),
+      actorUserId: "user-1",
+    });
+    expect(mocks.resolvePendingUserInputSource).toHaveBeenCalledWith({
+      sourceRunId: "run-paused",
+      conversationId: "conv-1",
+      callId: "ask-1",
+      actor: {
+        userId: "user-1",
+        workspaceId: "ws-1",
+      },
     });
     expect(mocks.resolveLatestValidRunCheckpoint).not.toHaveBeenCalled();
     expect(mocks.resolveDurableContinuationSource).not.toHaveBeenCalled();
@@ -840,6 +850,7 @@ describe("/api/ai/stream route", () => {
       request: expect.objectContaining({
         callId: "ask-legacy",
       }),
+      actorUserId: "user-1",
     });
   });
 

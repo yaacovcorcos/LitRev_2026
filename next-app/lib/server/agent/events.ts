@@ -25,7 +25,21 @@ export interface EmitEventExtras {
     durationMs?: number;
 }
 
+export interface ToolCallEventBatchEntry {
+    payload: unknown;
+    extras?: EmitEventExtras;
+}
+
 const MAX_SEQUENCE_RETRY_ATTEMPTS = 5;
+export const MAX_ROOT_LINEAGE_TOOL_CALLS = 25;
+
+export function isRunLineageToolBudgetExceededError(error: unknown): boolean {
+    return Boolean(
+        error
+        && typeof error === "object"
+        && (error as { code?: unknown }).code === "RUN_LINEAGE_TOOL_BUDGET_EXCEEDED",
+    );
+}
 
 type RunEventTransactionClient = Prisma.TransactionClient;
 export type EmitEventAfterCreate = (
@@ -71,22 +85,42 @@ async function lockRunEventSequenceInTransaction(
     `;
 }
 
-/**
- * Creates a new event in a run inside an existing transaction.
- * Sequence is assigned as max(sequence) + 1 within the run's current event stream.
- */
-export async function emitEventWithinTransaction(
+async function createSequencedRunEventInTransaction(
     tx: RunEventTransactionClient,
     runId: string,
     type: RunEventType,
     payload: unknown,
     extras?: EmitEventExtras,
+    options?: {
+        lineageRootRunId?: string;
+        toolCallBudgetReserved?: boolean;
+    },
 ) {
-    const runSnapshot = await assertRunWritableInTransaction(tx, {
-        runId,
-        allowedStatuses: [...getAllowedStatusesForEventType(type)],
-        requireIncomplete: type !== "user_input_resolved",
-    });
+    if (type === "tool_call" && !options?.toolCallBudgetReserved) {
+        const lineageRootRunId = options?.lineageRootRunId ?? runId;
+        await tx.$queryRaw<{ locked: number }[]>`
+            SELECT 1 AS locked
+            FROM pg_advisory_xact_lock(hashtext(${`run-lineage-tool-budget:${lineageRootRunId}`}))
+        `;
+        const lineageToolCallCount = await tx.runEvent.count({
+            where: {
+                type: "tool_call",
+                run: {
+                    OR: [
+                        { id: lineageRootRunId },
+                        { rootRunId: lineageRootRunId },
+                    ],
+                },
+            },
+        });
+        if (lineageToolCallCount >= MAX_ROOT_LINEAGE_TOOL_CALLS) {
+            throw Object.assign(
+                new Error(`Run lineage tool-call budget reached (${MAX_ROOT_LINEAGE_TOOL_CALLS}).`),
+                { code: "RUN_LINEAGE_TOOL_BUDGET_EXCEEDED" },
+            );
+        }
+    }
+
     await lockRunEventSequenceInTransaction(tx, runId);
     const lastEvent = await tx.runEvent.findFirst({
         where: { runId },
@@ -95,7 +129,7 @@ export async function emitEventWithinTransaction(
     });
     const sequence = (lastEvent?.sequence ?? -1) + 1;
 
-    const event = await tx.runEvent.create({
+    return tx.runEvent.create({
         data: {
             runId,
             sequence,
@@ -110,6 +144,38 @@ export async function emitEventWithinTransaction(
             durationMs: extras?.durationMs ?? null,
         },
     });
+}
+
+/**
+ * Creates a new event in a run inside an existing transaction.
+ * Sequence is assigned as max(sequence) + 1 within the run's current event stream.
+ */
+export async function emitEventWithinTransaction(
+    tx: RunEventTransactionClient,
+    runId: string,
+    type: RunEventType,
+    payload: unknown,
+    extras?: EmitEventExtras,
+    internalOptions?: {
+        toolCallBudgetReserved?: boolean;
+    },
+) {
+    const runSnapshot = await assertRunWritableInTransaction(tx, {
+        runId,
+        allowedStatuses: [...getAllowedStatusesForEventType(type)],
+        requireIncomplete: type !== "user_input_resolved",
+    });
+    const event = await createSequencedRunEventInTransaction(
+        tx,
+        runId,
+        type,
+        payload,
+        extras,
+        {
+            lineageRootRunId: runSnapshot.rootRunId ?? runSnapshot.id,
+            toolCallBudgetReserved: internalOptions?.toolCallBudgetReserved,
+        },
+    );
 
     const nextPhase = getRunPhaseForEventType(type, {
         status: runSnapshot.status,
@@ -144,6 +210,35 @@ export async function emitEventWithinTransaction(
     }
 
     return event;
+}
+
+/**
+ * Append an event caused by an authenticated user after the originating worker
+ * may already have completed. Unlike worker-owned progress, this must not
+ * reopen the run, change its phase, or refresh its activity lease.
+ */
+export async function emitPostRunUserEventWithinTransaction(
+    tx: RunEventTransactionClient,
+    runId: string,
+    type: Extract<RunEventType, "artifact_reviewed">,
+    payload: unknown,
+    extras?: EmitEventExtras,
+) {
+    const run = await tx.agentRun.findUnique({
+        where: { id: runId },
+        select: { id: true },
+    });
+    if (!run) {
+        throw new Error(`Run not found for post-run event append: ${runId}`);
+    }
+
+    return createSequencedRunEventInTransaction(
+        tx,
+        runId,
+        type,
+        payload,
+        extras,
+    );
 }
 
 /**
@@ -187,6 +282,85 @@ export async function emitEvent(
     }
 
     throw new Error(`Failed to emit run event after ${MAX_SEQUENCE_RETRY_ATTEMPTS} attempts.`);
+}
+
+/**
+ * Atomically reserves and appends one provider turn's tool-call events. The
+ * entire batch is rejected before any executor runs when the shared root
+ * lineage lacks capacity; a later failure rolls the transaction back so a
+ * partial batch can never be admitted.
+ */
+export async function emitToolCallEventBatch(
+    runId: string,
+    entries: ToolCallEventBatchEntry[],
+) {
+    if (entries.length === 0) return [];
+    if (entries.length > MAX_ROOT_LINEAGE_TOOL_CALLS) {
+        throw Object.assign(
+            new Error(`Run lineage tool-call budget reached (${MAX_ROOT_LINEAGE_TOOL_CALLS}).`),
+            { code: "RUN_LINEAGE_TOOL_BUDGET_EXCEEDED" },
+        );
+    }
+
+    for (let attempt = 0; attempt < MAX_SEQUENCE_RETRY_ATTEMPTS; attempt++) {
+        try {
+            const created = await prisma.$transaction(async (tx) => {
+                const snapshot = await assertRunWritableInTransaction(tx, {
+                    runId,
+                    allowedStatuses: ["running"],
+                    requireIncomplete: true,
+                });
+                const lineageRootRunId = snapshot.rootRunId ?? snapshot.id;
+                await tx.$queryRaw<{ locked: number }[]>`
+                    SELECT 1 AS locked
+                    FROM pg_advisory_xact_lock(hashtext(${`run-lineage-tool-budget:${lineageRootRunId}`}))
+                `;
+                const lineageToolCallCount = await tx.runEvent.count({
+                    where: {
+                        type: "tool_call",
+                        run: {
+                            OR: [
+                                { id: lineageRootRunId },
+                                { rootRunId: lineageRootRunId },
+                            ],
+                        },
+                    },
+                });
+                if (lineageToolCallCount + entries.length > MAX_ROOT_LINEAGE_TOOL_CALLS) {
+                    throw Object.assign(
+                        new Error(`Run lineage tool-call budget reached (${MAX_ROOT_LINEAGE_TOOL_CALLS}).`),
+                        { code: "RUN_LINEAGE_TOOL_BUDGET_EXCEEDED" },
+                    );
+                }
+
+                const events = [];
+                for (const entry of entries) {
+                    events.push(await emitEventWithinTransaction(
+                        tx,
+                        runId,
+                        "tool_call",
+                        entry.payload,
+                        entry.extras,
+                        { toolCallBudgetReserved: true },
+                    ));
+                }
+                return events;
+            });
+            const latest = created.at(-1);
+            if (latest) noteObservedRunActivity(runId, latest.createdAt);
+            return created;
+        } catch (error) {
+            if (
+                isRetryableRunEventTransactionError(error)
+                && attempt < MAX_SEQUENCE_RETRY_ATTEMPTS - 1
+            ) {
+                continue;
+            }
+            throw error;
+        }
+    }
+
+    throw new Error(`Failed to emit tool-call event batch after ${MAX_SEQUENCE_RETRY_ATTEMPTS} attempts.`);
 }
 
 /**

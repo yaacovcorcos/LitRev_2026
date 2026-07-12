@@ -67,6 +67,7 @@ vi.mock("next/dynamic", () => ({
         type: string;
         id: string;
         artifactId?: string;
+        artifactType?: string;
         status?: string;
         callId?: string;
         content?: string;
@@ -88,6 +89,7 @@ vi.mock("next/dynamic", () => ({
         note?: string,
         editedPayload?: Record<string, unknown>,
       ) => void | Promise<void>;
+      onExecutePlan?: (artifactId: string, selectedIndexes: number[]) => void | Promise<void>;
       onAnswerUserInput?: (
         callId: string,
         answer: string,
@@ -170,6 +172,11 @@ vi.mock("next/dynamic", () => ({
                 return (
                   <div key={item.id}>
                     <span>{`artifact:${item.status}`}</span>
+                    {artifactId && item.artifactType === "plan" ? (
+                      <button type="button" onClick={() => void props.onExecutePlan?.(artifactId, [0])}>
+                        execute plan
+                      </button>
+                    ) : null}
                     {artifactId ? (
                       <button type="button" onClick={() => void props.onReviewArtifact?.(artifactId, "accepted")}>
                         review artifact

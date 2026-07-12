@@ -16,6 +16,13 @@ describe("artifact inline action policy", () => {
       class: "review_resolution",
       requiresConfirmation: true,
     });
+
+    const studyDeletion = getArtifactInlineActionModel("study_deletion", "proposed");
+    expect(studyDeletion.actions.find((action) => action.key === "delete")).toMatchObject({
+      class: "review_resolution",
+      kind: "delete",
+      requiresConfirmation: true,
+    });
   });
 
   it("keeps positive review resolutions unconfirmed and secondary actions non-mutating", () => {
@@ -32,10 +39,30 @@ describe("artifact inline action policy", () => {
     });
   });
 
-  it("allowlists inline undo only for settled study updates", () => {
+  it("keeps the visible undo affordance narrower than server restore support", () => {
     expect(supportsArtifactInlineUndo("study_update", "accepted")).toBe(true);
     expect(supportsArtifactInlineUndo("study_update", "auto_applied")).toBe(true);
-    expect(supportsArtifactInlineUndo("memory_proposal", "accepted")).toBe(false);
-    expect(supportsArtifactInlineUndo("study_proposal", "accepted")).toBe(false);
+    expect(supportsArtifactInlineUndo("study_update", "proposed")).toBe(false);
+    expect(supportsArtifactInlineUndo("study_deletion", "accepted")).toBe(true);
+    expect(getArtifactInlineActionModel("study_deletion", "accepted").settled.undoAction).toMatchObject({
+      key: "undo",
+      requiresConfirmation: true,
+    });
+
+    for (const artifactType of [
+      "criteria_card",
+      "draft_diff",
+      "evidence_table",
+      "memory_forget_proposal",
+      "memory_proposal",
+      "plan",
+      "protocol_suggestion",
+      "screening_batch",
+      "scoping_report",
+      "study_proposal",
+    ] as const) {
+      expect(supportsArtifactInlineUndo(artifactType, "accepted")).toBe(false);
+      expect(getArtifactInlineActionModel(artifactType, "accepted").settled.undoAction).toBeUndefined();
+    }
   });
 });

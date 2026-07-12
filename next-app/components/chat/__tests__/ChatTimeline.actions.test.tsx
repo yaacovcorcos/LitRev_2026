@@ -358,6 +358,50 @@ describe("ChatTimeline action affordances", () => {
     expect(screen.queryByText("Reject proposal?")).toBeNull();
   });
 
+  it("shows destructive confirmation before applying a study deletion", async () => {
+    const onReviewArtifact = vi.fn();
+    const items: TimelineItem[] = [{
+      type: "artifact",
+      id: "study-deletion-1",
+      artifactId: "study-deletion-1",
+      artifactType: "study_deletion",
+      status: "proposed",
+      title: "Delete Example Study",
+      payload: {
+        studyId: "study-1",
+        title: "Example Study",
+        reason: "Duplicate imported row",
+      },
+      version: 1,
+      createdAt: "2026-07-12T10:00:00.000Z",
+    }];
+
+    render(
+      <ChatTimeline
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onReviewArtifact={onReviewArtifact}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete study" }));
+    expect(screen.getByText("Delete study?")).not.toBeNull();
+    expect(screen.getByText(/undo it from this card afterward/i)).not.toBeNull();
+    expect(onReviewArtifact).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete study" }));
+    await waitFor(() => {
+      expect(onReviewArtifact).toHaveBeenCalledWith(
+        "study-deletion-1",
+        "accepted",
+        undefined,
+        undefined,
+      );
+    });
+  });
+
   it("shows inline undo for accepted study updates and confirms before dispatching", async () => {
     const onUndoArtifact = vi.fn();
     const items: TimelineItem[] = [
@@ -411,6 +455,59 @@ describe("ChatTimeline action affordances", () => {
     await waitFor(() => {
       expect(onUndoArtifact).toHaveBeenCalledWith("study-update-accepted");
     });
+  });
+
+  it("does not expose inline undo for settled artifacts outside the narrow study-update UX", () => {
+    const onUndoArtifact = vi.fn();
+    const items: TimelineItem[] = [
+      {
+        type: "artifact",
+        id: "protocol-accepted",
+        artifactId: "protocol-accepted",
+        artifactType: "protocol_suggestion",
+        status: "accepted",
+        title: "Protocol update",
+        payload: {
+          field: "researchQuestion",
+          value: "Applied question",
+          rationale: "User approved it",
+        },
+        version: 1,
+        createdAt: "2026-03-17T10:00:00.000Z",
+      },
+      {
+        type: "artifact",
+        id: "memory-accepted",
+        artifactId: "memory-accepted",
+        artifactType: "memory_proposal",
+        status: "accepted",
+        title: "Remember preference",
+        payload: {
+          memoryType: "project",
+          key: "citation_style",
+          value: "Vancouver",
+        },
+        version: 1,
+        createdAt: "2026-03-17T10:01:00.000Z",
+      },
+    ];
+
+    render(
+      <ChatTimeline
+        items={items}
+        isLoading={false}
+        emptyState={{ icon: "chat", title: "Empty", description: "Empty", suggestions: [] }}
+        onSuggestionClick={vi.fn()}
+        onUndoArtifact={onUndoArtifact}
+      />,
+    );
+
+    for (const button of screen.getAllByRole("button", { name: "Expand" })) {
+      fireEvent.click(button);
+    }
+
+    expect(screen.queryByRole("button", { name: /^undo$/i })).toBeNull();
+    expect(onUndoArtifact).not.toHaveBeenCalled();
   });
 
   it("routes reconnect and stop-and-retry actions to the clicked error card", () => {

@@ -26,13 +26,24 @@ import { getToolDefinitions } from "./tools/base";
 import { buildModelVisibleToolResultForTool, compactToolResult, type ToolResultWithArtifactState } from "@/lib/agent/compaction";
 import { assembleSystemPrompt } from "@/lib/ai/prompts/assistant-prompts";
 import { getAIService } from "./ai-service";
-import { startRun, endRun, startRunHeartbeat, type RunHeartbeatController } from "@/lib/server/agent/run";
+import {
+    endRun,
+    getRun,
+    isRunOwnershipError,
+    markRunFinalizationFailed,
+    markRunFinalizationState,
+    startRun,
+    startRunHeartbeat,
+    type RunHeartbeatController,
+} from "@/lib/server/agent/run";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
 import { deriveRunOutcome, type RunFacts } from "@/lib/ai/run-outcome";
 import { dropShadowedInvalidToolCalls, getToolCallRepeatKey } from "./tool-helpers";
 import { evaluateToolPrerequisites } from "./tool-prerequisites";
-import { executeToolWithAutonomyCore } from "./tool-autonomy";
+import { executeToolWithAutonomyCore, preRecordToolCallBatchForAutonomy } from "./tool-autonomy";
+import { isRunLineageToolBudgetExceededError } from "@/lib/server/agent/events";
 import { logServerError, logServerWarn } from "@/lib/server/logging";
+import { createDeadlineAbortController, isAbortLikeError } from "@/lib/abort";
 import {
     deriveSearchSourcePolicy,
     filterToolDefinitionsBySearchSourcePolicy,
@@ -69,6 +80,7 @@ export interface SubAgentParams {
         ledgerContext?: string;
         memoryContext?: string;
         autonomyContext?: string;
+        selectedModel?: string;
     };
     /** Override default budget constraints */
     budget?: Partial<LoopBudget>;
@@ -145,6 +157,15 @@ const SUB_AGENT_DEFAULT_BUDGET: LoopBudget = {
     maxWallTimeMs: 60_000,
 };
 
+type ChildTerminalRunStatus = Extract<RunStatus, "completed" | "failed" | "cancelled" | "paused">;
+
+function isChildTerminalRunStatus(status: string | null | undefined): status is ChildTerminalRunStatus {
+    return status === "completed"
+        || status === "failed"
+        || status === "cancelled"
+        || status === "paused";
+}
+
 function logEventEmissionFailure(eventType: string, runId: string, error: unknown): void {
     const reason = error instanceof Error ? error.message : "unknown error";
     logServerWarn("sub-agent", "failed to emit delegated run event", {
@@ -192,10 +213,110 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
     let childRunId: string | null = null;
     let childRootRunId: string | null = null;
     let childRunHeartbeat: RunHeartbeatController | null = null;
-    let childRunStatus: Extract<RunStatus, "completed" | "failed" | "cancelled" | "paused"> = "completed";
+    let childRunStatus: ChildTerminalRunStatus = "completed";
+    let childRunFinalized = false;
+    let finalizedChildRunStatus: ChildTerminalRunStatus | null = null;
     let pendingUserInputRequest: UserInputRequest | undefined;
     let blockedReason: ToolBlockedReason | undefined;
     let childHadFinalAssistantAnswer = false;
+    let childHadSuccessfulToolOrArtifact = false;
+
+    const stopChildRunHeartbeat = () => {
+        childRunHeartbeat?.stop();
+        childRunHeartbeat = null;
+    };
+    const adoptChildTerminalStatus = (
+        requestedStatus: ChildTerminalRunStatus,
+        terminalStatus: ChildTerminalRunStatus,
+    ) => {
+        childRunFinalized = true;
+        finalizedChildRunStatus = terminalStatus;
+        if (terminalStatus !== requestedStatus) {
+            throw new Error(
+                `Child run finalized as ${terminalStatus} instead of ${requestedStatus}.`,
+            );
+        }
+    };
+    const inspectChildTerminalStatus = async (runId: string): Promise<ChildTerminalRunStatus | null> => {
+        try {
+            const persistedRun = await getRun(runId);
+            return isChildTerminalRunStatus(persistedRun?.status) ? persistedRun.status : null;
+        } catch (error) {
+            logServerWarn("sub-agent", "failed to inspect child run after finalization race", {
+                runId,
+                error: error instanceof Error ? error.message : String(error),
+            });
+            return null;
+        }
+    };
+    const finalizeChildRunOnce = async (requestedStatus: ChildTerminalRunStatus): Promise<void> => {
+        if (!childRunId) return;
+        if (childRunFinalized) {
+            if (finalizedChildRunStatus !== requestedStatus) {
+                throw new Error(
+                    `Child run was already finalized as ${finalizedChildRunStatus ?? "unknown"} instead of ${requestedStatus}.`,
+                );
+            }
+            return;
+        }
+
+        stopChildRunHeartbeat();
+        const activeChildRunId = childRunId;
+        let startedFinalization: number;
+        try {
+            startedFinalization = await markRunFinalizationState(activeChildRunId, "in_progress");
+        } catch (error) {
+            if (isRunOwnershipError(error)) {
+                if (isChildTerminalRunStatus(error.status)) {
+                    adoptChildTerminalStatus(requestedStatus, error.status);
+                    return;
+                }
+                const terminalStatus = await inspectChildTerminalStatus(error.runId);
+                if (terminalStatus) {
+                    adoptChildTerminalStatus(requestedStatus, terminalStatus);
+                    return;
+                }
+            }
+            throw error;
+        }
+
+        if (startedFinalization === 0) {
+            const terminalStatus = await inspectChildTerminalStatus(activeChildRunId);
+            if (terminalStatus) {
+                adoptChildTerminalStatus(requestedStatus, terminalStatus);
+                return;
+            }
+            throw new Error(
+                `Child run ${activeChildRunId} could not start durable finalization.`,
+            );
+        }
+
+        try {
+            await endRun(activeChildRunId, requestedStatus);
+        } catch (error) {
+            if (isRunOwnershipError(error)) {
+                if (isChildTerminalRunStatus(error.status)) {
+                    adoptChildTerminalStatus(requestedStatus, error.status);
+                    return;
+                }
+                const terminalStatus = await inspectChildTerminalStatus(error.runId);
+                if (terminalStatus) {
+                    adoptChildTerminalStatus(requestedStatus, terminalStatus);
+                    return;
+                }
+            } else {
+                await markRunFinalizationFailed(activeChildRunId).catch((markError) => {
+                    logServerError("sub-agent", "failed to persist child finalization failure", {
+                        runId: activeChildRunId,
+                    }, markError);
+                });
+            }
+            throw error;
+        }
+
+        childRunFinalized = true;
+        finalizedChildRunStatus = requestedStatus;
+    };
 
     // 1. Build system prompt for this mode
     const systemPrompt = assembleSystemPrompt({
@@ -230,6 +351,9 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
         };
     }
 
+    const loopDeadline = createDeadlineAbortController(loop.budget.maxWallTimeMs, [signal]);
+    const loopSignal = loopDeadline.signal;
+
     try {
         const childRun = await startRun({
             projectId: projectId ?? null,
@@ -260,6 +384,17 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             logContext: "sub_agent_user_message",
         });
     } catch (error) {
+        loopDeadline.dispose();
+        stopChildRunHeartbeat();
+        if (childRunId) {
+            try {
+                await finalizeChildRunOnce("failed");
+            } catch (finalizationError) {
+                logServerError("sub-agent", "failed to finalize child run after initialization error", {
+                    runId: childRunId,
+                }, finalizationError);
+            }
+        }
         return {
             summary: "Sub-agent failed to initialize run state.",
             stopReason: "error",
@@ -291,7 +426,8 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             tools: toolDefs,
             projectId,
             userId,
-            signal,
+            signal: loopSignal,
+            model: params.model,
         };
 
         // 4. Run the tool-calling loop
@@ -299,7 +435,8 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
         let lastContent = "";
 
         while (true) {
-            const check = loop.shouldContinue(signal);
+            if (loopDeadline.timedOut()) loop.markStopped("wall_time");
+            const check = loop.shouldContinue(loopSignal);
             if (!check.continue) {
                 break;
             }
@@ -314,6 +451,19 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                 } else if (chunk.type === "content") {
                     contentSoFar += chunk.content || "";
                 } else if (chunk.type === "error") {
+                    if (loopSignal.aborted) {
+                        const timedOut = loopDeadline.timedOut();
+                        childRunStatus = timedOut ? "failed" : "cancelled";
+                        loop.markStopped(timedOut ? "wall_time" : "cancelled");
+                        return {
+                            summary: contentSoFar || (timedOut ? "Sub-agent wall-time budget reached." : "Sub-agent cancelled."),
+                            stopReason: timedOut ? "wall_time" : "cancelled",
+                            iterations: loop.iterations,
+                            totalToolCalls: loop.totalToolCalls,
+                            toolLog,
+                            artifacts: delegatedArtifacts,
+                        };
+                    }
                     childRunStatus = "failed";
                     // Sub-agent doesn't retry — fail fast back to parent
                     return {
@@ -367,14 +517,42 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                     runId: childRunId ?? params.parentRunId,
                     parentRunId: params.parentRunId,
                     systemContexts: params.systemContexts,
-                    signal: params.signal,
+                    signal: loopSignal,
                 }),
             })));
 
-            // Check for doom loops
-            if (loop.recordToolCalls(repeatKeyedToolCalls)) {
+            // Reserve capacity before any executor can observe this batch.
+            const repeatDetected = loop.recordToolCalls(repeatKeyedToolCalls);
+            if (loop.stopReason === "max_tool_calls") {
+                lastContent = contentSoFar || "Tool-call budget reached — stopping.";
+                break;
+            }
+            if (repeatDetected) {
                 lastContent = contentSoFar || "Repeat detected — stopping.";
                 break;
+            }
+
+            const durableRunId = childRunId ?? params.parentRunId;
+            let preRecordedAutonomyLevels: ReadonlyMap<string, number> | undefined;
+            if (durableRunId) {
+                try {
+                    preRecordedAutonomyLevels = await preRecordToolCallBatchForAutonomy({
+                        runId: durableRunId,
+                        toolCalls: collectedToolCalls,
+                        projectId,
+                        userId,
+                        agentMode: mode,
+                        allowedToolNames,
+                        cachedAutonomyConfig: params.autonomyConfig,
+                    });
+                } catch (error) {
+                    if (isRunLineageToolBudgetExceededError(error)) {
+                        loop.markStopped("max_tool_calls");
+                        lastContent = contentSoFar || "Tool-call budget reached — stopping.";
+                        break;
+                    }
+                    throw error;
+                }
             }
 
             // Build assistant message
@@ -404,12 +582,13 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                     studyId,
                     cachedAutonomyConfig: params.autonomyConfig,
                     runtimeContext: {
-                        signal,
+                        signal: loopSignal,
                         rootRunId: childRootRunId,
                         protocolData: null,
                         autonomyConfig: params.autonomyConfig,
                         systemContexts,
                         allowedToolNames,
+                        preRecordedAutonomyLevels,
                     },
                     levelOneBehavior: "block",
                     artifactRunId: params.parentRunId ?? childRunId ?? undefined,
@@ -450,6 +629,10 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                     };
                 }
 
+                if (!result.error) {
+                    childHadSuccessfulToolOrArtifact = true;
+                }
+
                 const preview = compactToolResult(
                     tc.name,
                     buildModelVisibleToolResultForTool(tc.name, resultForModel),
@@ -466,10 +649,11 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
                 };
                 currentMessages.push(toolMsg);
 
-                if (signal?.aborted) {
-                    lastContent = contentSoFar || "Sub-agent cancelled.";
-                    loop.markStopped("cancelled");
-                    childRunStatus = "cancelled";
+                if (loopSignal.aborted) {
+                    const timedOut = loopDeadline.timedOut();
+                    lastContent = contentSoFar || (timedOut ? "Sub-agent wall-time budget reached." : "Sub-agent cancelled.");
+                    loop.markStopped(timedOut ? "wall_time" : "cancelled");
+                    childRunStatus = timedOut ? "failed" : "cancelled";
                     break;
                 }
             }
@@ -501,7 +685,31 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             artifacts: delegatedArtifacts,
         };
     } catch (error) {
-        childRunStatus = "failed";
+        const timedOut = loopDeadline.timedOut();
+        const cancelled = !timedOut && (loopSignal.aborted || isAbortLikeError(error));
+        childRunStatus = cancelled ? "cancelled" : "failed";
+        if (timedOut) {
+            loop.markStopped("wall_time");
+            return {
+                summary: "Sub-agent wall-time budget reached.",
+                stopReason: "wall_time",
+                iterations: loop.iterations,
+                totalToolCalls: loop.totalToolCalls,
+                toolLog,
+                artifacts: delegatedArtifacts,
+            };
+        }
+        if (cancelled) {
+            loop.markStopped("cancelled");
+            return {
+                summary: "Sub-agent cancelled.",
+                stopReason: "cancelled",
+                iterations: loop.iterations,
+                totalToolCalls: loop.totalToolCalls,
+                toolLog,
+                artifacts: delegatedArtifacts,
+            };
+        }
         return {
             summary: "Sub-agent failed unexpectedly.",
             stopReason: "error",
@@ -512,30 +720,24 @@ export async function executeSubAgent(params: SubAgentParams): Promise<SubAgentR
             artifacts: delegatedArtifacts,
         };
     } finally {
-        childRunHeartbeat?.stop();
-        childRunHeartbeat = null;
+        loopDeadline.dispose();
+        stopChildRunHeartbeat();
         if (childRunId) {
-            try {
-                const stopReason = loop.stopReason;
-                const runFacts: RunFacts = {
-                    hadFinalAssistantAnswer: childHadFinalAssistantAnswer,
-                    hadSuccessfulToolOrArtifact: false,
-                    hadDeterministicNonRetryableFailure: false,
-                    pausedForUserInput: false,
-                    cancelledByUser: false,
-                };
-                const resolvedStatus = childRunStatus === "completed"
-                    ? deriveRunOutcome({
-                        facts: runFacts,
-                        stopReason: stopReason ?? "natural",
-                    }).runStatus
-                    : childRunStatus;
-                await endRun(childRunId, resolvedStatus);
-            } catch (error) {
-                logServerError("sub-agent", "failed to finalize child run", {
-                    runId: childRunId,
-                }, error);
-            }
+            const stopReason = loop.stopReason;
+            const runFacts: RunFacts = {
+                hadFinalAssistantAnswer: childHadFinalAssistantAnswer,
+                hadSuccessfulToolOrArtifact: childHadSuccessfulToolOrArtifact,
+                hadDeterministicNonRetryableFailure: false,
+                pausedForUserInput: false,
+                cancelledByUser: false,
+            };
+            const resolvedStatus = childRunStatus === "completed"
+                ? deriveRunOutcome({
+                    facts: runFacts,
+                    stopReason: stopReason ?? "natural",
+                }).runStatus
+                : childRunStatus;
+            await finalizeChildRunOnce(resolvedStatus);
         }
     }
 }

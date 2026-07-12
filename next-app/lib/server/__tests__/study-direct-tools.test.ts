@@ -101,6 +101,7 @@ describe("study direct-edit tools", () => {
     });
 
     it("returns safe-only PDF previews without mutating", async () => {
+        const controller = new AbortController();
         mockExtractStudyFromPdf.mockResolvedValue({
             success: true,
             details: {
@@ -114,7 +115,7 @@ describe("study direct-edit tools", () => {
 
         const result = await previewStudyPdfUpdateTool.execute(
             {},
-            { projectId: "proj-1", studyId: "study-1" }
+            { projectId: "proj-1", studyId: "study-1", signal: controller.signal }
         );
 
         expect(result.error).toBeUndefined();
@@ -130,6 +131,11 @@ describe("study direct-edit tools", () => {
         });
         expect(mockFindStudy).toHaveBeenCalledTimes(1);
         expect(mockFindFile).toHaveBeenCalledTimes(1);
+        expect(mockExtractStudyFromPdf).toHaveBeenCalledWith(
+            expect.objectContaining({ id: "file-1" }),
+            "proj-1",
+            { signal: controller.signal },
+        );
     });
 
     it("classifies mixed PDF previews when risky fields are present", async () => {
@@ -168,6 +174,7 @@ describe("study direct-edit tools", () => {
     });
 
     it("supports non-mutating deep preview for risky-only PDF findings", async () => {
+        const controller = new AbortController();
         mockDeepAnalyzeStudyFromPdf.mockResolvedValue({
             success: true,
             details: {
@@ -179,7 +186,7 @@ describe("study direct-edit tools", () => {
 
         const result = await previewStudyPdfUpdateTool.execute(
             { deep: true },
-            { projectId: "proj-1", studyId: "study-1" }
+            { projectId: "proj-1", studyId: "study-1", signal: controller.signal }
         );
 
         expect(result.error).toBeUndefined();
@@ -192,5 +199,11 @@ describe("study direct-edit tools", () => {
                 qualityRationale: "Well-powered multicenter trial",
             },
         });
+        expect(mockDeepAnalyzeStudyFromPdf).toHaveBeenCalledWith(
+            expect.objectContaining({ id: "file-1" }),
+            expect.objectContaining({ title: "Original title" }),
+            "proj-1",
+            { signal: controller.signal },
+        );
     });
 });

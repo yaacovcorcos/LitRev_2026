@@ -3,6 +3,7 @@ import path from "node:path";
 import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
 
+import { REQUIRE_RUNTIME_TEST_DOMAINS } from "../../eslint/runtime-test-governance.mjs";
 import phase4Config from "../../eslint-governance-phase4-tests.config.mjs";
 
 const cwd = path.resolve(import.meta.dirname, "../..");
@@ -30,7 +31,7 @@ describe("eslint-governance-phase4-tests.config", () => {
     expect(configNames).toContain("litrev/phase4-tests-colocated");
   });
 
-  it("governs finalized runtime-test domains and keeps providers out of scope", async () => {
+  it("governs finalized runtime-test domains including critical provider implementations", async () => {
     const [runtimeResult] = await lintText(
       "export const planner = true;",
       "lib/server/agent/phase4-test-target.ts",
@@ -43,16 +44,15 @@ describe("eslint-governance-phase4-tests.config", () => {
       }),
     );
 
-    const [providerResult] = await lintText(
-      "export const provider = true;",
-      "lib/server/ai/providers/phase4-provider-target.ts",
-    );
-
-    expect(providerResult.messages.map((message) => message.ruleId)).not.toContain(
-      "litrev/require-tests-for-runtime-files",
-    );
-    expect(providerResult.messages.map((message) => message.ruleId)).not.toContain(
-      "litrev/prefer-colocated-tests-in-selected-domains",
-    );
+    expect(REQUIRE_RUNTIME_TEST_DOMAINS).toEqual(expect.arrayContaining([
+      "lib/server/ai/ai-service.ts",
+      "lib/server/ai/providers/anthropic.ts",
+      "lib/server/ai/providers/google.ts",
+      "lib/server/ai/providers/openai.ts",
+      "lib/server/ai/providers/xai.ts",
+      "lib/server/ai/tool-middleware.ts",
+      "app/actions/agent.ts",
+      "app/api/ai/stream/route.ts",
+    ]));
   });
 });

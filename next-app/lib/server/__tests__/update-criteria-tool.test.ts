@@ -1,36 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { updateCriteriaTool } from "@/lib/server/ai/tools/update-criteria";
 
-const mockSyncProtocolToMemory = vi.fn();
-const mockEnsureProtocol = vi.fn();
-
-vi.mock("@/lib/server/memory/protocol-sync", () => ({
-  syncProtocolToMemory: (...args: unknown[]) => mockSyncProtocolToMemory(...args),
-}));
-
-vi.mock("@/lib/server/protocols", () => ({
-  ensureProtocol: (...args: unknown[]) => mockEnsureProtocol(...args),
-}));
+const mockProtocolFindUnique = vi.fn();
 
 vi.mock("@/lib/server/prisma", () => ({
   prisma: {
     protocol: {
-      update: vi.fn(),
+      findUnique: (...args: unknown[]) => mockProtocolFindUnique(...args),
     },
   },
 }));
 
-const { prisma } = await import("@/lib/server/prisma");
-const mockUpdateProtocol = vi.mocked(prisma.protocol.update);
-
 function makeProtocolData(data: Record<string, unknown>) {
-  return data;
+  return { data };
 }
 
 describe("updateCriteriaTool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockEnsureProtocol.mockResolvedValue(
+    mockProtocolFindUnique.mockResolvedValue(
       makeProtocolData({
         eligibility: {
           inclusion: ["Adults over 18"],
@@ -38,8 +26,6 @@ describe("updateCriteriaTool", () => {
         },
       })
     );
-    mockUpdateProtocol.mockResolvedValue({} as never);
-    mockSyncProtocolToMemory.mockResolvedValue(undefined);
   });
 
   it("requires project context", async () => {
@@ -47,25 +33,16 @@ describe("updateCriteriaTool", () => {
     expect(result.error).toContain("No project context available");
   });
 
-  it("self-heals when protocol is missing (ensureProtocol creates default)", async () => {
-    mockEnsureProtocol.mockResolvedValueOnce({
-      eligibility: { inclusion: [], exclusion: [] },
-    });
+  it("fails closed when protocol is missing rather than creating state during proposal generation", async () => {
+    mockProtocolFindUnique.mockResolvedValueOnce(null);
     const result = await updateCriteriaTool.execute(
       { action: "add", type: "inclusion", criterion: "RCT" },
       { projectId: "proj-1" }
     );
-    expect(result.error).toBeUndefined();
-    expect(result.result).toEqual({
-      success: true,
-      action: "add",
-      type: "inclusion",
-      criteria: ["RCT"],
-    });
-    expect(mockEnsureProtocol).toHaveBeenCalledWith("proj-1");
+    expect(result.error).toContain("No protocol exists");
   });
 
-  it("adds a new criterion and persists protocol", async () => {
+  it("returns a reviewable full criteria payload without persisting protocol", async () => {
     const result = await updateCriteriaTool.execute(
       { action: "add", type: "inclusion", criterion: " Randomized controlled trials " },
       { projectId: "proj-1" }
@@ -73,32 +50,25 @@ describe("updateCriteriaTool", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.result).toEqual({
-      success: true,
-      action: "add",
-      type: "inclusion",
-      criteria: ["Adults over 18", "Randomized controlled trials"],
+      inclusion: ["Adults over 18", "Randomized controlled trials"],
+      exclusion: ["Case reports"],
+      rationale: "Add inclusion criterion: Randomized controlled trials",
+      mutation: { action: "add", type: "inclusion", criterion: "Randomized controlled trials" },
     });
-    expect(mockUpdateProtocol).toHaveBeenCalledTimes(1);
-    expect(mockSyncProtocolToMemory).toHaveBeenCalledWith(
-      "proj-1",
-      expect.objectContaining({ eligibility: expect.any(Object) })
-    );
+    expect(mockProtocolFindUnique).toHaveBeenCalledWith({
+      where: { projectId: "proj-1" },
+      select: { data: true },
+    });
   });
 
-  it("treats duplicate add as idempotent", async () => {
+  it("returns a no-op error for duplicate add so no review artifact is created", async () => {
     const result = await updateCriteriaTool.execute(
       { action: "add", type: "inclusion", criterion: "adults over 18" },
       { projectId: "proj-1" }
     );
 
-    expect(result.error).toBeUndefined();
-    expect(result.result).toEqual({
-      success: true,
-      action: "add",
-      type: "inclusion",
-      criteria: ["Adults over 18"],
-    });
-    expect(mockUpdateProtocol).not.toHaveBeenCalled();
+    expect(result.error).toContain("already exists");
+    expect(result.result).toBeNull();
   });
 
   it("removes an existing criterion", async () => {
@@ -109,16 +79,15 @@ describe("updateCriteriaTool", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.result).toEqual({
-      success: true,
-      action: "remove",
-      type: "exclusion",
-      criteria: [],
+      inclusion: ["Adults over 18"],
+      exclusion: [],
+      rationale: "Remove exclusion criterion: case reports",
+      mutation: { action: "remove", type: "exclusion", criterion: "Case reports" },
     });
-    expect(mockUpdateProtocol).toHaveBeenCalledTimes(1);
   });
 
   it("removes criteria using fuzzy unicode/whitespace matching fallback", async () => {
-    mockEnsureProtocol.mockResolvedValueOnce(
+    mockProtocolFindUnique.mockResolvedValueOnce(
       makeProtocolData({
         eligibility: {
           inclusion: ["Adults\u00A0over\u00A018\u2014years"],
@@ -134,12 +103,11 @@ describe("updateCriteriaTool", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.result).toEqual({
-      success: true,
-      action: "remove",
-      type: "inclusion",
-      criteria: [],
+      inclusion: [],
+      exclusion: [],
+      rationale: "Remove inclusion criterion: Adults over 18-years",
+      mutation: { action: "remove", type: "inclusion", criterion: "Adults\u00A0over\u00A018\u2014years" },
     });
-    expect(mockUpdateProtocol).toHaveBeenCalledTimes(1);
   });
 
   it("returns error when removing a missing criterion", async () => {
@@ -149,11 +117,10 @@ describe("updateCriteriaTool", () => {
     );
 
     expect(result.error).toContain("Criterion not found");
-    expect(mockUpdateProtocol).not.toHaveBeenCalled();
   });
 
   it("removes criterion with case-insensitive fuzzy fallback", async () => {
-    mockEnsureProtocol.mockResolvedValueOnce(
+    mockProtocolFindUnique.mockResolvedValueOnce(
       makeProtocolData({
         eligibility: {
           inclusion: ["Adults Over 18 Years"],
@@ -169,11 +136,10 @@ describe("updateCriteriaTool", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.result).toEqual({
-      success: true,
-      action: "remove",
-      type: "inclusion",
-      criteria: [],
+      inclusion: [],
+      exclusion: [],
+      rationale: "Remove inclusion criterion: ADULTS OVER 18 YEARS",
+      mutation: { action: "remove", type: "inclusion", criterion: "Adults Over 18 Years" },
     });
-    expect(mockUpdateProtocol).toHaveBeenCalledTimes(1);
   });
 });

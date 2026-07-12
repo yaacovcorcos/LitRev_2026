@@ -22,6 +22,10 @@ import { normalizeProviderMessages } from "./message-normalization";
 import { toAIErrorEnvelope } from "../error-classification";
 import { normalizeChatOptionsForModel } from "../request-policy";
 import { isAbortLikeError } from "@/lib/abort";
+import {
+    createProviderTerminationError,
+    isAnthropicSuccessStopReason,
+} from "./stream-termination";
 const MAX_REASONING_BUDGET_TOKENS = 32768;
 
 export function computeAnthropicThinkingBudget(
@@ -70,6 +74,12 @@ export class AnthropicProvider extends BaseAIProvider {
 
         // Pass AbortSignal through so callers can cancel in-flight requests.
         const response = await client.messages.create(params, { signal: normalizedOptions.signal });
+        if (!isAnthropicSuccessStopReason(response.stop_reason)) {
+            throw new AIErrorWithEnvelope(createProviderTerminationError({
+                provider: this.name,
+                reason: response.stop_reason,
+            }));
+        }
 
         let content = "";
         const toolCalls: ToolCall[] = [];
@@ -88,6 +98,13 @@ export class AnthropicProvider extends BaseAIProvider {
                     arguments: parsedArgs.args,
                 });
             }
+        }
+
+        const stopReasonMatchesTools = response.stop_reason === "tool_use"
+            ? toolCalls.length > 0
+            : toolCalls.length === 0;
+        if (!stopReasonMatchesTools) {
+            throw new AIErrorWithEnvelope(createProviderTerminationError({ provider: this.name }));
         }
 
         return {
@@ -115,6 +132,8 @@ export class AnthropicProvider extends BaseAIProvider {
         let inputTokens = 0;
         let outputTokens = 0;
         let observedModel: string | undefined;
+        let terminalStopReason: string | null = null;
+        let emittedToolCallCount = 0;
 
         const activeBlocks = new Map<number, {
             kind: "tool";
@@ -212,6 +231,7 @@ export class AnthropicProvider extends BaseAIProvider {
                                 arguments: parsedArgs.args,
                             };
                             yield { type: "tool_call", toolCall };
+                            emittedToolCallCount += 1;
                         } else if (activeBlock.kind === "reasoning") {
                             yield {
                                 type: "reasoning_end",
@@ -226,8 +246,10 @@ export class AnthropicProvider extends BaseAIProvider {
                         if (event.usage) {
                             outputTokens = event.usage.output_tokens;
                         }
-                        // Only yield done if the model stopped naturally (not for tool_use)
-                        // The tool loop in AIService handles continuation
+                        const stopReason = (event.delta as { stop_reason?: string | null }).stop_reason;
+                        if (stopReason) {
+                            terminalStopReason = stopReason;
+                        }
                         break;
                     }
                 }
@@ -239,7 +261,25 @@ export class AnthropicProvider extends BaseAIProvider {
                 totalTokens: inputTokens + outputTokens,
             };
 
-            // Always yield done — the tool loop checks for tool_call chunks
+            if (!isAnthropicSuccessStopReason(terminalStopReason)) {
+                yield buildStreamErrorChunk(createProviderTerminationError({
+                    provider: this.name,
+                    reason: terminalStopReason,
+                }));
+                return;
+            }
+
+
+            const stopReasonMatchesTools = terminalStopReason === "tool_use"
+                ? emittedToolCallCount > 0
+                : emittedToolCallCount === 0;
+            if (activeBlocks.size > 0 || !stopReasonMatchesTools) {
+                yield buildStreamErrorChunk(createProviderTerminationError({ provider: this.name }));
+                return;
+            }
+
+            // Tool-use turns still emit done; the parent loop continues because it
+            // observed tool_call chunks before this terminal marker.
             yield {
                 type: "done",
                 content: totalContent,

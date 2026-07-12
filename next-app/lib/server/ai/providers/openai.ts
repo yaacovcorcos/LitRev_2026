@@ -17,6 +17,10 @@ import { normalizeChatOptionsForModel } from "../request-policy";
 import { toAIErrorEnvelope } from "../error-classification";
 import { getToolCallDeltas } from "./tool-call-delta";
 import { isAbortLikeError } from "@/lib/abort";
+import {
+    createProviderTerminationError,
+    isCompatibleSuccessFinishReason,
+} from "./stream-termination";
 
 export class OpenAIProvider extends BaseAIProvider {
     readonly id = "openai";
@@ -49,6 +53,12 @@ export class OpenAIProvider extends BaseAIProvider {
         const response = await client.chat.completions.create(params, { signal: normalizedOptions.signal });
 
         const choice = response.choices[0];
+        if (!choice || !isCompatibleSuccessFinishReason(choice.finish_reason)) {
+            throw new AIErrorWithEnvelope(createProviderTerminationError({
+                provider: this.name,
+                reason: choice?.finish_reason,
+            }));
+        }
 
         const toolCalls: ToolCall[] = [];
         for (const tc of choice.message.tool_calls
@@ -63,6 +73,10 @@ export class OpenAIProvider extends BaseAIProvider {
                 name: tc.function.name,
                 arguments: parsedArgs.args,
             });
+        }
+
+        if (choice.finish_reason === "tool_calls" && toolCalls.length === 0) {
+            throw new AIErrorWithEnvelope(createProviderTerminationError({ provider: this.name }));
         }
 
         return {
@@ -98,6 +112,7 @@ export class OpenAIProvider extends BaseAIProvider {
         const includeReasoning = normalizedOptions.includeReasoning;
         let activeReasoningId: string | null = null;
         let reasoningCounter = 0;
+        let sawTerminalFinish = false;
 
         try {
             for await (const chunk of stream) {
@@ -150,13 +165,33 @@ export class OpenAIProvider extends BaseAIProvider {
                         if (tc.function?.arguments) pending.arguments += tc.function.arguments;
                     }
                     // Check finish reason
+                    if (choice.finish_reason && !isCompatibleSuccessFinishReason(choice.finish_reason)) {
+                        if (activeReasoningId) {
+                            yield { type: "reasoning_end", reasoningId: activeReasoningId };
+                            activeReasoningId = null;
+                        }
+                        yield buildStreamErrorChunk(createProviderTerminationError({
+                            provider: this.name,
+                            reason: choice.finish_reason,
+                        }));
+                        return;
+                    }
                     if (choice.finish_reason === "tool_calls") {
                         if (activeReasoningId) {
                             yield { type: "reasoning_end", reasoningId: activeReasoningId };
                             activeReasoningId = null;
                         }
+                        if (pendingToolCalls.size === 0) {
+                            yield buildStreamErrorChunk(createProviderTerminationError({ provider: this.name }));
+                            return;
+                        }
                         const parsedToolCalls: ToolCall[] = [];
                         for (const [, tc] of pendingToolCalls) {
+                            if (!tc.id.trim() || !tc.name.trim()) {
+                                yield buildStreamErrorChunk(createProviderTerminationError({ provider: this.name }));
+                                pendingToolCalls.clear();
+                                return;
+                            }
                             const parsedArgs = parseToolArgs(tc.arguments, tc.name, "openai:stream");
                             if (!parsedArgs.success) {
                                 yield buildStreamErrorChunk(parsedArgs.errorMeta);
@@ -172,9 +207,15 @@ export class OpenAIProvider extends BaseAIProvider {
                         for (const toolCall of parsedToolCalls) {
                             yield { type: "tool_call", toolCall };
                         }
+                        sawTerminalFinish = true;
                         pendingToolCalls.clear();
                         // Do NOT yield done — the tool loop needs to continue
                     } else if (choice.finish_reason === "stop") {
+                        if (pendingToolCalls.size > 0) {
+                            yield buildStreamErrorChunk(createProviderTerminationError({ provider: this.name }));
+                            return;
+                        }
+                        sawTerminalFinish = true;
                         if (activeReasoningId) {
                             yield { type: "reasoning_end", reasoningId: activeReasoningId };
                             activeReasoningId = null;
@@ -207,6 +248,11 @@ export class OpenAIProvider extends BaseAIProvider {
             if (activeReasoningId) {
                 yield { type: "reasoning_end", reasoningId: activeReasoningId };
                 activeReasoningId = null;
+            }
+
+            if (!sawTerminalFinish) {
+                yield buildStreamErrorChunk(createProviderTerminationError({ provider: this.name }));
+                return;
             }
 
             // Final chunk with actual usage from API

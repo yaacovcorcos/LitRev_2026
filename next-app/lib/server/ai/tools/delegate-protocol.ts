@@ -75,6 +75,7 @@ export const delegateProtocolTool: AITool = {
             conversationId: context?.conversationId,
             autonomyConfig: context?.autonomyConfig,
             systemContexts: context?.systemContexts,
+            model: context?.systemContexts?.selectedModel,
             signal: context?.signal,
         });
 

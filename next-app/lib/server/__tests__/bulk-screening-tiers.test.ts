@@ -88,7 +88,7 @@ describe("bulkScreeningTool tiered routing", () => {
         );
     });
 
-    it("Tier 2: AI path returns ai tier", async () => {
+    it("[screening-decision-audit] Tier 2: AI path returns ai tier", async () => {
         mocks.findMany.mockResolvedValue([makeStudy({ id: "study-ai" })]);
         mocks.chat.mockResolvedValue({
             content: '{"decision":"keep","reason":"Matches all criteria","confidence":0.9}',
@@ -105,6 +105,60 @@ describe("bulkScreeningTool tiered routing", () => {
                 screeningTier: "ai",
             })
         );
+    });
+
+    it("passes the owning cancellation signal to nested screening model calls", async () => {
+        const controller = new AbortController();
+        mocks.findMany.mockResolvedValue([makeStudy({ id: "study-signal" })]);
+        mocks.chat.mockResolvedValue({
+            content: '{"decision":"keep","reason":"Matches","confidence":0.9}',
+        });
+
+        const result = await bulkScreeningTool.execute({}, {
+            projectId: "proj-1",
+            signal: controller.signal,
+        });
+
+        expect(result.error).toBeUndefined();
+        expect(mocks.chat).toHaveBeenCalledWith(
+            expect.any(Array),
+            expect.objectContaining({ signal: controller.signal }),
+        );
+    });
+
+    it("stops between studies and does not accept a model result after cancellation", async () => {
+        const controller = new AbortController();
+        mocks.findMany.mockResolvedValue([
+            makeStudy({ id: "study-first" }),
+            makeStudy({ id: "study-second" }),
+        ]);
+        mocks.chat.mockImplementationOnce(async () => {
+            controller.abort();
+            return {
+                content: '{"decision":"keep","reason":"Matches","confidence":0.9}',
+            };
+        });
+
+        await expect(bulkScreeningTool.execute({}, {
+            projectId: "proj-1",
+            signal: controller.signal,
+        })).rejects.toMatchObject({ name: "AbortError" });
+
+        expect(mocks.chat).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not start protocol or study work for a pre-cancelled batch", async () => {
+        const controller = new AbortController();
+        controller.abort();
+
+        await expect(bulkScreeningTool.execute({}, {
+            projectId: "proj-1",
+            signal: controller.signal,
+        })).rejects.toMatchObject({ name: "AbortError" });
+
+        expect(mocks.ensureProtocol).not.toHaveBeenCalled();
+        expect(mocks.findMany).not.toHaveBeenCalled();
+        expect(mocks.chat).not.toHaveBeenCalled();
     });
 
     it("Tier 3: malformed JSON repaired into heuristic tier", async () => {

@@ -56,7 +56,9 @@ That means:
 - Study-memory retrieval is project-scoped, including cited-study retrieval from prompt context.
 - Conversation summaries and selected draft text are treated as untrusted context, not source-of-truth evidence.
 - Conversation-extracted decisions, facts, and preferences are proposed as reviewable memory artifacts; they do not silently become durable project truth.
+- Successful scoped runs atomically queue conversation-memory extraction in durable `AgentRun` state. Request-scoped `after()` only accelerates processing; bounded later-run backlog scans reclaim expired leases, retry recorded failures up to a fixed cap, terminalize exhausted work, and fence settlement so serverless teardown cannot silently discard or duplicate extraction work. Provider extraction carries a job-owned 60-second abort deadline inside the five-minute lease and rechecks cancellation before proposal writes.
 - Semantic retrieval no longer performs request-time corpus embedding backfill by default; warmup/rollout paths own embedding readiness unless an explicit backfill flag is enabled.
+- Optional runtime retrieval is cooperatively cancellable: context deadlines abort a branch-owned signal, retrieval rechecks cancellation between phases, and event, audit, counter, and maintenance writes do not start after a known cancellation. Maintenance rechecks inside its write transaction so cancellation rolls back partially entered archive work.
 - Memory tooling already exists:
   - `store_memory`
   - `forget_memory`

@@ -32,7 +32,6 @@ export const GENERAL_PROJECT_CORE_TOOLS: string[] = [
     "forget_memory",
     "list_projects",
     "open_project",
-    "create_project",
     "ask_user",
 ];
 
@@ -53,7 +52,6 @@ export const GENERAL_GLOBAL_TOOLS: string[] = [
     "forget_memory",
     "list_projects",
     "open_project",
-    "create_project",
     "ask_user",
 ];
 

@@ -36,7 +36,7 @@ Tier 1 owns routing and repo-wide rules, Tier 2 specialists refine matched-domai
 
 ## Stack
 
-Next.js 16, React 19, TypeScript, Prisma 7.3 (PostgreSQL), Vitest, Vercel
+Next.js 16, React 19, TypeScript, Prisma 7.8 (PostgreSQL), Vitest, Vercel
 
 ## Code Layout
 

@@ -48,7 +48,7 @@ describe("provider request policy wiring", () => {
             .mockResolvedValueOnce({
                 id: "resp-1",
                 model: "gpt-5.2",
-                choices: [{ message: { content: "ok", tool_calls: [] } }],
+                choices: [{ message: { content: "ok", tool_calls: [] }, finish_reason: "stop" }],
                 usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
             })
             .mockResolvedValueOnce(makeOpenAIStream([
@@ -73,7 +73,7 @@ describe("provider request policy wiring", () => {
             .mockResolvedValueOnce({
                 id: "resp-xai",
                 model: "grok-4.3",
-                choices: [{ message: { content: "ok", tool_calls: [] } }],
+                choices: [{ message: { content: "ok", tool_calls: [] }, finish_reason: "stop" }],
                 usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
             })
             .mockResolvedValueOnce(makeOpenAIStream([
@@ -97,7 +97,7 @@ describe("provider request policy wiring", () => {
             .mockResolvedValueOnce({
                 id: "resp-google",
                 model: "gemini-3-flash-preview",
-                choices: [{ message: { content: "ok", tool_calls: [] } }],
+                choices: [{ message: { content: "ok", tool_calls: [] }, finish_reason: "stop" }],
                 usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
             })
             .mockResolvedValueOnce(makeOpenAIStream([
@@ -122,6 +122,7 @@ describe("provider request policy wiring", () => {
                 id: "resp-claude",
                 model: "claude-haiku-4-5",
                 content: [{ type: "text", text: "ok" }],
+                stop_reason: "end_turn",
                 usage: { input_tokens: 1, output_tokens: 1 },
             })
             .mockResolvedValueOnce(makeAnthropicStream([
@@ -131,6 +132,11 @@ describe("provider request policy wiring", () => {
                         model: "claude-haiku-4-5",
                         usage: { input_tokens: 1 },
                     },
+                },
+                {
+                    type: "message_delta",
+                    delta: { stop_reason: "end_turn" },
+                    usage: { output_tokens: 1 },
                 },
             ]));
         const provider = new AnthropicProvider();

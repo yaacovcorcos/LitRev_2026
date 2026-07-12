@@ -29,7 +29,7 @@ const mocks = vi.hoisted(() => {
     endRun: vi.fn(),
     markRunFinalizationState: vi.fn(),
     markRunFinalizationFailed: vi.fn(),
-    markRunAbnormalEndClassification: vi.fn(),
+    markRunAbnormalEndClassification: vi.fn(async () => undefined),
     isRunOwnershipError: vi.fn(() => false),
     startRunHeartbeat: vi.fn(() => ({ stop: vi.fn() })),
     registerActiveRunExecutionCancellation: vi.fn(() => ({
@@ -56,6 +56,8 @@ const mocks = vi.hoisted(() => {
     getAutonomyConfig: vi.fn(),
     protocolFindFirst: vi.fn(),
     emitEvent: vi.fn(),
+    emitToolCallEventBatch: vi.fn(),
+    preRecordToolCallBatchForAutonomy: vi.fn(),
     executeToolWithAutonomyCore: vi.fn(),
     evaluateToolPrerequisites: vi.fn(),
   };
@@ -72,6 +74,9 @@ vi.mock("@/lib/server/ai/providers", () => ({
 vi.mock("@/lib/server/ai/rate-limiter", () => ({
   validateRateLimits: vi.fn(async () => {}),
   recordUsage: vi.fn(async () => {}),
+  reserveProviderUsageAttempt: vi.fn(async () => ({ id: "usage-reservation-1", reservedTokens: 1, status: "active" })),
+  trySettleUsageReservation: vi.fn(async () => true),
+  tryMarkUsageReservationReconcilable: vi.fn(async () => true),
 }));
 
 vi.mock("@/lib/server/ai/memory", () => ({
@@ -130,6 +135,12 @@ vi.mock("@/lib/server/agent/run-cancellation", () => ({
 
 vi.mock("@/lib/server/agent/events", () => ({
   emitEvent: mocks.emitEvent,
+  emitToolCallEventBatch: mocks.emitToolCallEventBatch,
+  isRunLineageToolBudgetExceededError: (error: unknown) => Boolean(
+    error
+    && typeof error === "object"
+    && (error as { code?: unknown }).code === "RUN_LINEAGE_TOOL_BUDGET_EXCEEDED",
+  ),
 }));
 
 vi.mock("@/lib/server/agent/artifacts", () => ({
@@ -173,6 +184,11 @@ vi.mock("@/lib/agent/loop-controller", async () => {
   return {
     ...actual,
     LoopState: class {
+      readonly budget = {
+        maxIterations: 1,
+        maxToolCalls: 10,
+        maxWallTimeMs: 60_000,
+      };
       iterations = 0;
       totalToolCalls = 0;
       stopReason = "natural";
@@ -287,6 +303,7 @@ vi.mock("@/lib/server/ai/tool-helpers", async () => {
 vi.mock("@/lib/server/ai/tool-autonomy", () => ({
   executeToolWithAutonomy: mocks.executeToolWithAutonomy,
   executeToolWithAutonomyCore: mocks.executeToolWithAutonomyCore,
+  preRecordToolCallBatchForAutonomy: mocks.preRecordToolCallBatchForAutonomy,
 }));
 
 const { AIService } = await import("@/lib/server/ai/ai-service");
@@ -324,6 +341,7 @@ describe("executable runtime search scenarios", () => {
     mocks.resolveAuthenticatedIdentity.mockReturnValue({ userId: "user-1", workspaceId: undefined });
     mocks.startRun.mockResolvedValue({ id: "run-1" });
     mocks.endRun.mockResolvedValue({ id: "run-1", status: "completed" });
+    mocks.markRunAbnormalEndClassification.mockResolvedValue(undefined);
     mocks.retrieveMemories.mockResolvedValue([]);
     mocks.getAutonomyConfig.mockResolvedValue({ preset: "assisted", toolOverrides: {} });
     mocks.protocolFindFirst.mockResolvedValue(null);
@@ -332,10 +350,29 @@ describe("executable runtime search scenarios", () => {
     mocks.executeToolWithAutonomy.mockReset();
     mocks.executeToolWithAutonomyCore.mockReset();
     mocks.emitEvent.mockResolvedValue({ id: "evt-1" });
+    mocks.emitToolCallEventBatch.mockResolvedValue([]);
+    mocks.preRecordToolCallBatchForAutonomy.mockImplementation(async ({ runId, toolCalls }) => {
+      const levels = new Map<string, number>();
+      const entries = toolCalls.map((toolCall: { id: string; name: string; arguments: Record<string, unknown> }) => {
+        const autonomyLevel = 2;
+        levels.set(toolCall.id, autonomyLevel);
+        return {
+          payload: {
+            id: toolCall.id,
+            name: toolCall.name,
+            arguments: toolCall.arguments,
+            autonomyLevel,
+          },
+          extras: { toolName: toolCall.name },
+        };
+      });
+      await mocks.emitToolCallEventBatch(runId, entries);
+      return levels;
+    });
     mocks.evaluateToolPrerequisites.mockResolvedValue({ allowed: true });
   });
 
-  it("executes the direct PubMed receipt scenario through the live chat runtime", async () => {
+  it("[search-direct-pubmed-receipt] executes the direct PubMed receipt scenario through the live chat runtime", async () => {
     const scenario = CORE_EVAL_SCENARIOS.find((candidate) => candidate.id === "search-direct-pubmed-receipt");
     expect(scenario?.expectedSignals).toContain("tool_activity:search_pubmed");
 
@@ -502,7 +539,7 @@ describe("executable runtime search scenarios", () => {
     }));
   });
 
-  it("executes a cross-provider OpenAlex search through the shared receipt path", async () => {
+  it("[search-direct-openalex-runtime] executes a cross-provider OpenAlex search through the shared receipt path", async () => {
     const scenario = CORE_EVAL_SCENARIOS.find((candidate) => candidate.id === "search-direct-openalex-runtime");
     expect(scenario?.expectedSignals).toContain("tool_activity:search_openalex");
 
@@ -559,7 +596,7 @@ describe("executable runtime search scenarios", () => {
     }));
   });
 
-  it("executes delegated search through the real child search runtime", async () => {
+  it("[search-delegated-pubmed-runtime] executes delegated search through the real child search runtime", async () => {
     const scenario = CORE_EVAL_SCENARIOS.find((candidate) => candidate.id === "search-delegated-pubmed-runtime");
     expect(scenario?.expectedSignals).toContain("tool_result:search_pubmed");
 
@@ -625,6 +662,18 @@ describe("executable runtime search scenarios", () => {
           name: "search_pubmed",
         }),
       }),
+    );
+    expect(mocks.emitToolCallEventBatch).toHaveBeenCalledWith(
+      "run-1",
+      [
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            id: "tc-child-pubmed",
+            name: "search_pubmed",
+          }),
+          extras: { toolName: "search_pubmed" },
+        }),
+      ],
     );
     expect(mocks.emitEvent).toHaveBeenCalledWith(
       "run-1",

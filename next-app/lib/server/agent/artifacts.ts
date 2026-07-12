@@ -15,6 +15,7 @@ import { logServerError } from "@/lib/server/logging";
 import { ArtifactError } from "./artifact-errors";
 import {
     artifactExecutionSelect,
+    type AppliedStateReader,
     type ApplyFunction,
     type RestoreFunction,
     type SnapshotReader,
@@ -22,11 +23,13 @@ import {
     buildExecutionContext,
     executePostCommitTasks,
     loadArtifactForExecution,
+    lockArtifactExecutionInTransaction,
     markDurabilityAndRethrow,
     runArtifactApplyTransaction,
     validateArtifactPayload,
 } from "./artifact-execution";
 import {
+    isArtifactUndoSupportedType,
     buildEvidenceTableMarkdown,
     registerArtifactHandlers,
 } from "./artifact-handler-registrations";
@@ -44,6 +47,9 @@ const applyFunctions = new Map<ArtifactType, ApplyFunction>();
 
 const snapshotReaders = new Map<ArtifactType, SnapshotReader>();
 
+// Captures the exact post-apply target state used for conflict-safe undo.
+const appliedStateReaders = new Map<ArtifactType, AppliedStateReader>();
+
 // ── Restore function registry (Wave 3B) ─────────────────────────────────────
 // Each restore function uses the captured snapshot to revert the domain state.
 
@@ -52,6 +58,7 @@ const restoreFunctions = new Map<ArtifactType, RestoreFunction>();
 registerArtifactHandlers({
     applyFunctions,
     snapshotReaders,
+    appliedStateReaders,
     restoreFunctions,
 });
 
@@ -76,6 +83,39 @@ export interface CreateArtifactInput {
     title: string;
     payload: unknown;
     sourceEventId?: string;
+    /** Stable logical-operation key for crash/retry artifact reconciliation. */
+    applyId?: string;
+}
+
+export interface CreateAutoAppliedArtifactInput extends Omit<CreateArtifactInput, "type" | "applyId"> {
+    /** Metadata-only artifacts are finalized at creation and never execute a domain mutation. */
+    type: "scoping_report";
+    /** Stable logical-operation key used to reconcile a retried run finalization. */
+    applyId: string;
+}
+
+function assertMatchingAutoAppliedArtifact(
+    artifact: Awaited<ReturnType<typeof prisma.artifact.findUnique>>,
+    input: CreateAutoAppliedArtifactInput,
+) {
+    if (!artifact) return null;
+
+    const expectedProjectId = input.projectId ?? null;
+    const expectedConversationId = input.conversationId ?? null;
+    const expectedUserId = input.userId ?? null;
+    if (
+        artifact.runId !== input.runId
+        || artifact.projectId !== expectedProjectId
+        || artifact.conversationId !== expectedConversationId
+        || artifact.userId !== expectedUserId
+        || artifact.type !== input.type
+        || artifact.status !== "auto_applied"
+        || !artifact.appliedAt
+    ) {
+        throw new Error(`Auto-applied artifact idempotency key is already owned by another operation: ${input.applyId}`);
+    }
+
+    return artifact;
 }
 
 /**
@@ -85,7 +125,16 @@ export interface CreateArtifactInput {
 export async function createArtifact(input: CreateArtifactInput) {
     validateArtifactPayload(input.type, input.payload, "artifact payload");
 
-    const { artifact, eventCreatedAt } = await prisma.$transaction(async (tx) => {
+    if (input.applyId) {
+        const existing = await prisma.artifact.findUnique({
+            where: { applyId: input.applyId },
+        });
+        if (existing) return existing;
+    }
+
+    let created: { artifact: Awaited<ReturnType<typeof prisma.artifact.create>>; eventCreatedAt: Date };
+    try {
+        created = await prisma.$transaction(async (tx) => {
         const artifact = await tx.artifact.create({
             data: {
                 runId: input.runId,
@@ -97,6 +146,7 @@ export async function createArtifact(input: CreateArtifactInput) {
                 title: input.title,
                 payload: input.payload as object,
                 sourceEventId: input.sourceEventId ?? null,
+                applyId: input.applyId ?? null,
             },
         });
 
@@ -121,10 +171,105 @@ export async function createArtifact(input: CreateArtifactInput) {
         });
 
         return { artifact, eventCreatedAt: event.createdAt };
-    });
+        });
+    } catch (error) {
+        const code = error && typeof error === "object"
+            ? (error as { code?: unknown }).code
+            : undefined;
+        if (input.applyId && code === "P2002") {
+            const existing = await prisma.artifact.findUnique({
+                where: { applyId: input.applyId },
+            });
+            if (existing) return existing;
+        }
+        throw error;
+    }
 
-    noteObservedRunActivity(input.runId, eventCreatedAt);
-    return artifact;
+    noteObservedRunActivity(input.runId, created.eventCreatedAt);
+    return created.artifact;
+}
+
+/**
+ * Atomically persist a metadata-only artifact in its final state.
+ *
+ * Unlike domain-mutating artifacts, a scoping report has no apply handler. Its
+ * final row, authoritative review event, and recovery checkpoint therefore
+ * have to be created in one transaction; exposing a proposed intermediate
+ * state would create a crash window and a misleading review surface.
+ */
+export async function createAutoAppliedArtifact(input: CreateAutoAppliedArtifactInput) {
+    validateArtifactPayload(input.type, input.payload, "artifact payload");
+    const applyId = input.applyId.trim();
+    if (!applyId) {
+        throw new Error("Auto-applied artifacts require a non-empty applyId");
+    }
+
+    const existing = assertMatchingAutoAppliedArtifact(
+        await prisma.artifact.findUnique({ where: { applyId } }),
+        { ...input, applyId },
+    );
+    if (existing) return existing;
+
+    let created: {
+        artifact: Awaited<ReturnType<typeof prisma.artifact.create>>;
+        eventCreatedAt: Date;
+    };
+    try {
+        created = await prisma.$transaction(async (tx) => {
+            const appliedAt = new Date();
+            const artifact = await tx.artifact.create({
+                data: {
+                    runId: input.runId,
+                    projectId: input.projectId ?? null,
+                    conversationId: input.conversationId ?? null,
+                    userId: input.userId ?? null,
+                    type: input.type,
+                    status: "auto_applied",
+                    title: input.title,
+                    payload: input.payload as object,
+                    sourceEventId: input.sourceEventId ?? null,
+                    applyId,
+                    appliedAt,
+                },
+            });
+
+            const event = await emitEventWithinTransaction(
+                tx,
+                input.runId,
+                "artifact_reviewed",
+                {
+                    artifactId: artifact.id,
+                    status: "applied",
+                    type: artifact.type,
+                },
+                { artifactId: artifact.id },
+            );
+
+            await createArtifactCheckpointInTransaction(tx, {
+                runId: input.runId,
+                conversationId: artifact.conversationId,
+                eventSequence: event.sequence,
+                artifact,
+            });
+
+            return { artifact, eventCreatedAt: event.createdAt };
+        });
+    } catch (error) {
+        const code = error && typeof error === "object"
+            ? (error as { code?: unknown }).code
+            : undefined;
+        if (code === "P2002") {
+            const reconciled = assertMatchingAutoAppliedArtifact(
+                await prisma.artifact.findUnique({ where: { applyId } }),
+                { ...input, applyId },
+            );
+            if (reconciled) return reconciled;
+        }
+        throw error;
+    }
+
+    noteObservedRunActivity(input.runId, created.eventCreatedAt);
+    return created.artifact;
 }
 
 export async function reviewArtifact(
@@ -154,7 +299,7 @@ export async function reviewArtifact(
                 reviewNote,
                 editedPayload,
                 actorUserId: options?.actorUserId ?? null,
-            }, { applyFunctions, snapshotReaders });
+            }, { applyFunctions, snapshotReaders, appliedStateReaders });
 
             if (applied.eventCreatedAt) {
                 noteObservedRunActivity(applied.artifact.runId, applied.eventCreatedAt);
@@ -177,23 +322,29 @@ export async function reviewArtifact(
         }
     }
 
-    const artifact = await loadArtifactForExecution(prisma, artifactId);
-    if (artifact.status === status) {
-        return artifact;
-    }
-    if (artifact.status !== "proposed") {
-        throw new ArtifactError("ARTIFACT_INVALID_STATE", `Cannot review artifact with status "${artifact.status}"`);
-    }
+    const updated = await prisma.$transaction(async (tx) => {
+        await lockArtifactExecutionInTransaction(tx, artifactId);
+        const current = await loadArtifactForExecution(tx, artifactId);
+        if (current.status === status) {
+            return current;
+        }
+        if (current.status !== "proposed") {
+            throw new ArtifactError(
+                "ARTIFACT_INVALID_STATE",
+                `Cannot review artifact with status "${current.status}"`,
+            );
+        }
 
-    const updated = await prisma.$transaction(async (tx) => tx.artifact.update({
-        where: { id: artifactId },
-        data: {
-            status,
-            reviewedAt: new Date(),
-            reviewNote: reviewNote ?? null,
-        },
-        select: artifactExecutionSelect,
-    }));
+        return tx.artifact.update({
+            where: { id: artifactId },
+            data: {
+                status,
+                reviewedAt: new Date(),
+                reviewNote: reviewNote ?? null,
+            },
+            select: artifactExecutionSelect,
+        });
+    });
 
     trackMemoryProposalReview(updated, status).catch((error) =>
         logServerError("artifacts", "memory proposal review bookkeeping failed", {
@@ -229,7 +380,7 @@ export async function applyArtifact(
             executionSource: statusOverride === "auto_applied" ? "auto_apply" : "manual_review",
             statusOverride,
             actorUserId: options?.actorUserId ?? null,
-        }, { applyFunctions, snapshotReaders });
+        }, { applyFunctions, snapshotReaders, appliedStateReaders });
 
         if (applied.eventCreatedAt) {
             noteObservedRunActivity(artifact.runId, applied.eventCreatedAt);
@@ -250,36 +401,55 @@ export async function applyArtifact(
  * Only allowed within the configured window after apply.
  */
 export async function undoArtifact(artifactId: string) {
-    const artifact = await loadArtifactForExecution(prisma, artifactId);
-    if (!artifact.appliedAt) {
-        throw new ArtifactError("ARTIFACT_INVALID_STATE", "Artifact has not been applied");
-    }
-
     const undoWindowMs = getArtifactUndoWindowMs();
     const undoWindowStart = new Date(Date.now() - undoWindowMs);
-    if (artifact.appliedAt < undoWindowStart) {
-        throw new ArtifactError(
-            "ARTIFACT_INVALID_STATE",
-            `Undo window has expired (${formatArtifactUndoWindow(undoWindowMs)})`,
-        );
-    }
 
-    return prisma.$transaction(async (tx) => {
+    const undone = await prisma.$transaction(async (tx) => {
+        await lockArtifactExecutionInTransaction(tx, artifactId);
         const current = await loadArtifactForExecution(tx, artifactId);
-        const restoreFn = restoreFunctions.get(current.type as ArtifactType);
-        if (restoreFn) {
-            const ctx = buildExecutionContext(tx, current, "undo", null);
-            await restoreFn(ctx, current);
+        if (!current.appliedAt) {
+            throw new ArtifactError("ARTIFACT_INVALID_STATE", "Artifact has not been applied");
+        }
+        if (current.appliedAt < undoWindowStart) {
+            throw new ArtifactError(
+                "ARTIFACT_INVALID_STATE",
+                `Undo window has expired (${formatArtifactUndoWindow(undoWindowMs)})`,
+            );
+        }
+        if (current.status !== "accepted" && current.status !== "auto_applied") {
+            throw new ArtifactError(
+                "ARTIFACT_INVALID_STATE",
+                `Cannot undo artifact with status "${current.status}"`,
+            );
         }
 
-        return tx.artifact.update({
+        const restoreFn = restoreFunctions.get(current.type as ArtifactType);
+        if (!isArtifactUndoSupportedType(current.type) || !restoreFn) {
+            throw new ArtifactError(
+                "ARTIFACT_UNDO_UNSUPPORTED",
+                `Undo is not supported for artifact type "${current.type}".`,
+            );
+        }
+
+        const ctx = buildExecutionContext(tx, current, "undo", null);
+        const restoreResult = await restoreFn(ctx, current);
+
+        const artifact = await tx.artifact.update({
             where: { id: artifactId },
             data: {
                 status: "rejected",
                 reviewNote: "Undone by user",
             },
         });
+
+        return {
+            artifact,
+            postCommitTasks: restoreResult?.postCommitTasks ?? [],
+        };
     });
+
+    await executePostCommitTasks(undone.postCommitTasks, undone.artifact);
+    return undone.artifact;
 }
 
 /**

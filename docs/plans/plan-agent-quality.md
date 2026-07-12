@@ -91,7 +91,7 @@ LitRev should learn aggressively from the best external systems without drifting
   - security baseline in [`docs/runbooks/security-baseline.md`](../runbooks/security-baseline.md)
   - performance certification in [`plan-speed-performance.md`](./plan-speed-performance.md)
   - burn-in runbook for shared chat/runtime canaries
-- The protected `check` CI gate now includes `npm run check:agent-quality`, a deterministic agent-quality gate that validates the core eval scenario catalog, runtime-signal fixture coverage, and strict U1.6 burn-in metric/threshold contract.
+- The protected `check` CI gate now includes `npm run check:agent-quality`, a deterministic agent-quality gate that executes the production-runtime scenario test matrix before validating the core eval catalog, runtime-signal fixture coverage, and strict U1.6 burn-in metric/threshold contract. Each matrix row is bound to one stable, uniquely recognized `[scenario-id]` per passing test and verified from Vitest's JSON result, so one multi-marker title cannot prove several scenarios and a green neighboring test file or hand-authored fixture cannot substitute for the named proof. The child Vitest lane is fail-closed behind a 60-second wall-time limit, `SIGKILL`, and an 8 MiB output ceiling.
 - U1.6 is a recurring production-confidence and certification loop:
   - it should continuously challenge runtime truth, recovery, retry, and cross-surface consistency
   - it gates formal runtime sign-off and destructive cleanup of fallback/legacy runtime paths
@@ -122,7 +122,9 @@ The lesson to keep:
 
 - [x] `Q1-001` Ship the first `CAG-021` executable scenario eval harness.
   - current contract:
+    - executable deterministic runtime scenarios spanning clarification, delegation, direct/delegated search, cancellation/no-answer truth, durable decision pause, and screening audit fields
     - deterministic scenario catalog validation
+    - exact catalog-to-named-runtime-test matrix coverage verified from executed Vitest results
     - runtime-observable signal coverage from replayable stream fixtures
     - clear pass/fail criteria through `npm run check:agent-quality`
 

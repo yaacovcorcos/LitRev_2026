@@ -3,6 +3,9 @@ import type { AIMessage, AIModel, AIResponse, AIStreamChunk, ChatOptions } from 
 vi.mock("@/lib/server/ai/rate-limiter", () => ({
   validateRateLimits: vi.fn(async () => {}),
   recordUsage: vi.fn(async () => {}),
+  reserveProviderUsageAttempt: vi.fn(async () => ({ id: "usage-reservation-1", reservedTokens: 1, status: "active" })),
+  trySettleUsageReservation: vi.fn(async () => true),
+  tryMarkUsageReservationReconcilable: vi.fn(async () => true),
 }));
 import { AIService } from "@/lib/server/ai/ai-service";
 import { BaseAIProvider } from "@/lib/server/ai/providers/base";

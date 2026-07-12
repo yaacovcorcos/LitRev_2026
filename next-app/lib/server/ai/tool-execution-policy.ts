@@ -18,14 +18,11 @@ export type ToolExecutionPolicy = {
 export const IDEMPOTENT_MUTATION_TOOL_NAMES = [
   "add_to_ledger",
   "bulk_screening",
-  "create_project",
-  "delete_study",
   "exclude_study",
   "forget_memory",
   "update_study",
   "update_study_direct",
   "update_protocol",
-  "update_criteria",
   "update_note",
   "store_memory",
 ] as const;
@@ -33,10 +30,10 @@ export const IDEMPOTENT_MUTATION_TOOL_NAMES = [
 const IDEMPOTENT_MUTATION_TOOL_SET = new Set<string>(IDEMPOTENT_MUTATION_TOOL_NAMES);
 
 const READ_ONLY_RESTARTABLE_TOOL_NAMES = [
-  "extract_pdf",
   "inspect_memory",
   "list_projects",
   "open_project",
+  "preview_study_pdf_update",
   "read_ledger",
   "read_protocol",
   "read_study_content",
@@ -44,6 +41,8 @@ const READ_ONLY_RESTARTABLE_TOOL_NAMES = [
   "search_openalex",
   "search_pubmed",
   "search_semantic_scholar",
+  "delete_study",
+  "update_criteria",
 ] as const;
 
 const READ_ONLY_RESTARTABLE_TOOL_SET = new Set<string>(READ_ONLY_RESTARTABLE_TOOL_NAMES);

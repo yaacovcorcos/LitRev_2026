@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   runEventFindFirst: vi.fn(),
   runEventCreate: vi.fn(),
   runEventFindMany: vi.fn(),
+  runEventCount: vi.fn(),
   agentRunFindUnique: vi.fn(),
   agentRunUpdateMany: vi.fn(),
   queryRaw: vi.fn(),
@@ -16,6 +17,7 @@ const txMock = {
   runEvent: {
     findFirst: (...args: unknown[]) => mocks.runEventFindFirst(...args),
     create: (...args: unknown[]) => mocks.runEventCreate(...args),
+    count: (...args: unknown[]) => mocks.runEventCount(...args),
   },
   agentRun: {
     findUnique: (...args: unknown[]) => mocks.agentRunFindUnique(...args),
@@ -30,6 +32,7 @@ vi.mock("@/lib/server/prisma", () => ({
     runEvent: {
       findFirst: mocks.runEventFindFirst,
       create: mocks.runEventCreate,
+      count: mocks.runEventCount,
       findMany: mocks.runEventFindMany,
     },
     agentRun: {
@@ -44,7 +47,13 @@ vi.mock("@/lib/server/agent/run", () => ({
   assertRunWritableInTransaction: mocks.assertRunWritableInTransaction,
 }));
 
-const { emitEvent, emitEventWithinTransaction, getRunTimeline } = await import("@/lib/server/agent/events");
+const {
+  emitEvent,
+  emitEventWithinTransaction,
+  emitToolCallEventBatch,
+  emitPostRunUserEventWithinTransaction,
+  getRunTimeline,
+} = await import("@/lib/server/agent/events");
 
 describe("run events", () => {
   beforeEach(() => {
@@ -52,6 +61,7 @@ describe("run events", () => {
     mocks.transaction.mockImplementation(async (callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock));
     mocks.agentRunUpdateMany.mockResolvedValue({ count: 1 });
     mocks.queryRaw.mockResolvedValue([{ locked: 1 }]);
+    mocks.runEventCount.mockResolvedValue(0);
     mocks.assertRunWritableInTransaction.mockResolvedValue({
       id: "run-1",
       status: "running",
@@ -223,6 +233,56 @@ describe("run events", () => {
       },
       data: { lastActivityAt: createdAt },
     });
+  });
+
+  it("rejects a tool call once the shared root-lineage budget is exhausted", async () => {
+    mocks.assertRunWritableInTransaction.mockResolvedValue({
+      id: "child-run",
+      rootRunId: "root-run",
+      status: "running",
+      runPhase: "act",
+      completedAt: null,
+      finalizationState: "not_started",
+    });
+    mocks.runEventCount.mockResolvedValue(25);
+
+    await expect(emitEventWithinTransaction(
+      txMock as never,
+      "child-run",
+      "tool_call",
+      { id: "call-over-budget", name: "search_pubmed", arguments: {} },
+    )).rejects.toMatchObject({ code: "RUN_LINEAGE_TOOL_BUDGET_EXCEEDED" });
+
+    expect(mocks.runEventCreate).not.toHaveBeenCalled();
+    expect(mocks.runEventCount).toHaveBeenCalledWith({
+      where: {
+        type: "tool_call",
+        run: {
+          OR: [{ id: "root-run" }, { rootRunId: "root-run" }],
+        },
+      },
+    });
+  });
+
+  it("rejects an over-cap tool-call batch before appending any member", async () => {
+    mocks.assertRunWritableInTransaction.mockResolvedValue({
+      id: "child-run",
+      rootRunId: "root-run",
+      status: "running",
+      runPhase: "act",
+      completedAt: null,
+      finalizationState: "not_started",
+    });
+    mocks.runEventCount.mockResolvedValue(24);
+
+    await expect(emitToolCallEventBatch("child-run", [
+      { payload: { id: "call-1", name: "search_pubmed", arguments: {} } },
+      { payload: { id: "call-2", name: "search_openalex", arguments: {} } },
+    ])).rejects.toMatchObject({ code: "RUN_LINEAGE_TOOL_BUDGET_EXCEEDED" });
+
+    expect(mocks.runEventCreate).not.toHaveBeenCalled();
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.runEventCount).toHaveBeenCalledTimes(1);
   });
 
   it("advances durable progress for completed tool-result boundaries", async () => {
@@ -406,6 +466,32 @@ describe("run events", () => {
         lastDurableProgressAt: createdAt,
       },
     });
+  });
+
+  it("appends authenticated post-run artifact review events without reopening a completed run", async () => {
+    const createdAt = new Date("2026-03-11T11:36:00.000Z");
+    mocks.agentRunFindUnique.mockResolvedValue({ id: "run-1" });
+    mocks.runEventFindFirst.mockResolvedValue({ sequence: 8 });
+    mocks.runEventCreate.mockResolvedValue({ id: "evt-9", sequence: 9, createdAt });
+
+    const event = await emitPostRunUserEventWithinTransaction(
+      txMock as never,
+      "run-1",
+      "artifact_reviewed",
+      { artifactId: "artifact-1", status: "applied" },
+      { artifactId: "artifact-1" },
+    );
+
+    expect(event).toMatchObject({ id: "evt-9", sequence: 9 });
+    expect(mocks.assertRunWritableInTransaction).not.toHaveBeenCalled();
+    expect(mocks.agentRunUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.runEventCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        runId: "run-1",
+        type: "artifact_reviewed",
+        sequence: 9,
+      }),
+    }));
   });
 
   it("formats timeline output in ascending sequence order", async () => {

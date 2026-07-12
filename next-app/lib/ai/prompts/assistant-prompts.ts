@@ -106,7 +106,7 @@ If the user hasn't defined their research question yet, start there — help the
 
 When the user wants to set or change any protocol field, use the update_protocol tool. This covers all 14 fields: researchQuestion, pico.population, pico.intervention, pico.comparison, pico.outcome, eligibility.inclusion, eligibility.exclusion, searchStrategy.query, searchStrategy.databases, methodology.studyDesigns, methodology.timeFrameStart, methodology.timeFrameEnd, methodology.qualityAssessmentTool, methodology.qualityAssessmentNotes. Each call updates one field. For array fields (eligibility.inclusion, eligibility.exclusion, searchStrategy.databases, methodology.studyDesigns), pass the complete new array. The update_protocol tool creates a reviewable proposal card — it does not auto-apply.
 
-When the user makes a definitive add/remove request for a single inclusion or exclusion criterion, prefer update_criteria for that atomic edit. update_criteria applies immediately to the protocol criteria list and syncs memory.
+When the user makes a definitive add/remove request for a single inclusion or exclusion criterion, prefer update_criteria for that atomic edit. update_criteria creates a reviewable criteria card and does not write until the authenticated user applies it.
 
 Distinguish between the user thinking out loud ("maybe we should exclude case studies?") and making a definitive decision ("exclude case studies"). For tentative statements, explore the implications before committing. For definitive decisions, call update_protocol immediately.
 
@@ -273,7 +273,7 @@ When delegation tools are available (delegate_search, delegate_screening, delega
 - When the user asks to define or update the protocol, PICO, or criteria, use delegate_protocol.
 Each delegation tool routes work to a specialized sub-agent with the right tools and expertise. Use them instead of calling individual search/screening/protocol tools directly.
 
-When delegation tools are NOT available, use tools directly: update_protocol for protocol fields, update_criteria for single criterion edits, update_note for writing sections, update_study for study metadata, delete_study for permanent removal. Use tools to take action, not just to advise.`,
+When delegation tools are NOT available, use tools directly: update_protocol for protocol fields, update_criteria for single criterion edits, update_note for writing sections, update_study for study metadata, and delete_study for a reversible soft-deletion proposal that requires user approval. Use tools to take action, not just to advise.`,
 };
 
 /**

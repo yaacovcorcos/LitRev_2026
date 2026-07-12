@@ -12,9 +12,18 @@ installAiViewTestLifecycle();
 
 const {
   mockGetConversation,
+  mockFetch,
   mockProcessAIStream,
   mockReviewArtifactAction,
 } = getAiViewMocks();
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
 
 describe("/ai page composer lane and attachment surfaces", () => {
   it("renders attached live progress above the composer without duplicating the inline progress row", async () => {
@@ -300,6 +309,181 @@ describe("/ai page composer lane and attachment surfaces", () => {
     await waitFor(() => {
       expect(screen.getByText("artifact:accepted")).toBeTruthy();
     });
+  });
+
+  it("renders a safe error when the artifact server action rejects", async () => {
+    mockGetConversation.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: "conv-1",
+        title: "First chat",
+        messages: [],
+        artifacts: [{
+          id: "artifact-1",
+          type: "draft_diff",
+          status: "proposed",
+          title: "Draft proposal",
+          payload: { section: "Intro", content: "Body", citations: [], wordCount: 1 },
+          version: 1,
+          createdAt: "2026-03-17T00:00:00.000Z",
+        }],
+      },
+    });
+    mockReviewArtifactAction.mockRejectedValueOnce(new Error("network unavailable"));
+    renderAiView();
+
+    fireEvent.click(screen.getByLabelText("Open chat history"));
+    await screen.findByText("First chat");
+    fireEvent.click(screen.getByText("First chat"));
+    await screen.findByText("artifact:proposed");
+    fireEvent.click(screen.getByRole("button", { name: "review artifact" }));
+
+    expect(await screen.findByText("Artifact review could not reach the server. Nothing was applied.")).toBeTruthy();
+    expect(screen.getByText("artifact:proposed")).toBeTruthy();
+  });
+
+  it("waits for stop confirmation before executing a plan and sends the captured replacement run", async () => {
+    const cancellation = createDeferred<{ ok: true; status: 200 }>();
+    mockGetConversation.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: "conv-1",
+        title: "First chat",
+        messages: [],
+        artifacts: [{
+          id: "plan-1",
+          type: "plan",
+          status: "proposed",
+          title: "Plan",
+          payload: { steps: [{ label: "Search", status: "pending" }] },
+          version: 1,
+          createdAt: "2026-03-17T00:00:00.000Z",
+        }],
+      },
+    });
+    mockFetch.mockImplementation(async (url: RequestInfo | URL) => {
+      if (String(url).includes("/cancel")) return cancellation.promise;
+      return {
+        ok: true,
+        status: 200,
+        body: { getReader: () => ({ read: async () => ({ done: true }), cancel: async () => {} }) },
+      };
+    });
+    mockProcessAIStream
+      .mockImplementationOnce(async ({ onChunk, signal }: {
+        onChunk: (chunk: unknown) => void | Promise<void>;
+        signal: AbortSignal;
+      }) => {
+        await onChunk({ type: "run_start", runId: "run-before-plan", conversationId: "conv-1" });
+        return await new Promise((resolve) => {
+          signal.addEventListener("abort", () => resolve({
+            runStatus: "cancelled",
+            stopReason: "cancelled",
+            terminalReason: "cancelled_by_user",
+            errorMessage: null,
+            errorMeta: null,
+            actualModel: null,
+            actualModelSource: "unknown",
+          }), { once: true });
+        });
+      })
+      .mockResolvedValueOnce({
+        runStatus: "completed",
+        stopReason: "done",
+        terminalReason: "completed",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      });
+
+    renderAiView();
+    fireEvent.click(screen.getByLabelText("Open chat history"));
+    await screen.findByText("First chat");
+    fireEvent.click(screen.getByText("First chat"));
+    await screen.findByRole("button", { name: "execute plan" });
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+    await waitFor(() => expect(mockProcessAIStream).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "stop generation" }));
+    fireEvent.click(screen.getByRole("button", { name: "execute plan" }));
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("artifact:proposed")).toBeTruthy();
+
+    await act(async () => {
+      cancellation.resolve({ ok: true, status: 200 });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(3));
+
+    const planBody = JSON.parse(String(mockFetch.mock.calls[2]?.[1]?.body));
+    expect(planBody.options.replaceRunId).toBe("run-before-plan");
+  });
+
+  it("does not execute a plan when prior cancellation conflicts", async () => {
+    const cancellation = createDeferred<{ ok: false; status: 409 }>();
+    mockGetConversation.mockResolvedValueOnce({
+      success: true,
+      data: {
+        id: "conv-1",
+        title: "First chat",
+        messages: [],
+        artifacts: [{
+          id: "plan-1",
+          type: "plan",
+          status: "proposed",
+          title: "Plan",
+          payload: { steps: [{ label: "Search", status: "pending" }] },
+          version: 1,
+          createdAt: "2026-03-17T00:00:00.000Z",
+        }],
+      },
+    });
+    mockFetch.mockImplementation(async (url: RequestInfo | URL) => {
+      if (String(url).includes("/cancel")) return cancellation.promise;
+      return {
+        ok: true,
+        status: 200,
+        body: { getReader: () => ({ read: async () => ({ done: true }), cancel: async () => {} }) },
+      };
+    });
+    mockProcessAIStream.mockImplementationOnce(async ({ onChunk, signal }: {
+      onChunk: (chunk: unknown) => void | Promise<void>;
+      signal: AbortSignal;
+    }) => {
+      await onChunk({ type: "run_start", runId: "run-conflict", conversationId: "conv-1" });
+      return await new Promise((resolve) => {
+        signal.addEventListener("abort", () => resolve({
+          runStatus: "cancelled",
+          stopReason: "cancelled",
+          terminalReason: "cancelled_by_user",
+          errorMessage: null,
+          errorMeta: null,
+          actualModel: null,
+          actualModelSource: "unknown",
+        }), { once: true });
+      });
+    });
+
+    renderAiView();
+    fireEvent.click(screen.getByLabelText("Open chat history"));
+    await screen.findByText("First chat");
+    fireEvent.click(screen.getByText("First chat"));
+    await screen.findByRole("button", { name: "execute plan" });
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+    await waitFor(() => expect(mockProcessAIStream).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "stop generation" }));
+    fireEvent.click(screen.getByRole("button", { name: "execute plan" }));
+
+    await act(async () => {
+      cancellation.resolve({ ok: false, status: 409 });
+      await Promise.resolve();
+    });
+
+    await screen.findByText("LitRev stopped this view but could not confirm the run ended. Reconnect before retrying.");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("artifact:proposed")).toBeTruthy();
   });
 
   it("keeps the composer standalone when no attached caps are present", () => {

@@ -10,12 +10,19 @@ const mocks = vi.hoisted(() => {
     id: "mock-provider",
     name: "Mock Provider",
     models: [{ id: "gpt-5.2", name: "GPT-5.2", contextWindow: 128000, capabilities: ["chat"] as const }],
-    chat: vi.fn(async () => ({
-      id: "resp-1",
-      content: "provider content",
-      model: "gpt-5.2",
-      usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-    })),
+    chat: vi.fn(async (
+      _messages?: unknown,
+      _options?: { signal?: AbortSignal },
+    ) => {
+      void _messages;
+      void _options;
+      return {
+        id: "resp-1",
+        content: "provider content",
+        model: "gpt-5.2",
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      };
+    }),
     streamChat: vi.fn(async function* () {
       yield { type: "content", content: "provider content" };
       yield {
@@ -47,20 +54,36 @@ const mocks = vi.hoisted(() => {
     markRunFinalizationFailed: vi.fn(),
     markRunAbnormalEndClassification: vi.fn(),
     isRunOwnershipError: vi.fn(() => false),
+    after: vi.fn(),
     startRunTrace: vi.fn(() => trace),
     flushTracing: vi.fn(),
-    addAssistantMessageToConversationForRun: vi.fn(async () => ({
+    addAssistantMessageToConversationForRun: vi.fn(async (
+      params?: { fallbackConversationTitle?: string },
+    ) => ({
       id: "msg-1",
       role: "assistant",
       content: "assistant content",
       createdAt: new Date("2026-03-11T12:00:00.000Z").toISOString(),
+      ...(params?.fallbackConversationTitle
+        ? { conversationTitle: params.fallbackConversationTitle }
+        : {}),
     })),
     autoSummarizeIfNeeded: vi.fn(async () => {}),
+    markMemoriesUsedInAnswer: vi.fn(async () => {}),
+    aiConversationFindUnique: vi.fn(),
+    aiConversationUpdateMany: vi.fn(),
     resolveAuthenticatedIdentity: vi.fn(),
+    reserveProviderUsageAttempt: vi.fn(),
+    trySettleUsageReservation: vi.fn(),
+    tryMarkUsageReservationReconcilable: vi.fn(),
     trace,
     provider,
   };
 });
+
+vi.mock("next/server", () => ({
+  after: mocks.after,
+}));
 
 vi.mock("@/lib/server/ai/providers", () => ({
   BaseAIProvider: class {},
@@ -73,6 +96,10 @@ vi.mock("@/lib/server/ai/providers", () => ({
 vi.mock("@/lib/server/ai/rate-limiter", () => ({
   validateRateLimits: vi.fn(async () => {}),
   recordUsage: vi.fn(async () => {}),
+  reserveProviderUsageAttempt: mocks.reserveProviderUsageAttempt,
+  trySettleUsageReservation: mocks.trySettleUsageReservation,
+  tryMarkUsageReservationReconcilable:
+    mocks.tryMarkUsageReservationReconcilable,
 }));
 
 vi.mock("@/lib/server/ai/memory", () => ({
@@ -87,7 +114,7 @@ vi.mock("@/lib/server/ai/memory", () => ({
 vi.mock("@/lib/server/memory", () => ({
   retrieveMemories: vi.fn(async () => []),
   formatMemoriesForContext: vi.fn(() => ""),
-  markMemoriesUsedInAnswer: vi.fn(async () => {}),
+  markMemoriesUsedInAnswer: mocks.markMemoriesUsedInAnswer,
 }));
 
 vi.mock("@/lib/ai/config", () => ({
@@ -211,6 +238,10 @@ vi.mock("@/lib/server/ai/scoping", () => ({
 
 vi.mock("@/lib/server/prisma", () => ({
   prisma: {
+    aIConversation: {
+      findUnique: mocks.aiConversationFindUnique,
+      updateMany: mocks.aiConversationUpdateMany,
+    },
     protocol: { findFirst: vi.fn(async () => null) },
     study: { findUnique: vi.fn(async () => null) },
     project: { findUnique: vi.fn(async () => null) },
@@ -228,6 +259,19 @@ vi.mock("@/lib/server/chat-runtime/conversation-run-lock", () => ({
 
 vi.mock("@/lib/server/ai/error-classification", () => ({
   classifyAIError: vi.fn((error: unknown) => {
+    const errorMeta = error && typeof error === "object" && "errorMeta" in error
+      ? (error as { errorMeta?: Record<string, unknown> }).errorMeta
+      : undefined;
+    if (errorMeta) {
+      return {
+        message: errorMeta.message,
+        retryable: errorMeta.retryable,
+        reason: "timeout",
+        kind: errorMeta.kind,
+        source: errorMeta.source,
+        code: errorMeta.code,
+      };
+    }
     const message = error instanceof Error ? error.message : String(error);
     if (/Connection terminated due to connection timeout/i.test(message)) {
       return {
@@ -256,6 +300,12 @@ vi.mock("@/lib/server/ai/error-classification", () => ({
     };
   }),
   toAIErrorEnvelope: vi.fn((error: unknown, envelope: Record<string, unknown>) => {
+    const errorMeta = error && typeof error === "object" && "errorMeta" in error
+      ? (error as { errorMeta?: Record<string, unknown> }).errorMeta
+      : undefined;
+    if (errorMeta) {
+      return { ...envelope, ...errorMeta };
+    }
     const message = error instanceof Error ? error.message : String(error);
     if (/Connection terminated due to connection timeout/i.test(message)) {
       return {
@@ -347,6 +397,7 @@ describe("AIService run finalization", () => {
     mocks.markRunFinalizationFailed.mockReset();
     mocks.markRunAbnormalEndClassification.mockReset();
     mocks.isRunOwnershipError.mockReset();
+    mocks.after.mockReset();
     mocks.registerActiveRunExecutionCancellation.mockReset();
     mocks.startDurableRunCancellationMonitor.mockReset();
     mocks.provider.chat.mockReset();
@@ -359,7 +410,13 @@ describe("AIService run finalization", () => {
     mocks.failPlanExecution.mockReset();
     mocks.addAssistantMessageToConversationForRun.mockReset();
     mocks.autoSummarizeIfNeeded.mockReset();
+    mocks.markMemoriesUsedInAnswer.mockReset();
+    mocks.aiConversationFindUnique.mockReset();
+    mocks.aiConversationUpdateMany.mockReset();
     mocks.resolveAuthenticatedIdentity.mockReset();
+    mocks.reserveProviderUsageAttempt.mockReset();
+    mocks.trySettleUsageReservation.mockReset();
+    mocks.tryMarkUsageReservationReconcilable.mockReset();
     mockRetrieveMemories.mockReset();
     mockGetAutonomyConfig.mockReset();
     mockProtocolFindFirst.mockReset();
@@ -396,6 +453,13 @@ describe("AIService run finalization", () => {
     mocks.markPlanExecutionRunning.mockResolvedValue(undefined);
     mocks.failPlanExecution.mockResolvedValue(undefined);
     mocks.resolveAuthenticatedIdentity.mockReturnValue({ userId: "user-1", workspaceId: undefined });
+    mocks.reserveProviderUsageAttempt.mockResolvedValue({
+      id: "usage-reservation-1",
+      reservedTokens: 1,
+      status: "active",
+    });
+    mocks.trySettleUsageReservation.mockResolvedValue(true);
+    mocks.tryMarkUsageReservationReconcilable.mockResolvedValue(true);
     mocks.startRun.mockResolvedValue({ id: "run-1" });
     mocks.getRun.mockResolvedValue({
       id: "run-1",
@@ -419,13 +483,24 @@ describe("AIService run finalization", () => {
     mocks.markRunFinalizationFailed.mockResolvedValue(1);
     mocks.markRunAbnormalEndClassification.mockResolvedValue(1);
     mocks.isRunOwnershipError.mockReturnValue(false);
-    mocks.addAssistantMessageToConversationForRun.mockResolvedValue({
+    mocks.after.mockImplementation((task: (() => unknown | Promise<unknown>) | Promise<unknown>) => {
+      if (typeof task === "function") {
+        void task();
+      }
+    });
+    mocks.addAssistantMessageToConversationForRun.mockImplementation(async (params) => ({
       id: "msg-1",
       role: "assistant",
       content: "assistant content",
       createdAt: new Date("2026-03-11T12:00:00.000Z").toISOString(),
-    });
+      ...(params?.fallbackConversationTitle
+        ? { conversationTitle: params.fallbackConversationTitle }
+        : {}),
+    }));
     mocks.autoSummarizeIfNeeded.mockResolvedValue(undefined);
+    mocks.markMemoriesUsedInAnswer.mockResolvedValue(undefined);
+    mocks.aiConversationFindUnique.mockResolvedValue({ title: "Existing title" });
+    mocks.aiConversationUpdateMany.mockResolvedValue({ count: 0 });
     mockRetrieveMemories.mockResolvedValue([]);
     mockGetAutonomyConfig.mockResolvedValue({ preset: "assisted", toolOverrides: {} } as never);
     mockProtocolFindFirst.mockResolvedValue(null);
@@ -526,6 +601,59 @@ describe("AIService run finalization", () => {
     );
 
     await iterator.return?.(undefined);
+  });
+
+  it("fails closed when an authoritative conversation read never settles", async () => {
+    vi.useFakeTimers();
+    mocks.getConversationWithSummaryById.mockImplementationOnce(() => new Promise(() => {}));
+    const service = new AIService();
+    const iterator = service.streamChatWithArtifacts("hello", "project", {
+      conversationId: "conv-1",
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    })[Symbol.asyncIterator]();
+    const next = iterator.next();
+    const rejection = expect(next).rejects.toMatchObject({
+      errorCode: "CRITICAL_CONTEXT_BRANCH_TIMEOUT",
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await rejection;
+    expect(mocks.startRun).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("fails a started run when the critical autonomy read never settles", async () => {
+    vi.useFakeTimers();
+    mockGetAutonomyConfig.mockImplementationOnce(() => new Promise(() => {}));
+    const service = new AIService();
+    const iterator = service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    })[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toMatchObject({
+      value: { type: "run_start", runId: "run-1" },
+    });
+    const errorChunk = iterator.next();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(errorChunk).resolves.toMatchObject({
+      value: {
+        type: "error",
+        errorMeta: { code: "CRITICAL_CONTEXT_BRANCH_TIMEOUT", retryable: true },
+      },
+    });
+    await expect(iterator.next()).resolves.toMatchObject({
+      value: { type: "run_end", runStatus: "failed", stopReason: "error" },
+    });
+    expect(mocks.endRun).toHaveBeenCalledWith("run-1", "failed", undefined, undefined);
   });
 
   it("starts continuation runs in verify phase", async () => {
@@ -686,7 +814,195 @@ describe("AIService run finalization", () => {
     expect(mocks.markRunFinalizationFailed).not.toHaveBeenCalled();
   });
 
-  it("fails a natural no-answer run instead of completing an empty assistant turn", async () => {
+  it("registers memory attribution and auto-summarization as post-response work", async () => {
+    const scheduledTasks: Array<() => unknown | Promise<unknown>> = [];
+    mocks.after.mockImplementation((task: (() => unknown | Promise<unknown>) | Promise<unknown>) => {
+      if (typeof task === "function") scheduledTasks.push(task);
+    });
+    mocks.addAssistantMessageToConversationForRun.mockResolvedValueOnce({
+      id: "msg-1",
+      role: "assistant",
+      content: "assistant content",
+      createdAt: new Date("2026-03-11T12:00:00.000Z").toISOString(),
+    });
+
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    });
+
+    const chunks: Array<{ type?: string; runStatus?: string }> = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      runStatus: "completed",
+    });
+    expect(scheduledTasks).toHaveLength(2);
+    expect(mocks.markMemoriesUsedInAnswer).not.toHaveBeenCalled();
+    expect(mocks.autoSummarizeIfNeeded).not.toHaveBeenCalled();
+
+    await Promise.all(scheduledTasks.map((task) => task()));
+
+    expect(mocks.markMemoriesUsedInAnswer).toHaveBeenCalledTimes(1);
+    expect(mocks.autoSummarizeIfNeeded).toHaveBeenCalledTimes(1);
+  });
+
+  it("isolates and logs post-response task failures", async () => {
+    const scheduledTasks: Array<() => unknown | Promise<unknown>> = [];
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.after.mockImplementation((task: (() => unknown | Promise<unknown>) | Promise<unknown>) => {
+      if (typeof task === "function") scheduledTasks.push(task);
+    });
+    mocks.addAssistantMessageToConversationForRun.mockResolvedValueOnce({
+      id: "msg-1",
+      role: "assistant",
+      content: "assistant content",
+      createdAt: new Date("2026-03-11T12:00:00.000Z").toISOString(),
+    });
+    mocks.markMemoriesUsedInAnswer.mockRejectedValueOnce(new Error("attribution write failed"));
+    mocks.autoSummarizeIfNeeded.mockRejectedValueOnce(new Error("summary write failed"));
+
+    try {
+      const service = new AIService();
+      const stream = service.streamChatWithArtifacts("hello", "project", {
+        projectId: "project-1",
+        userId: "user-1",
+        agentMode: "general",
+        model: "gpt-5.2",
+      });
+
+      const chunks: Array<{ type?: string; runStatus?: string }> = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+        if (chunk.type === "run_end") break;
+      }
+
+      expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+        runStatus: "completed",
+      });
+      await expect(Promise.all(scheduledTasks.map((task) => task()))).resolves.toEqual([
+        undefined,
+        undefined,
+      ]);
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[ai-service] memory-use attribution failed after response",
+        expect.objectContaining({
+          conversationId: "conv-1",
+          runId: "run-1",
+          error: "attribution write failed",
+        }),
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[ai-service] auto-summarization failed after response",
+        expect.objectContaining({
+          conversationId: "conv-1",
+          runId: "run-1",
+          error: "summary write failed",
+        }),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("keeps terminal delivery stable when post-response registration is unavailable", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.after.mockImplementation(() => {
+      throw new Error("after context unavailable");
+    });
+    mocks.addAssistantMessageToConversationForRun.mockResolvedValueOnce({
+      id: "msg-1",
+      role: "assistant",
+      content: "assistant content",
+      createdAt: new Date("2026-03-11T12:00:00.000Z").toISOString(),
+    });
+
+    try {
+      const service = new AIService();
+      const stream = service.streamChatWithArtifacts("hello", "project", {
+        projectId: "project-1",
+        userId: "user-1",
+        agentMode: "general",
+        model: "gpt-5.2",
+      });
+
+      const chunks: Array<{ type?: string; runStatus?: string }> = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+        if (chunk.type === "run_end") break;
+      }
+
+      expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+        runStatus: "completed",
+      });
+      expect(mocks.markMemoriesUsedInAnswer).not.toHaveBeenCalled();
+      expect(mocks.autoSummarizeIfNeeded).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[ai-service] memory-use attribution was not scheduled",
+        expect.objectContaining({ error: "after context unavailable" }),
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[ai-service] auto-summarization was not scheduled",
+        expect.objectContaining({ error: "after context unavailable" }),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("delivers run_end without waiting for non-settling auto-summarization", async () => {
+    mocks.autoSummarizeIfNeeded.mockImplementationOnce(() => new Promise(() => {}));
+
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    });
+
+    const chunks: Array<{ type?: string; runStatus?: string }> = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      runStatus: "completed",
+    });
+    expect(mocks.endRun).toHaveBeenCalledWith("run-1", "completed", expect.any(Number), expect.any(Number));
+  });
+
+  it("delivers run_end without waiting for non-settling memory-use attribution", async () => {
+    mocks.markMemoriesUsedInAnswer.mockImplementationOnce(() => new Promise(() => {}));
+
+    const service = new AIService();
+    const stream = service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    });
+
+    const chunks: Array<{ type?: string; runStatus?: string }> = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      runStatus: "completed",
+    });
+    expect(mocks.endRun).toHaveBeenCalledWith("run-1", "completed", expect.any(Number), expect.any(Number));
+  });
+
+  it("[runtime-no-answer-failure-truth] fails a natural no-answer run instead of completing an empty assistant turn", async () => {
     mocks.provider.streamChat.mockImplementationOnce(async function* () {
       yield {
         type: "done",
@@ -755,6 +1071,122 @@ describe("AIService run finalization", () => {
     }
   });
 
+  it("delivers run_end without waiting for non-settling title generation", async () => {
+    const titleSpy = vi.spyOn(
+      AIService.prototype as unknown as {
+        maybeGenerateConversationTitle: (params: unknown) => Promise<string | null>;
+      },
+      "maybeGenerateConversationTitle",
+    ).mockImplementationOnce(() => new Promise(() => {}));
+
+    try {
+      const service = new AIService();
+      const stream = service.streamChatWithArtifacts("hello", "project", {
+        projectId: "project-1",
+        userId: "user-1",
+        agentMode: "general",
+        model: "gpt-5.2",
+      });
+
+      const chunks: Array<{ type?: string; runStatus?: string; conversationTitle?: string }> = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+        if (chunk.type === "run_end") break;
+      }
+
+      const titleIndex = chunks.findIndex((chunk) => chunk.type === "conversation_title");
+      const runEndIndex = chunks.findIndex((chunk) => chunk.type === "run_end");
+      expect(titleIndex).toBeGreaterThanOrEqual(0);
+      expect(titleIndex).toBeLessThan(runEndIndex);
+      expect(chunks[titleIndex]).toMatchObject({
+        conversationTitle: "Fallback",
+      });
+      expect(chunks[runEndIndex]).toMatchObject({
+        runStatus: "completed",
+      });
+      expect(mocks.after).toHaveBeenCalledTimes(3);
+      expect(titleSpy).toHaveBeenCalledTimes(1);
+      expect(mocks.endRun).toHaveBeenCalledWith("run-1", "completed", expect.any(Number), expect.any(Number));
+    } finally {
+      titleSpy.mockRestore();
+    }
+  });
+
+  it("bounds title provider work and passes an aborting signal to an uncooperative provider", async () => {
+    vi.useFakeTimers();
+    let providerSignal: AbortSignal | undefined;
+    mocks.provider.chat.mockImplementationOnce(async (_messages, options) => {
+      providerSignal = options?.signal;
+      return new Promise(() => {});
+    });
+    const service = new AIService();
+    const generateTitle = (
+      service as unknown as {
+        maybeGenerateConversationTitle: (params: {
+          conversationId: string;
+          projectId: string;
+          historicalAssistantCount: number;
+          firstUserMessage: string;
+          assistantMessage: string;
+          fallbackTitle: string;
+        }) => Promise<string | null>;
+      }
+    ).maybeGenerateConversationTitle({
+      conversationId: "conv-1",
+      projectId: "project-1",
+      historicalAssistantCount: 0,
+      firstUserMessage: "How does exercise affect blood pressure?",
+      assistantMessage: "Regular exercise generally lowers blood pressure.",
+      fallbackTitle: "How does exercise affect blood pressure?",
+    });
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(generateTitle).resolves.toBeNull();
+    expect(providerSignal).toBeDefined();
+    expect(providerSignal?.aborted).toBe(true);
+    expect(mocks.aiConversationUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("refines only the deterministic title that this run claimed", async () => {
+    mocks.provider.chat.mockResolvedValueOnce({
+      id: "title-response",
+      content: "Exercise Effects on Blood Pressure",
+      model: "grok-4-1-fast",
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+    });
+    mocks.aiConversationUpdateMany.mockResolvedValueOnce({ count: 1 });
+    const service = new AIService();
+    const refinedTitle = await (
+      service as unknown as {
+        maybeGenerateConversationTitle: (params: {
+          conversationId: string;
+          projectId: string;
+          historicalAssistantCount: number;
+          firstUserMessage: string;
+          assistantMessage: string;
+          fallbackTitle: string;
+        }) => Promise<string | null>;
+      }
+    ).maybeGenerateConversationTitle({
+      conversationId: "conv-1",
+      projectId: "project-1",
+      historicalAssistantCount: 0,
+      firstUserMessage: "How does exercise affect blood pressure?",
+      assistantMessage: "Regular exercise generally lowers blood pressure.",
+      fallbackTitle: "How does exercise affect blood pressure?",
+    });
+
+    expect(refinedTitle).toBe("Exercise Effects on Blood Pressure");
+    expect(mocks.aiConversationUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: "conv-1",
+        title: "How does exercise affect blood pressure?",
+      },
+      data: { title: "Exercise Effects on Blood Pressure" },
+    });
+  });
+
   it("does not retro-fail a completed run when trace flushing throws after finalization", async () => {
     mocks.flushTracing.mockRejectedValueOnce(new Error("trace flush failed"));
 
@@ -779,6 +1211,105 @@ describe("AIService run finalization", () => {
     expect(mocks.trace.end).toHaveBeenCalledTimes(1);
     expect(mocks.endRun).toHaveBeenCalledWith("run-1", "completed", expect.any(Number), expect.any(Number));
     expect(mocks.markRunFinalizationFailed).not.toHaveBeenCalled();
+  });
+
+  it("still emits completed run_end when usage settlement is deferred", async () => {
+    mocks.trySettleUsageReservation.mockResolvedValue(false);
+
+    const service = new AIService();
+    const chunks: Array<{ type?: string; runStatus?: string; stopReason?: string }> = [];
+    for await (const chunk of service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      runStatus: "completed",
+      stopReason: "natural",
+    });
+    expect(mocks.endRun).toHaveBeenCalledWith(
+      "run-1",
+      "completed",
+      expect.any(Number),
+      expect.any(Number),
+    );
+  });
+
+  it("[runtime-cancelled-terminal-truth] does not persist partial assistant content after a durable semantic cancellation", async () => {
+    const semanticCancellation = new AbortController();
+    mocks.registerActiveRunExecutionCancellation.mockReturnValueOnce({
+      signal: semanticCancellation.signal,
+      abort: () => semanticCancellation.abort(),
+      dispose: mocks.runCancellationDispose,
+    });
+    mocks.provider.streamChat.mockImplementationOnce(async function* () {
+      yield { type: "content", content: "partial answer" };
+      semanticCancellation.abort();
+      throw new DOMException("cancelled", "AbortError");
+    });
+
+    const service = new AIService();
+    const chunks: Array<{ type?: string; runStatus?: string }> = [];
+    for await (const chunk of service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    })) {
+      chunks.push(chunk);
+    }
+
+    expect(mocks.addAssistantMessageToConversationForRun).not.toHaveBeenCalled();
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      runStatus: "cancelled",
+    });
+  });
+
+  it("aborts a hung parent provider call at the hard wall-time budget", async () => {
+    vi.useFakeTimers();
+    let markProviderStarted!: () => void;
+    const providerStarted = new Promise<void>((resolve) => {
+      markProviderStarted = resolve;
+    });
+    mocks.provider.streamChat.mockImplementationOnce(async function* (...args: unknown[]) {
+      const options = args[1] as { signal?: AbortSignal } | undefined;
+      markProviderStarted();
+      await new Promise<never>((_resolve, reject) => {
+        options?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("deadline", "AbortError"));
+        }, { once: true });
+      });
+    });
+
+    const service = new AIService();
+    const chunks: Array<{ type?: string; errorCode?: string; runStatus?: string; stopReason?: string }> = [];
+    const collecting = (async () => {
+      for await (const chunk of service.streamChatWithArtifacts("hello", "project", {
+        projectId: "project-1",
+        userId: "user-1",
+        agentMode: "general",
+        model: "gpt-5.2",
+      })) {
+        chunks.push(chunk);
+      }
+    })();
+
+    await providerStarted;
+    expect(mocks.provider.streamChat).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(120_000);
+    await collecting;
+
+    expect(chunks.find((chunk) => chunk.type === "error")).toMatchObject({
+      errorCode: "AGENT_LOOP_WALL_TIME_EXCEEDED",
+    });
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      runStatus: "failed",
+      stopReason: "wall_time",
+    });
   });
 
   it("suppresses stale assistant writes after ownership loss instead of finalizing the replaced run", async () => {

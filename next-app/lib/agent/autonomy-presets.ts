@@ -26,7 +26,6 @@ export const PRESET_LEVELS: Record<AutonomyPreset, Record<string, AutonomyLevel>
         inspect_memory: 1,
         list_projects: 2,
         open_project: 1,
-        create_project: 1,
     },
     assisted: {
         search_pubmed: 2,
@@ -47,7 +46,6 @@ export const PRESET_LEVELS: Record<AutonomyPreset, Record<string, AutonomyLevel>
         inspect_memory: 3,
         list_projects: 3,
         open_project: 3,
-        create_project: 2,
     },
     autonomous: {
         search_pubmed: 4,
@@ -68,7 +66,6 @@ export const PRESET_LEVELS: Record<AutonomyPreset, Record<string, AutonomyLevel>
         inspect_memory: 4,
         list_projects: 4,
         open_project: 3,
-        create_project: 2,
     },
     custom: {},
 };

@@ -161,6 +161,39 @@ describe("extractMemoriesFromConversation", () => {
         expect(result).toEqual({ decisions: [], preferences: [], facts: [] });
     });
 
+    it("aborts a late provider result before any proposal can be written", async () => {
+        mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
+        const controller = new AbortController();
+        let resolveProvider!: (value: { content: string }) => void;
+        mockChat.mockImplementationOnce(() => new Promise((resolve) => {
+            resolveProvider = resolve;
+        }));
+
+        const extraction = extractMemoriesFromConversation(
+            "conv-1",
+            "proj-1",
+            "run-1",
+            "user-1",
+            { signal: controller.signal },
+        );
+        await vi.waitFor(() => expect(mockChat).toHaveBeenCalledTimes(1));
+
+        controller.abort();
+        await expect(extraction).rejects.toMatchObject({ name: "AbortError" });
+
+        resolveProvider({
+            content: JSON.stringify({
+                decisions: [{ statement: "Late decision", category: "outcome" }],
+                preferences: [],
+                facts: [],
+            }),
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(mockCreateArtifact).not.toHaveBeenCalled();
+    });
+
     it("marks all conversation-extraction proposals with the same idempotency marker", async () => {
         mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
 
@@ -169,6 +202,7 @@ describe("extractMemoriesFromConversation", () => {
         expect(mockCreateArtifact).toHaveBeenCalled();
         for (const call of mockCreateArtifact.mock.calls) {
             expect(call[0].sourceEventId).toMatch(/^conversation-extractor:conv-1:/);
+            expect(call[0].applyId).toBe(call[0].sourceEventId);
         }
     });
 

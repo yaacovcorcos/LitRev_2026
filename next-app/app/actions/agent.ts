@@ -20,6 +20,7 @@ import { artifactReviewStatusSchema, autonomyPresetSchema, toolOverridesSchema }
 import type { ArtifactStatus } from "@/types/artifacts";
 import type { AutonomyPreset, AutonomyLevel } from "@/types/agent";
 import { ArtifactError } from "@/lib/server/agent/artifact-errors";
+import { assertProjectAccess } from "@/lib/server/access";
 
 async function assertArtifactAccess(artifactId: string, userId: string, workspaceId: string): Promise<void> {
     const artifact = await prisma.artifact.findFirst({
@@ -83,7 +84,7 @@ export async function reviewArtifactAction(
             );
         });
 
-        if (status === "accepted" && result.type === "study_update") {
+        if (status === "accepted" && (result.type === "study_update" || result.type === "study_deletion")) {
             const payload = (result.payload ?? {}) as { studyId?: string };
             if (result.projectId && payload.studyId) {
                 revalidatePath(`/project/${result.projectId}/ledger/${payload.studyId}`);
@@ -112,6 +113,13 @@ export async function undoArtifactAction(artifactId: string) {
             await assertArtifactAccess(id, userId, workspaceId);
             return undoArtifact(id);
         });
+        if (result.type === "study_update" || result.type === "study_deletion") {
+            const payload = (result.payload ?? {}) as { studyId?: string };
+            if (result.projectId && payload.studyId) {
+                revalidatePath(`/project/${result.projectId}/ledger/${payload.studyId}`);
+                revalidatePath(`/project/${result.projectId}/ledger`);
+            }
+        }
         return { success: true, artifact: result };
     } catch (error) {
         const safeError = getSafeErrorDetails(error, "Failed to undo artifact", { allowRawMessage: true });
@@ -178,7 +186,16 @@ export async function getRunLineageAction(runId: string) {
         const id = cuidSchema.parse(runId);
         const lineage = await withAuth(async ({ userId, workspaceId }) => {
             await assertRunAccess(id, userId, workspaceId);
-            return getRunLineage(id);
+            const result = await getRunLineage(id);
+            if (!result) return null;
+            const pending = [result];
+            while (pending.length > 0) {
+                const node = pending.pop();
+                if (!node) continue;
+                await assertRunAccess(node.id, userId, workspaceId);
+                pending.push(...node.children);
+            }
+            return result;
         });
         if (!lineage) {
             return { success: false as const, error: "Run not found" };
@@ -198,9 +215,12 @@ export async function getRunLineageAction(runId: string) {
 export async function getAutonomyConfigAction(projectId?: string) {
     try {
         const id = projectIdSchema.optional().parse(projectId);
-        const config = await withAuth(({ userId }) =>
-            getAutonomyConfig(userId, id),
-        );
+        const config = await withAuth(async ({ userId, workspaceId }) => {
+            if (id) {
+                await assertProjectAccess({ ownerId: userId, workspaceId }, id);
+            }
+            return getAutonomyConfig(userId, id);
+        });
         return { success: true as const, config };
     } catch (error) {
         return {
@@ -226,9 +246,17 @@ export async function updateAutonomyAction(
 ) {
     try {
         const v = updateAutonomyInput.parse({ preset, toolOverrides, projectId });
-        const config = await withAuth(({ userId }) =>
-            updateAutonomyConfig(userId, v.preset as AutonomyPreset, v.toolOverrides as Record<string, AutonomyLevel> | undefined, v.projectId),
-        );
+        const config = await withAuth(async ({ userId, workspaceId }) => {
+            if (v.projectId) {
+                await assertProjectAccess({ ownerId: userId, workspaceId }, v.projectId);
+            }
+            return updateAutonomyConfig(
+                userId,
+                v.preset as AutonomyPreset,
+                v.toolOverrides as Record<string, AutonomyLevel> | undefined,
+                v.projectId,
+            );
+        });
         return { success: true as const, config };
     } catch (error) {
         return {

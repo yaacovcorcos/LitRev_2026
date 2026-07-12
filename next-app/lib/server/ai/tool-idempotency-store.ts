@@ -34,11 +34,12 @@ export type ToolIdempotencyStore = {
     options?: ToolIdempotencyReserveOptions
   ): Promise<ToolIdempotencyReservation>;
   complete(input: ToolIdempotencyReservationInput & {
-    reservationId?: string | null;
+    reservationId: string;
     result: ToolResult;
   }): Promise<void>;
   release(input: ToolIdempotencyRecordKey & {
-    reservationId?: string | null;
+    reservationId: string;
+    callId: string;
   }): Promise<void>;
 };
 
@@ -154,59 +155,25 @@ export function createPrismaToolIdempotencyStore(): ToolIdempotencyStore {
         completedAt: new Date(),
       };
 
-      if (input.reservationId) {
-        const updated = await prisma.toolIdempotencyRecord.updateMany({
-          where: {
-            id: input.reservationId,
-            status: "running",
-          },
-          data,
-        });
-        if (updated.count > 0) return;
-      }
-
-      await prisma.toolIdempotencyRecord.upsert({
+      const updated = await prisma.toolIdempotencyRecord.updateMany({
         where: {
-          scopeKey_toolName_fingerprint: {
-            scopeKey: input.scopeKey,
-            toolName: input.toolName,
-            fingerprint: input.fingerprint,
-          },
-        },
-        update: data,
-        create: {
-          scopeKey: input.scopeKey,
-          toolName: input.toolName,
-          fingerprint: input.fingerprint,
-          status: "completed",
+          id: input.reservationId,
+          status: "running",
           callId: input.callId,
-          runId: input.runId ?? undefined,
-          projectId: input.projectId ?? undefined,
-          userId: input.userId ?? undefined,
-          studyId: input.studyId ?? undefined,
-          result,
-          completedAt: new Date(),
         },
+        data,
       });
+      if (updated.count !== 1) {
+        throw new Error("Tool idempotency reservation is no longer owned by this call.");
+      }
     },
 
     async release(input) {
-      if (input.reservationId) {
-        await prisma.toolIdempotencyRecord.deleteMany({
-          where: {
-            id: input.reservationId,
-            status: "running",
-          },
-        });
-        return;
-      }
-
       await prisma.toolIdempotencyRecord.deleteMany({
         where: {
-          scopeKey: input.scopeKey,
-          toolName: input.toolName,
-          fingerprint: input.fingerprint,
+          id: input.reservationId,
           status: "running",
+          callId: input.callId,
         },
       });
     },

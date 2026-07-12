@@ -80,7 +80,9 @@ Important defaults:
 - Playwright default port is `3101`
 - base URL defaults to `http://127.0.0.1:3101`
 - Playwright starts its own Next dev server through `webServer`
+- the managed dev server uses Next webpack mode so an isolated task worktree may reuse a dependency symlink outside the worktree root
 - the web server command sets `NEXT_PUBLIC_E2E_TEST_MODE=1` and `E2E_TEST_MODE=1`
+- `desktop-chromium` discovers desktop and shared specs; `mobile-chromium` discovers mobile and shared specs
 
 Implication:
 - if no other Next dev server is already running for this repo, let Playwright manage its own server on `3101`
@@ -104,12 +106,23 @@ cd next-app
 npx playwright test --list
 ```
 
+The list must contain both `desktop-chromium` and `mobile-chromium`. A missing project is a configuration regression.
+
 Recommended smoke check on a new machine:
 
 ```bash
 cd next-app
 npx playwright test --project=mobile-chromium --workers=1 mobile-login-smoke.spec.ts
 ```
+
+Authenticated agent foundation check:
+
+```bash
+cd next-app
+npm run test:e2e:foundation
+```
+
+The seeded artifact scenario in that lane refuses non-loopback database hosts. Use the repository's local PostgreSQL development/test database; never point the fixture at a deployed database.
 
 If that fails because another Next dev server is already running in `next-app`, either stop that server or reuse it with `PLAYWRIGHT_PORT=<port>`.
 
@@ -165,8 +178,9 @@ If `agent-browser` fails:
 
 ## Current LitRev baseline
 
-As of April 2, 2026, the expected local browser-tooling posture is:
+The expected local browser-tooling posture is:
 - Playwright available in `next-app/`
+- desktop and mobile Chromium projects visible through `npx playwright test --list`
 - `agent-browser` installed as a machine-level CLI
 - Playwright used for durable checked-in tests
 - `agent-browser` used for interactive local verification and debugging

@@ -39,7 +39,6 @@ describe("getToolDefinitions", () => {
         const names = defs.map((d) => d.name).sort();
         expect(names).toEqual([
             "ask_user",
-            "create_project",
             "forget_memory",
             "inspect_memory",
             "list_projects",
@@ -62,7 +61,6 @@ describe("getToolDefinitions", () => {
         const defs = getToolDefinitions("general");
         expect(defs.map((d) => d.name).sort()).toEqual([
             "ask_user",
-            "create_project",
             "delegate_protocol",
             "delegate_screening",
             "delegate_search",
