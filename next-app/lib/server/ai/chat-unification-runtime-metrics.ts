@@ -1,4 +1,10 @@
-import type { ChatSurface, ChatUnificationStreamPhase, RunEndObservedPayload } from "@/types/chat-unification";
+import { getProviderModelId } from "@/lib/ai/config";
+import type {
+  ChatSurface,
+  ChatUnificationStreamPhase,
+  RetryModelContinuityPayloadV3,
+  RunEndObservedPayload,
+} from "@/types/chat-unification";
 type PageCarrier = { page?: string };
 
 export type RunEndObservation = {
@@ -36,5 +42,16 @@ export function buildRunEndObservedPayload(params: {
     actualModel: params.actualModel,
     actualModelSource: params.actualModelSource,
     firstProviderContentMs: params.firstProviderContentMs ?? null,
+  };
+}
+
+export function buildRetryModelContinuityPayload(params: {
+  requestKey: string;
+  model: string;
+}): RetryModelContinuityPayloadV3 {
+  return {
+    requestKey: params.requestKey,
+    expectedModel: getProviderModelId(params.model) ?? params.model,
+    source: "retry_action",
   };
 }

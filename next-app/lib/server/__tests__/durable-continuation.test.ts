@@ -243,6 +243,32 @@ describe("durable continuation", () => {
     expect(buildDurableContinuationContext(result!)).toContain("restart_policy=restart_read_only");
   });
 
+  it("restarts interrupted PDF previews under the read-only policy", async () => {
+    mocks.agentRunFindFirst.mockResolvedValue({ id: "run-preview", conversationId: "conv-preview" });
+    mocks.runEventFindMany.mockResolvedValue([{
+      sequence: 4,
+      type: "tool_call",
+      payload: {
+        id: "call-preview",
+        name: "preview_study_pdf_update",
+        arguments: { studyId: "study-1" },
+      },
+      toolName: "preview_study_pdf_update",
+      artifactId: null,
+      messageRole: null,
+    }]);
+    mocks.artifactFindMany.mockResolvedValue([]);
+
+    await expect(resolveDurableContinuationSource({
+      runId: "run-preview",
+      conversationId: "conv-preview",
+    })).resolves.toMatchObject({
+      kind: "tool_call_restart",
+      toolName: "preview_study_pdf_update",
+      restartPolicy: "restart_read_only",
+    });
+  });
+
   it("resolves an idempotent mutation restart with explicit idempotency policy", async () => {
     mocks.agentRunFindFirst.mockResolvedValue({
       id: "run-6",
@@ -276,6 +302,35 @@ describe("durable continuation", () => {
       restartPolicy: "retry_idempotent_mutation",
     });
     expect(buildDurableContinuationContext(result!)).toContain("restart_policy=retry_idempotent_mutation");
+  });
+
+  it("does not restart interrupted project creation without a durable creation key", async () => {
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-create-project",
+      conversationId: "conv-create-project",
+    });
+    mocks.runEventFindMany.mockResolvedValue([
+      {
+        sequence: 12,
+        type: "tool_call",
+        payload: {
+          id: "call-create-project",
+          name: "create_project",
+          arguments: { name: "Diabetes review", approved: true },
+        },
+        toolName: "create_project",
+        artifactId: null,
+        messageRole: null,
+      },
+    ]);
+    mocks.artifactFindMany.mockResolvedValue([]);
+
+    const result = await resolveDurableContinuationSource({
+      runId: "run-create-project",
+      conversationId: "conv-create-project",
+    });
+
+    expect(result).toBeNull();
   });
 
   it("refuses continuation when the latest tool call is not safe to restart", async () => {

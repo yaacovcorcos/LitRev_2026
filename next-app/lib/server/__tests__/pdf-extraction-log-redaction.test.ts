@@ -17,7 +17,7 @@ vi.mock("@/lib/server/logging", () => ({
   logServerWarn: mocks.logServerWarn,
 }));
 
-const { quickExtractWithAI } = await import("@/lib/server/pdf-extraction");
+const { deepAnalyzeWithAI, quickExtractWithAI } = await import("@/lib/server/pdf-extraction");
 
 describe("pdf extraction log redaction", () => {
   beforeEach(() => {
@@ -47,5 +47,19 @@ describe("pdf extraction log redaction", () => {
     const context = mocks.logServerError.mock.calls[0]?.[2] as Record<string, unknown>;
     expect(context).not.toHaveProperty("content");
     expect(JSON.stringify(context)).not.toContain(sensitiveContent);
+    expect(mocks.chat).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({
+      reasoningEffort: "fast",
+    }));
+  });
+
+  it("reserves the bounded deep-analysis budget for strict JSON output", async () => {
+    mocks.chat.mockResolvedValue({ content: "{}" });
+
+    await deepAnalyzeWithAI("pdf text", {}, "proj-1");
+
+    expect(mocks.chat).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({
+      reasoningEffort: "fast",
+      maxTokens: 2000,
+    }));
   });
 });

@@ -5,15 +5,14 @@
  */
 
 import { z } from "zod";
-import type { ToolDefinition, ToolResult } from "@/types/ai";
+import type { DeliveryMode, ReasoningEffort, ToolDefinition, ToolResult } from "@/types/ai";
 import { createToolSchemaValidationErrorEnvelope } from "@/lib/ai/error-envelope";
 import type { ToolAutonomyMeta, AutonomyLevel, AgentMode } from "@/types/agent";
 import type { ProtocolData } from "@/types/protocol";
 import { HARD_CAPS } from "@/types/agent";
 import { DELEGATION_TOOL_NAMES, getContextualAllowedTools } from "@/lib/agent/router";
 import { isDelegationEnabled } from "@/lib/agent/feature-flags";
-import { logServerWarn } from "@/lib/server/logging";
-import { isAbortLikeError } from "@/lib/abort";
+import { isAbortLikeError, throwIfAborted } from "@/lib/abort";
 import { pubmedSearchTool } from "./pubmed-search";
 import { addToLedgerTool } from "./add-to-ledger";
 import { excludeStudyTool } from "./exclude-study";
@@ -35,7 +34,6 @@ import { forgetMemoryTool } from "./forget-memory";
 import { inspectMemoryTool } from "./inspect-memory";
 import { listProjectsTool } from "./list-projects";
 import { openProjectTool } from "./open-project";
-import { createProjectTool } from "./create-project";
 import { askUserTool } from "./ask-user";
 import { delegateSearchTool } from "./delegate-search";
 import { delegateScreeningTool } from "./delegate-screening";
@@ -106,6 +104,7 @@ export interface ToolExecutionContext {
         ledgerContext?: string;
         memoryContext?: string;
         autonomyContext?: string;
+        selectedModel?: string;
     };
     /**
      * Parsed protocol payload from DB for tools that need structured protocol fields
@@ -120,6 +119,10 @@ export interface ToolExecutionContext {
      * Middleware uses this as a final guard before any tool executor can run.
      */
     allowedToolNames?: string[];
+    /** Parent generation configuration inherited by delegated sub-agents. */
+    model?: string;
+    reasoningEffort?: ReasoningEffort;
+    deliveryMode?: DeliveryMode;
 }
 
 /**
@@ -147,7 +150,6 @@ export const AVAILABLE_TOOLS: AITool[] = [
     previewStudyPdfUpdateTool,
     listProjectsTool,
     openProjectTool,
-    createProjectTool,
     askUserTool,
     readProtocolTool,
     readLedgerTool,
@@ -167,7 +169,6 @@ const GLOBAL_SCOPE_TOOL_ALLOWLIST = new Set<string>([
     "inspect_memory",
     "list_projects",
     "open_project",
-    "create_project",
     "ask_user",
 ]);
 
@@ -299,6 +300,8 @@ export async function executeTool(
         };
     }
 
+    throwIfAborted(context?.signal);
+
     // 1. Validate input
     const inputValidation = validateToolInput(tool, args);
     if (!inputValidation.success) {
@@ -312,19 +315,36 @@ export async function executeTool(
 
     try {
         // 2. Execute tool
-        const result = await tool.execute(args, context);
+        const result = await tool.execute(
+            inputValidation.data as Record<string, unknown>,
+            context,
+        );
+        // Tool implementations remain cooperatively cancellable. Never accept,
+        // validate, or persist a late read result after the owning run stopped.
+        // We intentionally await the tool instead of detaching mutating work.
+        throwIfAborted(context?.signal);
 
-        // 3. Validate output (warn but don't block — output schema is advisory)
+        // 3. Treat output schemas as a trust boundary. Invalid tool data must
+        // never be fed back to the model, persisted, or rendered as success.
+        let validatedResult = result.result;
         if (result.result !== null && result.result !== undefined) {
             const outputValidation = validateToolOutput(tool, result.result);
             if (!outputValidation.success) {
-                logServerWarn(`tool:${name}`, "tool output validation failed", {
-                    validationError: outputValidation.error,
-                });
+                return {
+                    callId,
+                    result: null,
+                    error: outputValidation.error,
+                    errorMeta: createToolSchemaValidationErrorEnvelope(name, "output"),
+                };
             }
+            validatedResult = outputValidation.data;
         }
 
-        return { ...result, callId };
+        return {
+            ...result,
+            callId,
+            result: validatedResult,
+        };
     } catch (error) {
         if (context?.signal?.aborted || isAbortLikeError(error)) {
             throw error;

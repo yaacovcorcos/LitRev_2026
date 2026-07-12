@@ -20,7 +20,7 @@ type QueuedFollowUpControllerOptions = {
     hasPendingChoices: boolean;
     hasPendingUserInput: boolean;
     sendLocked: boolean;
-    dispatchQueuedFollowUp: (queuedFollowUp: QueuedFollowUp) => void | Promise<void>;
+    dispatchQueuedFollowUp: (queuedFollowUp: QueuedFollowUp) => void | Promise<boolean | void>;
 };
 
 export function useQueuedFollowUpController({

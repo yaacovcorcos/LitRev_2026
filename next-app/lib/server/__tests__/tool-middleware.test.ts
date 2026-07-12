@@ -12,6 +12,7 @@ import type {
   ToolIdempotencyStore,
 } from "@/lib/server/ai/tool-idempotency-store";
 import type { ToolResult } from "@/types/ai";
+import { RunOwnershipError } from "@/lib/server/agent/run";
 
 function createFakeIdempotencyStore(): ToolIdempotencyStore {
   const records = new Map<string, {
@@ -19,6 +20,7 @@ function createFakeIdempotencyStore(): ToolIdempotencyStore {
     status: "running" | "completed";
     result?: ToolResult;
     createdAt: Date;
+    callId: string;
   }>();
   let nextId = 1;
   const keyFor = (input: ToolIdempotencyReservationInput) => `${input.scopeKey}:${input.toolName}:${input.fingerprint}`;
@@ -36,34 +38,69 @@ function createFakeIdempotencyStore(): ToolIdempotencyStore {
         && existing.createdAt < options.staleRunningBefore
       ) {
         existing.createdAt = options.now ?? new Date();
+        existing.callId = input.callId;
         return { status: "reserved", reservationId: existing.id };
       }
       return { status: "in_flight", reservationId: existing.id };
     }
     const id = `receipt-${nextId++}`;
-    records.set(key, { id, status: "running", createdAt: options?.now ?? new Date() });
+    records.set(key, {
+      id,
+      status: "running",
+      createdAt: options?.now ?? new Date(),
+      callId: input.callId,
+    });
     return { status: "reserved", reservationId: id };
   });
 
   const complete = vi.fn<ToolIdempotencyStore["complete"]>(async (input) => {
     const key = keyFor(input);
+    const existing = records.get(key);
+    if (!existing || existing.id !== input.reservationId || existing.callId !== input.callId) {
+      throw new Error("Tool idempotency reservation is no longer owned by this call.");
+    }
     records.set(key, {
-      id: input.reservationId ?? `receipt-${nextId++}`,
+      id: input.reservationId,
       status: "completed",
       result: { ...input.result, callId: "" },
       createdAt: new Date(),
+      callId: input.callId,
     });
   });
 
   const release = vi.fn<ToolIdempotencyStore["release"]>(async (input) => {
     const key = `${input.scopeKey}:${input.toolName}:${input.fingerprint}`;
-    records.delete(key);
+    const existing = records.get(key);
+    if (existing?.id === input.reservationId && existing.callId === input.callId) {
+      records.delete(key);
+    }
   });
 
   return { reserve, complete, release };
 }
 
 describe("tool middleware pipeline", () => {
+  it("does not run middleware or the executor when the request is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const before = vi.fn();
+    const executor = vi.fn(async () => ({ callId: "c1", result: "should not run" }));
+
+    await expect(executeWithToolMiddleware(
+      {
+        name: "search_pubmed",
+        args: { query: "q" },
+        callId: "c1",
+        context: { signal: controller.signal },
+      },
+      [{ name: "before", before }],
+      executor,
+    )).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(before).not.toHaveBeenCalled();
+    expect(executor).not.toHaveBeenCalled();
+  });
+
   it("runs before hooks and allows request transformation", async () => {
     const executor = vi.fn(async (request: ToolExecutionRequest) => ({
       callId: request.callId,
@@ -190,6 +227,23 @@ describe("tool middleware pipeline", () => {
     errorSpy.mockRestore();
   });
 
+  it("fails closed when a safety-critical after hook cannot settle", async () => {
+    const executor = vi.fn(async () => ({ callId: "c1", result: "mutated" }));
+    const middlewares: ToolMiddleware[] = [{
+      name: "durable-receipt",
+      afterFailureMode: "closed",
+      after: () => {
+        throw new Error("receipt unavailable");
+      },
+    }];
+
+    await expect(executeWithToolMiddleware(
+      { name: "add_to_ledger", args: {}, callId: "c1" },
+      middlewares,
+      executor,
+    )).rejects.toThrow("receipt unavailable");
+  });
+
   it("applies multiple middleware hooks in sequence", async () => {
     const executor = vi.fn(async (request: ToolExecutionRequest) => ({
       callId: request.callId,
@@ -290,6 +344,76 @@ describe("tool middleware pipeline", () => {
       result: null,
       error: "Tool execution failed: executor boom",
     });
+  });
+
+  it("rethrows run ownership loss from the executor after releasing its reservation", async () => {
+    const ownershipError = new RunOwnershipError({
+      runId: "r1",
+      status: "cancelled",
+      completedAt: new Date("2026-05-06T00:00:00.000Z"),
+      finalizationState: "completed",
+    });
+    const executor = vi.fn().mockRejectedValue(ownershipError);
+    const store = createFakeIdempotencyStore();
+    const middleware = createIdempotencyMiddleware({
+      toolNames: ["add_to_ledger"],
+      store,
+    });
+
+    await expect(executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: { results: [{ title: "Study A", authors: "A", year: 2024 }] },
+        callId: "c1",
+        context: { projectId: "p1", userId: "u1", runId: "r1", rootRunId: "root-1" },
+      },
+      [middleware],
+      executor,
+    )).rejects.toBe(ownershipError);
+
+    expect(store.complete).not.toHaveBeenCalled();
+    expect(store.release).toHaveBeenCalledWith(expect.objectContaining({
+      reservationId: "receipt-1",
+      callId: "c1",
+    }));
+  });
+
+  it("rethrows run ownership loss from a later before hook after releasing its reservation", async () => {
+    const ownershipError = new RunOwnershipError({
+      runId: "r1",
+      status: "completed",
+      completedAt: new Date("2026-05-06T00:00:00.000Z"),
+      finalizationState: "completed",
+    });
+    const store = createFakeIdempotencyStore();
+    const middleware = createIdempotencyMiddleware({
+      toolNames: ["add_to_ledger"],
+      store,
+    });
+    const ownershipGuard: ToolMiddleware = {
+      name: "ownership-guard",
+      before: () => {
+        throw ownershipError;
+      },
+    };
+    const executor = vi.fn(async () => ({ callId: "c1", result: { added: 1 } }));
+
+    await expect(executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: { results: [{ title: "Study A", authors: "A", year: 2024 }] },
+        callId: "c1",
+        context: { projectId: "p1", userId: "u1", runId: "r1", rootRunId: "root-1" },
+      },
+      [middleware, ownershipGuard],
+      executor,
+    )).rejects.toBe(ownershipError);
+
+    expect(executor).not.toHaveBeenCalled();
+    expect(store.release).toHaveBeenCalledWith(expect.objectContaining({
+      reservationId: "receipt-1",
+      callId: "c1",
+    }));
   });
 
   it("replays cached result for duplicate protected mutation calls", async () => {
@@ -562,6 +686,10 @@ describe("tool middleware pipeline", () => {
     expect(store.reserve).toHaveBeenCalledTimes(1);
     expect(store.complete).not.toHaveBeenCalled();
     expect(store.release).toHaveBeenCalledTimes(1);
+    expect(store.release).toHaveBeenCalledWith(expect.objectContaining({
+      reservationId: "receipt-1",
+      callId: "c1",
+    }));
   });
 
   it("releases a persistent reservation when the protected tool executor throws", async () => {
@@ -672,5 +800,108 @@ describe("tool middleware pipeline", () => {
     expect(retry.result).toEqual({ added: 1 });
     expect(store.release).toHaveBeenCalledTimes(1);
     expect(executor).toHaveBeenCalledTimes(2);
+  });
+
+  it("releases a reserved mutation if cancellation arrives before executor entry", async () => {
+    const controller = new AbortController();
+    const store = createFakeIdempotencyStore();
+    const middleware = createIdempotencyMiddleware({
+      toolNames: ["add_to_ledger"],
+      store,
+    });
+    const abortBeforeExecutor: ToolMiddleware = {
+      name: "abort-before-executor",
+      before: () => {
+        controller.abort();
+      },
+    };
+    const executor = vi.fn(async () => ({ callId: "c1", result: { added: 1 } }));
+
+    await expect(executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: { results: [{ title: "Study A", authors: "A", year: 2024 }] },
+        callId: "c1",
+        context: {
+          projectId: "p1",
+          userId: "u1",
+          runId: "r1",
+          rootRunId: "root-1",
+          signal: controller.signal,
+        },
+      },
+      [middleware, abortBeforeExecutor],
+      executor,
+    )).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(executor).not.toHaveBeenCalled();
+    expect(store.release).toHaveBeenCalledWith(expect.objectContaining({
+      reservationId: "receipt-1",
+      callId: "c1",
+    }));
+  });
+
+  it("fails closed on circular fingerprint input without overflowing the stack", async () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const executor = vi.fn(async () => ({ callId: "c1", result: { ok: true } }));
+
+    const result = await executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: circular,
+        callId: "c1",
+        context: { runId: "run-1", rootRunId: "root-1" },
+      },
+      [createIdempotencyMiddleware({ toolNames: ["add_to_ledger"], store: null })],
+      executor,
+    );
+
+    expect(result.error).toContain("circular reference");
+    expect(executor).not.toHaveBeenCalled();
+  });
+
+  it("fails closed at bounded fingerprint depth instead of throwing RangeError", async () => {
+    const root: Record<string, unknown> = {};
+    let cursor = root;
+    for (let depth = 0; depth < 100; depth += 1) {
+      const child: Record<string, unknown> = {};
+      cursor.child = child;
+      cursor = child;
+    }
+    const executor = vi.fn(async () => ({ callId: "c1", result: { ok: true } }));
+
+    const result = await executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: root,
+        callId: "c1",
+        context: { runId: "run-1", rootRunId: "root-1" },
+      },
+      [createIdempotencyMiddleware({ toolNames: ["add_to_ledger"], store: null })],
+      executor,
+    );
+
+    expect(result.error).toContain("fingerprint depth limit");
+    expect(result.error).not.toContain("Maximum call stack");
+    expect(executor).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when fingerprint input exceeds the bounded byte budget", async () => {
+    const executor = vi.fn(async () => ({ callId: "c1", result: { ok: true } }));
+
+    const result = await executeWithToolMiddleware(
+      {
+        name: "add_to_ledger",
+        args: { payload: "x".repeat(600 * 1024) },
+        callId: "c1",
+        context: { runId: "run-1", rootRunId: "root-1" },
+      },
+      [createIdempotencyMiddleware({ toolNames: ["add_to_ledger"], store: null })],
+      executor,
+    );
+
+    expect(result.error).toContain("fingerprint size limit");
+    expect(executor).not.toHaveBeenCalled();
   });
 });

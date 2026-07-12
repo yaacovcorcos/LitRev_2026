@@ -9,21 +9,32 @@ import type { AgentMode, AutonomyPreset, AutonomyLevel } from "@/types/agent";
 import type {
     ChoiceOption,
     CopilotPage,
+    DeliveryMode,
+    ReasoningEffort,
     ReasoningMode,
     RuntimeSendOverrides,
     StreamPhase,
     UserInputRequest,
     UserInputResolutionKind,
 } from "@/types/ai";
-import type { SelectableModelId, ReasoningSupportTier } from "@/lib/ai/config";
+import type {
+    ReasoningSupportTier,
+    ReasoningVisibilitySupport,
+    SelectableModelId,
+} from "@/lib/ai/config";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import type { ContextCaptureHistoryEntry, ContextCaptureTarget } from "@/types/context-capture";
-import type { QueuedFollowUp } from "@/types/queued-followup";
+import type { GenerationPreferenceSnapshot, QueuedFollowUp } from "@/types/queued-followup";
+import type {
+    ModelAvailabilityMap,
+    ModelAvailabilityStatus,
+} from "@/hooks/useModelAvailability";
 
 export type PendingAttachmentExtraction =
     | {
         status: "ready";
         text: string;
+        mediaKind?: "document" | "image";
     }
     | {
         status: "failed";
@@ -77,10 +88,26 @@ export type ProjectConversationContextValue = {
     reasoningMode: ReasoningMode;
     /** Currently selected model ID */
     selectedModel: SelectableModelId;
+    /** Model compute intensity, persisted independently for each model. */
+    reasoningEffort: ReasoningEffort;
+    /** One-shot paid delivery tier; resets to standard after a request is captured. */
+    deliveryMode: DeliveryMode;
+    /** Server-derived provider readiness for selectable models. */
+    modelAvailability?: ModelAvailabilityMap;
+    /** State of the authenticated provider-readiness request. */
+    modelAvailabilityStatus?: ModelAvailabilityStatus;
+    /** Retry the authenticated provider-readiness request. */
+    retryModelAvailability?: () => void;
     /** Reasoning support tier of the current model */
     reasoningSupport: ReasoningSupportTier;
+    /** Provider-supported visible reasoning level, separate from compute effort. */
+    reasoningVisibilitySupport: ReasoningVisibilitySupport;
     /** Update the selected model (persists to localStorage, may force reasoningMode off) */
     setSelectedModel: (modelId: SelectableModelId) => void;
+    /** Update and persist compute intensity for the selected model. */
+    setReasoningEffort: (effort: ReasoningEffort) => void;
+    /** Update the one-shot delivery tier for the next request. */
+    setDeliveryMode: (mode: DeliveryMode) => void;
     /** Toggle the panel collapsed state */
     toggleCollapsed: () => void;
     /** Set the panel collapsed state */
@@ -98,6 +125,7 @@ export type ProjectConversationContextValue = {
         retryModelExpectation?: RetryModelExpectation,
         contextTargets?: ContextCaptureTarget[],
         runtimeOverrides?: RuntimeSendOverrides,
+        generationPreferences?: GenerationPreferenceSnapshot,
     ) => void;
     /** Update global reasoning visibility mode */
     setReasoningMode: (mode: ReasoningMode) => void;

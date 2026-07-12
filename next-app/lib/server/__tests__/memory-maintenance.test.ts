@@ -130,6 +130,30 @@ describe("memory maintenance", () => {
         expect(mockUserUpdateMany).not.toHaveBeenCalled();
     });
 
+    it("does not enter a maintenance write transaction after cancellation", async () => {
+        const controller = new AbortController();
+        prismaMocks.projectFindMany.mockImplementationOnce(async () => {
+            controller.abort();
+            return asProjectFindManyResult([{
+                id: "p-low",
+                retrievalCount: 0,
+                usedInAnswerCount: 0,
+                acceptedCount: 0,
+                rejectedCount: 2,
+                contradictionCount: 0,
+                pinned: false,
+            }]);
+        });
+
+        await expect(runMemoryMaintenance({
+            projectId: "proj-1",
+            signal: controller.signal,
+        })).rejects.toMatchObject({ name: "AbortError" });
+
+        expect(prismaMocks.transaction).not.toHaveBeenCalled();
+        expect(mockProjectUpdateMany).not.toHaveBeenCalled();
+    });
+
     it("utility scoring prefers accepted/used memories", () => {
         const weak = utilityScore({
             id: "m1",

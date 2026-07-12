@@ -9,9 +9,11 @@ import { normalizeAssistantContent } from "@/lib/ai/normalize-assistant-content"
 import { prisma } from "@/lib/server/prisma";
 import { getAIService } from "@/lib/server/ai";
 import type { AIMessage } from "@/types/ai";
+import { getBackgroundModel } from "@/lib/server/ai/background-model-policy";
 import type { MemoryProposalPayload } from "@/types/artifacts";
 import type { ProjectMemoryCategory, ProjectMemoryType } from "./project-memory";
 import { createArtifact } from "@/lib/server/agent/artifacts";
+import { createAbortError, throwIfAborted } from "@/lib/abort";
 
 const VALID_CATEGORIES: ProjectMemoryCategory[] = [
     "inclusion", "exclusion", "outcome", "population", "intervention", "comparison",
@@ -90,6 +92,24 @@ export interface ExtractionResult {
 
 const EMPTY_RESULT: ExtractionResult = { decisions: [], preferences: [], facts: [] };
 
+async function raceWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+    throwIfAborted(signal);
+    if (!signal) return promise;
+
+    let removeAbortListener = () => {};
+    const aborted = new Promise<never>((_resolve, reject) => {
+        const onAbort = () => reject(createAbortError());
+        signal.addEventListener("abort", onAbort, { once: true });
+        removeAbortListener = () => signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) onAbort();
+    });
+    try {
+        return await Promise.race([promise, aborted]);
+    } finally {
+        removeAbortListener();
+    }
+}
+
 /**
  * Extract memories from a completed conversation using a lightweight AI model.
  * Inferred memories are proposed for review instead of silently becoming durable truth.
@@ -99,11 +119,14 @@ export async function extractMemoriesFromConversation(
     projectId: string,
     runId?: string,
     userId?: string,
+    options?: { signal?: AbortSignal },
 ): Promise<ExtractionResult> {
+    throwIfAborted(options?.signal);
     const extractionMarker = `conversation-extractor:${conversationId}`;
 
-    // 0. Dedup guard — skip if this conversation was already extracted
-    // ProjectMemory catches decision/fact extraction; artifact marker catches preference-only extraction.
+    // 0. Legacy whole-conversation dedup guard. New extraction attempts use
+    // per-proposal applyIds below; a prefix match here would mistake partial
+    // proposal persistence for whole-job success and omit the remaining work.
     const [existingMemoryExtraction, existingLegacyProposalExtraction] = await Promise.all([
         prisma.projectMemory.findFirst({
             where: { projectId, tags: { has: `conversation:${conversationId}` } },
@@ -119,6 +142,7 @@ export async function extractMemoriesFromConversation(
             select: { id: true },
         }),
     ]);
+    throwIfAborted(options?.signal);
     if (existingMemoryExtraction || existingLegacyProposalExtraction) return EMPTY_RESULT;
 
     // 1. Fetch conversation messages
@@ -127,6 +151,7 @@ export async function extractMemoriesFromConversation(
         orderBy: { createdAt: "asc" },
         select: { role: true, content: true },
     });
+    throwIfAborted(options?.signal);
 
     const scopingContext = isScopingConversation(messages);
 
@@ -154,12 +179,18 @@ export async function extractMemoriesFromConversation(
         { id: "user", role: "user", content: `Conversation:\n\n${transcript}`, createdAt: new Date().toISOString() },
     ];
 
-    const response = await aiService.chat(aiMessages, {
-        model: "grok-4-1-fast",
-        temperature: 0.1,
-        maxTokens: 1500,
-        projectId,
-    });
+    const response = await raceWithAbort(
+        aiService.chat(aiMessages, {
+            model: getBackgroundModel("analysis"),
+            reasoningEffort: "fast",
+            temperature: 0.1,
+            maxTokens: 1500,
+            projectId,
+            signal: options?.signal,
+        }),
+        options?.signal,
+    );
+    throwIfAborted(options?.signal);
 
     // 4. Parse JSON response
     let parsed: ExtractionResult;
@@ -178,8 +209,11 @@ export async function extractMemoriesFromConversation(
             parsed.decisions = parsed.decisions.filter((d) => d.statement && !looksTransientScopingSummary(d.statement));
         }
     } catch {
+        throwIfAborted(options?.signal);
         return EMPTY_RESULT;
     }
+
+    throwIfAborted(options?.signal);
 
     if (!runId) {
         return parsed;
@@ -191,6 +225,7 @@ export async function extractMemoriesFromConversation(
         payload: MemoryProposalPayload,
         sourceEventId: string,
     ) {
+        throwIfAborted(options?.signal);
         const existingProposal = await prisma.artifact.findFirst({
             where: {
                 projectId,
@@ -200,6 +235,7 @@ export async function extractMemoriesFromConversation(
             },
             select: { id: true },
         });
+        throwIfAborted(options?.signal);
         if (existingProposal) return;
 
         await createArtifact({
@@ -211,6 +247,7 @@ export async function extractMemoriesFromConversation(
             title,
             payload,
             sourceEventId,
+            applyId: sourceEventId,
         });
     }
 

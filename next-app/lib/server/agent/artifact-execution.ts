@@ -8,7 +8,10 @@ import type { ProtocolData } from "@/types/protocol";
 import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
 import { logServerError, logServerWarn } from "@/lib/server/logging";
 import { ArtifactError } from "./artifact-errors";
-import { emitEventWithinTransaction } from "./events";
+import {
+    emitEventWithinTransaction,
+    emitPostRunUserEventWithinTransaction,
+} from "./events";
 import { createArtifactCheckpointInTransaction } from "./run-checkpoints";
 import { markRunDurabilityDegraded } from "./run";
 
@@ -61,24 +64,70 @@ export type ArtifactPostCommitTask = {
     protocolData: ProtocolData;
 };
 
+export type ArtifactRestoreResult = {
+    postCommitTasks?: ArtifactPostCommitTask[];
+};
+
+export type ArtifactApplyResult = {
+    postCommitTasks?: ArtifactPostCommitTask[];
+    /** Transaction-local identity needed to read the exact mutation target. */
+    undoStateHint?: unknown;
+};
+
 export type ApplyFunction = (
     ctx: ArtifactExecutionContext,
     artifact: ArtifactExecutionArtifact,
-) => Promise<{ postCommitTasks?: ArtifactPostCommitTask[] } | void>;
+) => Promise<ArtifactApplyResult | void>;
 
 export type SnapshotReader = (
     ctx: ArtifactExecutionContext,
     artifact: ArtifactExecutionArtifact,
 ) => Promise<unknown | null>;
 
+export type AppliedStateReader = (
+    ctx: ArtifactExecutionContext,
+    artifact: ArtifactExecutionArtifact,
+    applyResult?: ArtifactApplyResult,
+) => Promise<unknown | null>;
+
+export const ARTIFACT_UNDO_SNAPSHOT_VERSION = 1 as const;
+
+export type ArtifactUndoSnapshotEnvelope = {
+    undoSnapshotVersion: typeof ARTIFACT_UNDO_SNAPSHOT_VERSION;
+    before: unknown | null;
+    applied: unknown | null;
+};
+
+export function createArtifactUndoSnapshotEnvelope(
+    before: unknown | null,
+    applied: unknown | null,
+): ArtifactUndoSnapshotEnvelope {
+    return {
+        undoSnapshotVersion: ARTIFACT_UNDO_SNAPSHOT_VERSION,
+        before,
+        applied,
+    };
+}
+
+export function parseArtifactUndoSnapshotEnvelope(
+    snapshot: unknown,
+): ArtifactUndoSnapshotEnvelope | null {
+    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return null;
+    const candidate = snapshot as Partial<ArtifactUndoSnapshotEnvelope>;
+    if (candidate.undoSnapshotVersion !== ARTIFACT_UNDO_SNAPSHOT_VERSION) return null;
+    if (!("before" in candidate) || !("applied" in candidate)) return null;
+    return candidate as ArtifactUndoSnapshotEnvelope;
+}
+
 export type RestoreFunction = (
     ctx: ArtifactExecutionContext,
     artifact: ArtifactExecutionArtifact,
-) => Promise<void>;
+) => Promise<ArtifactRestoreResult | void>;
 
 export type ArtifactApplyRegistries = {
     applyFunctions: ReadonlyMap<ArtifactType, ApplyFunction>;
     snapshotReaders: ReadonlyMap<ArtifactType, SnapshotReader>;
+    appliedStateReaders: ReadonlyMap<ArtifactType, AppliedStateReader>;
 };
 
 export class ArtifactDurabilityPersistenceError extends Error {
@@ -134,6 +183,17 @@ export async function loadArtifactForExecution(
         throw new ArtifactError("ARTIFACT_NOT_FOUND", "Artifact not found");
     }
     return artifact;
+}
+
+/** Serialize every state-changing operation for one artifact. */
+export async function lockArtifactExecutionInTransaction(
+    tx: Prisma.TransactionClient,
+    artifactId: string,
+): Promise<void> {
+    await tx.$queryRaw<{ locked: number }[]>`
+        SELECT 1 AS locked
+        FROM pg_advisory_xact_lock(hashtext(${`artifact-execution:${artifactId}`}))
+    `;
 }
 
 export function buildExecutionContext(
@@ -215,9 +275,16 @@ export async function runArtifactApplyTransaction(
     const { artifactId, executionSource, statusOverride, reviewNote, editedPayload, actorUserId } = params;
 
     return prisma.$transaction(async (tx) => {
+        await lockArtifactExecutionInTransaction(tx, artifactId);
         const artifact = await loadArtifactForExecution(tx, artifactId);
         if (artifact.appliedAt) {
             return { artifact, eventCreatedAt: null, postCommitTasks: [] };
+        }
+        if (artifact.status !== "proposed") {
+            throw new ArtifactError(
+                "ARTIFACT_INVALID_STATE",
+                `Cannot apply artifact with status "${artifact.status}"`,
+            );
         }
 
         const ctx = buildExecutionContext(tx, artifact, executionSource, actorUserId);
@@ -228,6 +295,7 @@ export async function runArtifactApplyTransaction(
         };
 
         let snapshot: ArtifactExecutionArtifact["snapshot"];
+        let persistedSnapshot: ArtifactExecutionArtifact["snapshot"];
         let applyResult: Awaited<ReturnType<ApplyFunction>> | undefined;
         try {
             const snapshotReader = registries.snapshotReaders.get(artifact.type as ArtifactType);
@@ -242,6 +310,23 @@ export async function runArtifactApplyTransaction(
                     snapshot: snapshot as ArtifactExecutionArtifact["snapshot"],
                 })
                 : undefined;
+
+            const appliedStateReader = registries.appliedStateReaders.get(artifact.type as ArtifactType);
+            const normalizedApplyResult = applyResult && typeof applyResult === "object"
+                ? applyResult
+                : undefined;
+            const appliedState = appliedStateReader
+                ? await appliedStateReader(ctx, effectiveArtifact, normalizedApplyResult)
+                : null;
+            if (appliedStateReader && appliedState === null) {
+                throw new ArtifactError(
+                    "ARTIFACT_APPLY_FAILED",
+                    `Applied state could not be captured for ${artifact.type}.`,
+                );
+            }
+            persistedSnapshot = (appliedStateReader
+                ? createArtifactUndoSnapshotEnvelope(snapshot ?? null, appliedState)
+                : snapshot) as ArtifactExecutionArtifact["snapshot"];
 
             if (!applyFn) {
                 logServerWarn("artifacts", "no apply function registered for artifact type", {
@@ -259,9 +344,9 @@ export async function runArtifactApplyTransaction(
                 where: { id: artifactId },
                 data: {
                     payload: effectivePayload as object,
-                    snapshot: (snapshot ?? Prisma.DbNull) as Prisma.InputJsonValue,
+                    snapshot: (persistedSnapshot ?? Prisma.DbNull) as Prisma.InputJsonValue,
                     appliedAt: finalizedAt,
-                    applyId: artifact.id,
+                    applyId: artifact.applyId ?? artifact.id,
                     ...(statusOverride ? { status: statusOverride } : {}),
                     ...(executionSource === "manual_review"
                         ? {
@@ -274,7 +359,10 @@ export async function runArtifactApplyTransaction(
                 select: artifactExecutionSelect,
             });
 
-            const event = await emitEventWithinTransaction(
+            const emitReviewEvent = executionSource === "manual_review"
+                ? emitPostRunUserEventWithinTransaction
+                : emitEventWithinTransaction;
+            const event = await emitReviewEvent(
                 tx,
                 artifact.runId,
                 "artifact_reviewed",

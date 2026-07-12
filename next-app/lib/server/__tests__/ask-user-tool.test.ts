@@ -11,7 +11,7 @@ describe("askUserTool", () => {
         });
     });
 
-    it("returns requiresUserInput sentinel for single_choice", async () => {
+    it("[ask-user-clarify-pico] returns requiresUserInput sentinel for single_choice", async () => {
         const result = await askUserTool.execute({
             question: "Which database to use?",
             questionType: "single_choice",

@@ -1,4 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
+import { loadEnvConfig } from "@next/env";
+
+loadEnvConfig(process.cwd());
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? "3101");
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
@@ -20,14 +23,22 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: `NEXT_PUBLIC_E2E_TEST_MODE=1 E2E_TEST_MODE=1 BETTER_AUTH_URL=${quotedBaseURL} NEXT_PUBLIC_BETTER_AUTH_URL=${quotedBaseURL} npm run dev -- --hostname 127.0.0.1 --port ${port}`,
+    command: `NEXT_PUBLIC_E2E_TEST_MODE=1 E2E_TEST_MODE=1 BETTER_AUTH_URL=${quotedBaseURL} NEXT_PUBLIC_BETTER_AUTH_URL=${quotedBaseURL} npm run dev -- --webpack --hostname 127.0.0.1 --port ${port}`,
     url: `${baseURL}/login`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
   projects: [
     {
+      name: "desktop-chromium",
+      testIgnore: /mobile-.*\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+      },
+    },
+    {
       name: "mobile-chromium",
+      testIgnore: /desktop-.*\.spec\.ts/,
       use: {
         ...devices["Pixel 7"],
       },

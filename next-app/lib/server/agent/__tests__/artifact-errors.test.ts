@@ -15,4 +15,15 @@ describe("artifact-errors", () => {
     expect(isArtifactError(new ArtifactError("ARTIFACT_INVALID_STATE"))).toBe(true);
     expect(isArtifactError(new Error("plain"))).toBe(false);
   });
+
+  it.each([
+    "ARTIFACT_UNDO_UNSUPPORTED",
+    "ARTIFACT_UNDO_FAILED",
+    "ARTIFACT_UNDO_CONFLICT",
+  ] as const)("preserves the %s undo failure code", (errorCode) => {
+    const error = new ArtifactError(errorCode);
+
+    expect(error.errorCode).toBe(errorCode);
+    expect(error.message).toBe(errorCode);
+  });
 });

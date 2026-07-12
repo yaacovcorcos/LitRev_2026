@@ -47,12 +47,14 @@ export function mapToolToArtifactType(toolName: string): ArtifactType | null {
     const mapping: Record<string, ArtifactType> = {
         bulk_screening: "screening_batch",
         update_protocol: "protocol_suggestion",
+        update_criteria: "criteria_card",
         store_memory: "memory_proposal",
         forget_memory: "memory_forget_proposal",
         update_note: "draft_diff",
         exclude_study: "study_proposal",
         update_study: "study_update",
         update_study_direct: "study_update",
+        delete_study: "study_deletion",
     };
     return mapping[toolName] ?? null;
 }
@@ -64,6 +66,8 @@ export function mapToolToArtifactTitle(toolName: string, args: Record<string, un
             return "Batch screening results";
         case "update_protocol":
             return `Protocol: ${args.field ?? "update"}`;
+        case "update_criteria":
+            return `Criteria: ${args.type ?? "eligibility"} ${args.action ?? "update"}`;
         case "store_memory":
             return `Remember: ${args.key ?? "preference"}`;
         case "forget_memory":
@@ -75,6 +79,8 @@ export function mapToolToArtifactTitle(toolName: string, args: Record<string, un
         case "update_study":
         case "update_study_direct":
             return "Study metadata update";
+        case "delete_study":
+            return "Delete study from ledger";
         default:
             return toolName;
     }

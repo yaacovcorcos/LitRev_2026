@@ -47,7 +47,7 @@ describe("delegation tools", () => {
     expect(mocks.executeSubAgent).not.toHaveBeenCalled();
   });
 
-  it("delegate_search forwards system context and signal and infers criteria/year from protocol data", async () => {
+  it("[delegation-general-search-route] delegate_search forwards system context and signal and infers criteria/year from protocol data", async () => {
     process.env.ENABLE_DELEGATION = "1";
     const controller = new AbortController();
     const protocolData = createDefaultProtocolData();
@@ -70,6 +70,7 @@ describe("delegation tools", () => {
           projectContext: "Project: CHF review",
           protocolContext: "[PROTOCOL_CONTEXT] ...",
           ledgerContext: "[LEDGER_CONTEXT] ...",
+          selectedModel: "gpt-5.2",
         },
       },
     );
@@ -83,7 +84,9 @@ describe("delegation tools", () => {
       projectContext: "Project: CHF review",
       protocolContext: "[PROTOCOL_CONTEXT] ...",
       ledgerContext: "[LEDGER_CONTEXT] ...",
+      selectedModel: "gpt-5.2",
     });
+    expect(call.model).toBe("gpt-5.2");
     expect(call.task).toEqual(expect.stringContaining("Exclusion criteria"));
     expect(call.task).toEqual(expect.stringContaining("2019:2024[dp]"));
     expect(call.task).not.toEqual(expect.stringContaining("Semantic Scholar Queries"));

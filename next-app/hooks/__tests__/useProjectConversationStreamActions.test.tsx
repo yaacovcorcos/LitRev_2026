@@ -12,16 +12,24 @@ const {
     mockReviewArtifactAction,
     mockUndoArtifactAction,
     mockDispatchProjectDataChanged,
+    mockGetChangedDomainsForAcceptedArtifact,
+    mockGetProtocolPatchForAcceptedArtifact,
+    mockIsProtocolLiveSyncV1Enabled,
     mockCreateConversation,
     mockProcessAIStream,
     mockRequestAgentRunCancellation,
+    mockResetDeliveryMode,
 } = vi.hoisted(() => ({
     mockReviewArtifactAction: vi.fn(),
     mockUndoArtifactAction: vi.fn(),
     mockDispatchProjectDataChanged: vi.fn(),
+    mockGetChangedDomainsForAcceptedArtifact: vi.fn(),
+    mockGetProtocolPatchForAcceptedArtifact: vi.fn(),
+    mockIsProtocolLiveSyncV1Enabled: vi.fn(),
     mockCreateConversation: vi.fn(),
     mockProcessAIStream: vi.fn(),
     mockRequestAgentRunCancellation: vi.fn(),
+    mockResetDeliveryMode: vi.fn(),
 }));
 
 vi.mock("@/app/actions/agent", () => ({
@@ -38,17 +46,17 @@ vi.mock("@/lib/ai/stream-processor", () => ({
 }));
 
 vi.mock("@/lib/ai/run-cancel-client", () => ({
-    requestAgentRunCancellation: (...args: unknown[]) => mockRequestAgentRunCancellation(...args),
+    cancelAgentRun: (...args: unknown[]) => mockRequestAgentRunCancellation(...args),
 }));
 
 vi.mock("@/lib/project-data-events", () => ({
     dispatchProjectDataChanged: (...args: unknown[]) => mockDispatchProjectDataChanged(...args),
-    getChangedDomainsForAcceptedArtifact: vi.fn(() => ["drafts"]),
-    getProtocolPatchForAcceptedArtifact: vi.fn(() => null),
+    getChangedDomainsForAcceptedArtifact: (...args: unknown[]) => mockGetChangedDomainsForAcceptedArtifact(...args),
+    getProtocolPatchForAcceptedArtifact: (...args: unknown[]) => mockGetProtocolPatchForAcceptedArtifact(...args),
 }));
 
 vi.mock("@/lib/protocol-live-sync-feature-flags", () => ({
-    isProtocolLiveSyncV1Enabled: () => false,
+    isProtocolLiveSyncV1Enabled: () => mockIsProtocolLiveSyncV1Enabled(),
 }));
 
 import { useProjectConversationStreamActions } from "../useProjectConversationStreamActions";
@@ -87,7 +95,11 @@ function buildArtifact(status: ArtifactData["status"] = "proposed"): ArtifactDat
     };
 }
 
-function useHarness() {
+function useHarness(generation: {
+    selectedModel?: "gpt-5.6-luna" | "gpt-5.6-terra";
+    reasoningEffort?: "medium" | "high";
+    deliveryMode?: "standard" | "priority";
+} = {}) {
     const initialArtifact = buildArtifact();
     const [state, setState] = useState<ProjectConversationState>({
         ...createDefaultProjectConversationState(),
@@ -113,11 +125,13 @@ function useHarness() {
         () => new Map([[initialArtifact.id, initialArtifact]]),
     );
     const [isLoading, setIsLoading] = useState(false);
+    const isLoadingRef = useRef(isLoading);
     const [streamPhase, setStreamPhase] = useState<StreamPhase>("idle");
     const [currentRunId, setCurrentRunId] = useState<string | null>(null);
     const [, setPendingChoices] = useState<ChoiceOption[]>([]);
     const [pendingUserInput, setPendingUserInput] = useState<UserInputRequest | null>(null);
     const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+    const resetDeliveryMode = mockResetDeliveryMode;
 
     const hook = useProjectConversationStreamActions({
         projectId: "project-1",
@@ -131,7 +145,7 @@ function useHarness() {
         stateRef,
         streamGenRef: useRef(0),
         abortControllerRef: useRef<AbortController | null>(null),
-        isLoadingRef: useRef(isLoading),
+        isLoadingRef,
         setIsLoading,
         setStreamPhase: setStreamPhase as Dispatch<SetStateAction<StreamPhase>>,
         setCurrentRunId,
@@ -143,6 +157,10 @@ function useHarness() {
         pendingAttachment,
         setPendingAttachment,
         reasoningMode: "full",
+        selectedModel: generation.selectedModel ?? "gpt-5.6-luna",
+        reasoningEffort: generation.reasoningEffort ?? "medium",
+        deliveryMode: generation.deliveryMode ?? "standard",
+        resetDeliveryMode,
         convo: {
             currentConversationId: "conv-1",
             currentConversationIdRef: { current: "conv-1" },
@@ -163,6 +181,7 @@ function useHarness() {
         pendingAttachment,
         setPendingAttachment,
         setCurrentRunId,
+        resetDeliveryMode,
     };
 }
 
@@ -172,6 +191,9 @@ describe("useProjectConversationStreamActions artifact review path", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockUndoArtifactAction.mockResolvedValue({ success: true, artifact: buildArtifact("rejected") });
+        mockGetChangedDomainsForAcceptedArtifact.mockReturnValue(["draft"]);
+        mockGetProtocolPatchForAcceptedArtifact.mockReturnValue(null);
+        mockIsProtocolLiveSyncV1Enabled.mockReturnValue(false);
         mockCreateConversation.mockResolvedValue({ success: true, data: { id: "conv-1" } });
         mockProcessAIStream.mockResolvedValue({
             runStatus: "completed",
@@ -275,6 +297,58 @@ describe("useProjectConversationStreamActions artifact review path", () => {
         expect(mockDispatchProjectDataChanged).not.toHaveBeenCalled();
     });
 
+    it("converts a rejected artifact server action into a visible error", async () => {
+        mockReviewArtifactAction.mockRejectedValueOnce(new Error("network unavailable"));
+        const { result } = renderHook(() => useHarness());
+
+        await act(async () => {
+            await result.current.handleReviewArtifact("artifact-1", "accepted");
+        });
+
+        expect(result.current.artifacts.get("artifact-1")?.status).toBe("proposed");
+        expect(result.current.state.messages).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                text: "Artifact review could not reach the server. Nothing was applied.",
+                streamError: expect.objectContaining({ code: "ARTIFACT_REVIEW_REQUEST_FAILED" }),
+            }),
+        ]));
+    });
+
+    it("refreshes restored protocol domains without redispatching the applied protocol patch", async () => {
+        mockIsProtocolLiveSyncV1Enabled.mockReturnValue(true);
+        mockGetChangedDomainsForAcceptedArtifact.mockReturnValue(["protocol", "memory"]);
+        mockGetProtocolPatchForAcceptedArtifact.mockReturnValue({
+            field: "researchQuestion",
+            value: "Applied RQ",
+        });
+        mockUndoArtifactAction.mockResolvedValue({
+            success: true,
+            artifact: {
+                ...buildArtifact("rejected"),
+                type: "protocol_suggestion",
+                payload: {
+                    field: "researchQuestion",
+                    value: "Applied RQ",
+                    rationale: "test",
+                },
+            },
+        });
+
+        const { result } = renderHook(() => useHarness());
+
+        await act(async () => {
+            await result.current.handleUndoArtifact("artifact-1");
+        });
+
+        expect(mockDispatchProjectDataChanged).toHaveBeenCalledWith({
+            projectId: "project-1",
+            domains: ["protocol", "memory"],
+            reason: "server_mutation",
+            source: "artifact_undo",
+        });
+        expect(mockGetProtocolPatchForAcceptedArtifact).not.toHaveBeenCalled();
+    });
+
     it("refuses to send when the attached PDF could not be read for chat", async () => {
         const { result } = renderHook(() => useHarness());
 
@@ -317,6 +391,146 @@ describe("useProjectConversationStreamActions artifact review path", () => {
         expect(mockRequestAgentRunCancellation).toHaveBeenCalledWith("run-active-1");
     });
 
+    it("waits for a prior stop to be confirmed before executing a plan", async () => {
+        const cancellation = createDeferred<"cancelled">();
+        mockRequestAgentRunCancellation.mockReturnValueOnce(cancellation.promise);
+        const { result } = renderHook(() => useHarness());
+
+        act(() => {
+            result.current.setCurrentRunId("run-active-plan");
+        });
+        act(() => {
+            result.current.cancelStream();
+        });
+
+        let planPromise!: Promise<void>;
+        act(() => {
+            planPromise = result.current.executePlanAction("artifact-1", [0]);
+        });
+
+        expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+        expect(result.current.artifacts.get("artifact-1")?.status).toBe("proposed");
+
+        await act(async () => {
+            cancellation.resolve("cancelled");
+            await planPromise;
+        });
+
+        expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+        const [, init] = vi.mocked(fetch).mock.calls[0] as [RequestInfo | URL, RequestInit];
+        expect(JSON.parse(String(init.body)).options.replaceRunId).toBe("run-active-plan");
+    });
+
+    it("keeps a plan proposed when prior cancellation cannot be confirmed", async () => {
+        const cancellation = createDeferred<"conflict">();
+        mockRequestAgentRunCancellation.mockReturnValueOnce(cancellation.promise);
+        const { result } = renderHook(() => useHarness());
+
+        act(() => {
+            result.current.setCurrentRunId("run-conflicted-plan");
+        });
+        act(() => {
+            result.current.cancelStream();
+        });
+
+        let planPromise!: Promise<void>;
+        act(() => {
+            planPromise = result.current.executePlanAction("artifact-1", [0]);
+        });
+        await act(async () => {
+            cancellation.resolve("conflict");
+            await planPromise;
+        });
+
+        expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+        expect(result.current.artifacts.get("artifact-1")?.status).toBe("proposed");
+        expect(result.current.state.messages).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                streamError: expect.objectContaining({ code: "RUN_CANCELLATION_UNCONFIRMED" }),
+            }),
+        ]));
+    });
+
+    it("waits for a paused stream to unwind before resuming clarification without cancelling its source run", async () => {
+        const releasePausedStream = createDeferred<void>();
+        mockProcessAIStream
+            .mockImplementationOnce(async ({ onChunk }: { onChunk: (chunk: unknown) => Promise<void> | void }) => {
+                await onChunk({ type: "run_start", runId: "run-ask", conversationId: "conv-1" });
+                await onChunk({
+                    type: "user_input_required",
+                    userInputRequest: {
+                        sourceRunId: "run-ask",
+                        callId: "ask-1",
+                        question: "Continue?",
+                        questionType: "yes_no",
+                    },
+                });
+                await releasePausedStream.promise;
+                return {
+                    runStatus: "paused",
+                    stopReason: "paused_for_input",
+                    errorMessage: null,
+                    actualModel: null,
+                    actualModelSource: "unknown",
+                    terminalReason: "paused_for_input",
+                };
+            })
+            .mockResolvedValueOnce({
+                runStatus: "completed",
+                stopReason: null,
+                errorMessage: null,
+                actualModel: null,
+                actualModelSource: "unknown",
+                terminalReason: "completed",
+            });
+
+        const { result } = renderHook(() => useHarness());
+        let initialSend!: Promise<void>;
+        act(() => {
+            initialSend = result.current.sendMessage("Start", "overview");
+        });
+
+        await waitFor(() => expect(mockProcessAIStream).toHaveBeenCalledTimes(1));
+
+        let resumeSend!: Promise<void>;
+        act(() => {
+            resumeSend = result.current.sendMessage(
+                "",
+                "overview",
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {
+                    replaceRunId: "run-ask",
+                    continueFromRunId: "run-ask",
+                    suppressUserMessageAppend: true,
+                    userInputResolution: {
+                        sourceRunId: "run-ask",
+                        callId: "ask-1",
+                        resolution: "answered",
+                        answerText: "Yes",
+                        answeredAt: "2026-07-12T10:00:00.000Z",
+                    },
+                },
+            );
+        });
+
+        expect(mockRequestAgentRunCancellation).not.toHaveBeenCalled();
+        expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+            releasePausedStream.resolve();
+            await initialSend;
+            await resumeSend;
+        });
+
+        expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+        expect(mockRequestAgentRunCancellation).not.toHaveBeenCalled();
+    });
+
     it("sends a readable PDF attachment through the truthful shared chat payload and clears local attachment state", async () => {
         const { result } = renderHook(() => useHarness());
 
@@ -335,7 +549,7 @@ describe("useProjectConversationStreamActions artifact review path", () => {
         });
 
         await act(async () => {
-            await result.current.sendMessage("Please summarize this", "overview", undefined, "gpt-5.2");
+            await result.current.sendMessage("Please summarize this", "overview", undefined, "gpt-5.6-luna");
         });
 
         const fetchMock = vi.mocked(fetch);
@@ -349,7 +563,9 @@ describe("useProjectConversationStreamActions artifact review path", () => {
         expect(body.options).toMatchObject({
             conversationId: "conv-1",
             projectId: "project-1",
-            model: "gpt-5.2",
+            model: "gpt-5.6-luna",
+            reasoningEffort: "medium",
+            deliveryMode: "standard",
             page: "overview",
         });
         expect(body.options.userMessageAttachments).toEqual([
@@ -376,5 +592,170 @@ describe("useProjectConversationStreamActions artifact review path", () => {
                 },
             ],
         });
+    });
+
+    it("keeps image bytes out of the prompt while forwarding attachment metadata for server hydration", async () => {
+        const { result } = renderHook(() => useHarness());
+
+        act(() => {
+            result.current.setPendingAttachment({
+                fileAssetId: "image-1",
+                filename: "figure.webp",
+                size: 4096,
+                mimeType: "image/webp",
+                isExisting: false,
+                extraction: {
+                    status: "ready",
+                    text: "",
+                    mediaKind: "image",
+                },
+            });
+        });
+
+        await act(async () => {
+            await result.current.sendMessage("Interpret this forest plot", "overview", undefined, "qwen3.7-plus");
+        });
+
+        const fetchMock = vi.mocked(fetch);
+        const [, requestInit] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+        const body = JSON.parse(String(requestInit.body));
+
+        expect(body.userMessage).toBe("Interpret this forest plot");
+        expect(body.userMessage).not.toContain("<attached_document");
+        expect(body.options).toMatchObject({
+            model: "qwen3.7-plus",
+            reasoningEffort: "high",
+            deliveryMode: "standard",
+            userMessageAttachments: [{
+                fileAssetId: "image-1",
+                filename: "figure.webp",
+                size: 4096,
+                mimeType: "image/webp",
+                isExisting: false,
+            }],
+        });
+    });
+
+    it("rejects an image on a non-vision model before side effects and keeps it attached", async () => {
+        const { result } = renderHook(() => useHarness());
+
+        act(() => {
+            result.current.setPendingAttachment({
+                fileAssetId: "image-unsupported",
+                filename: "figure.png",
+                size: 4096,
+                mimeType: "image/png",
+                isExisting: false,
+                extraction: {
+                    status: "ready",
+                    text: "",
+                    mediaKind: "image",
+                },
+            });
+        });
+
+        await act(async () => {
+            await result.current.sendMessage(
+                "Interpret this figure",
+                "overview",
+                undefined,
+                "deepseek-v4-flash",
+            );
+        });
+
+        expect(fetch).not.toHaveBeenCalled();
+        expect(result.current.pendingAttachment?.fileAssetId).toBe("image-unsupported");
+        expect(result.current.state.messages).toHaveLength(1);
+        expect(mockResetDeliveryMode).not.toHaveBeenCalled();
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            "Blocking send because deepseek-v4-flash does not support image input.",
+        );
+    });
+
+    it("retains an attachment when the server rejects the request before admission", async () => {
+        vi.stubGlobal("fetch", vi.fn(async () => ({
+            ok: false,
+            statusText: "Conflict",
+        })));
+        const { result } = renderHook(() => useHarness());
+
+        act(() => {
+            result.current.setPendingAttachment({
+                fileAssetId: "file-rejected",
+                filename: "paper.pdf",
+                size: 2048,
+                mimeType: "application/pdf",
+                isExisting: false,
+                extraction: {
+                    status: "ready",
+                    text: "Extracted text",
+                },
+            });
+        });
+
+        await act(async () => {
+            await result.current.sendMessage("Summarize", "overview");
+        });
+
+        expect(result.current.pendingAttachment?.fileAssetId).toBe("file-rejected");
+    });
+
+    it("snapshots one-shot priority delivery and resets the control after capture", async () => {
+        const { result } = renderHook(() => useHarness());
+
+        await act(async () => {
+            await result.current.sendMessage(
+                "Run this quickly",
+                "overview",
+                undefined,
+                "gpt-5.6-luna",
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                {
+                    model: "gpt-5.6-luna",
+                    reasoningEffort: "high",
+                    deliveryMode: "priority",
+                },
+            );
+        });
+
+        const fetchMock = vi.mocked(fetch);
+        const [, requestInit] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+        expect(JSON.parse(String(requestInit.body)).options).toMatchObject({
+            model: "gpt-5.6-luna",
+            reasoningEffort: "high",
+            deliveryMode: "priority",
+        });
+        expect(result.current.resetDeliveryMode).toHaveBeenCalledTimes(1);
+    });
+
+    it("propagates the selected generation settings into plan execution", async () => {
+        const { result } = renderHook(() => useHarness({
+            selectedModel: "gpt-5.6-terra",
+            reasoningEffort: "high",
+            deliveryMode: "priority",
+        }));
+
+        await act(async () => {
+            await result.current.executePlan("artifact-1", [0]);
+        });
+
+        const fetchMock = vi.mocked(fetch);
+        const [, requestInit] = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit];
+        const body = JSON.parse(String(requestInit.body));
+        expect(body).toMatchObject({
+            planId: "artifact-1",
+            selectedSteps: [0],
+            options: {
+                model: "gpt-5.6-terra",
+                reasoningEffort: "high",
+                deliveryMode: "priority",
+                reasoningMode: "off",
+            },
+        });
+        expect(result.current.resetDeliveryMode).toHaveBeenCalledTimes(1);
     });
 });

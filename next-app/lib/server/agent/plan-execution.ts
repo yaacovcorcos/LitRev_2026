@@ -11,6 +11,7 @@ import type { Prisma } from "@prisma/client";
 import { PlanSchema, type PlanPayload, type PlanStep, type PlanExecutionMetadata } from "@/types/artifacts";
 import { AIErrorWithEnvelope, createPlanExecutionErrorEnvelope } from "@/lib/ai/error-envelope";
 import { isExecutablePlanPayload } from "@/lib/server/agent/plan-payloads";
+import type { ToolCall, ToolResult } from "@/types/ai";
 
 export interface SelectedStep {
     originalIndex: number;
@@ -34,6 +35,34 @@ export interface PreparedPlanExecution {
     projectId: string | null;
     originAgentMode: PlanExecutionMetadata["originAgentMode"];
     allowedToolNames: string[];
+    executionAttemptId?: string;
+}
+
+export function selectPlanToolCallsForTurn(toolCalls: ToolCall[]): {
+    admittedToolCalls: ToolCall[];
+    deferredToolCalls: ToolCall[];
+} {
+    return {
+        admittedToolCalls: toolCalls.slice(0, 1),
+        deferredToolCalls: toolCalls.slice(1),
+    };
+}
+
+export function resolvePlanStepResult(
+    toolResult: Pick<ToolResult, "error" | "blockedByAutonomy" | "requiresUserInput">,
+): {
+    stepStatus: "completed" | "failed";
+    shouldStop: boolean;
+} {
+    const failed = Boolean(
+        toolResult.error
+        || toolResult.blockedByAutonomy
+        || toolResult.requiresUserInput,
+    );
+    return {
+        stepStatus: failed ? "failed" : "completed",
+        shouldStop: failed,
+    };
 }
 
 interface ParsedPlanArtifact {
@@ -76,9 +105,12 @@ function throwPlanExecutionError(code: string, message: string): never {
 }
 
 function buildSelectedSteps(payload: PlanPayload, selectedStepIndexes: number[]): SelectedStep[] {
-    const selectedSteps = selectedStepIndexes
-        .filter((i) => i >= 0 && i < payload.steps.length)
-        .map((i) => ({ originalIndex: i, ...payload.steps[i] }));
+    const selectedIndexes = new Set(
+        selectedStepIndexes.filter((index) => Number.isInteger(index) && index >= 0 && index < payload.steps.length),
+    );
+    const selectedSteps = payload.steps
+        .map((step, originalIndex) => ({ originalIndex, ...step }))
+        .filter((step) => selectedIndexes.has(step.originalIndex));
 
     if (selectedSteps.length === 0) {
         throwPlanExecutionError("PLAN_NO_VALID_SELECTED_STEPS", "No valid plan steps were selected for execution.");
@@ -129,10 +161,10 @@ export async function preparePlanExecution(
     };
 }
 
-export async function markPlanExecutionRunning(planId: string): Promise<void> {
+export async function markPlanExecutionRunning(planId: string, executionAttemptId: string): Promise<void> {
     const updated = await prisma.artifact.updateMany({
         where: { id: planId, status: "proposed", type: "plan" },
-        data: { status: "running" },
+        data: { status: "running", applyId: executionAttemptId },
     });
     if (updated.count === 0) {
         throwPlanExecutionError(
@@ -210,8 +242,9 @@ export async function startPlanExecution(
     expectedProjectId?: string | null,
 ): Promise<PreparedPlanExecution> {
     const prepared = await preparePlanExecution(planId, selectedStepIndexes, expectedProjectId);
-    await markPlanExecutionRunning(planId);
-    return prepared;
+    const executionAttemptId = crypto.randomUUID();
+    await markPlanExecutionRunning(planId, executionAttemptId);
+    return { ...prepared, executionAttemptId };
 }
 
 /**
@@ -221,11 +254,17 @@ export async function startPlanExecution(
 export async function completePlanExecution(
     planId: string,
     finalSteps: PlanStep[],
+    executionAttemptId: string,
 ): Promise<void> {
     const { payload } = await loadParsedPlanArtifact(planId);
 
-    await prisma.artifact.update({
-        where: { id: planId },
+    const updated = await prisma.artifact.updateMany({
+        where: {
+            id: planId,
+            type: "plan",
+            status: "running",
+            applyId: executionAttemptId,
+        },
         data: {
             status: "accepted",
             payload: { ...payload, steps: finalSteps } as unknown as Prisma.InputJsonValue,
@@ -233,6 +272,12 @@ export async function completePlanExecution(
             appliedAt: new Date(),
         },
     });
+    if (updated.count !== 1) {
+        throwPlanExecutionError(
+            "PLAN_EXECUTION_OWNERSHIP_LOST",
+            "Plan execution was superseded before completion could be persisted.",
+        );
+    }
 }
 
 /**
@@ -242,16 +287,29 @@ export async function completePlanExecution(
 export async function failPlanExecution(
     planId: string,
     finalSteps: PlanStep[],
-    reason?: string,
+    reason: string | undefined,
+    executionAttemptId: string,
 ): Promise<void> {
     const { payload } = await loadParsedPlanArtifact(planId);
 
-    await prisma.artifact.update({
-        where: { id: planId },
+    const updated = await prisma.artifact.updateMany({
+        where: {
+            id: planId,
+            type: "plan",
+            status: "running",
+            applyId: executionAttemptId,
+        },
         data: {
             status: "proposed",
+            applyId: null,
             payload: { ...payload, steps: finalSteps } as unknown as Prisma.InputJsonValue,
             reviewNote: reason ? `Execution failed: ${reason}` : null,
         },
     });
+    if (updated.count !== 1) {
+        throwPlanExecutionError(
+            "PLAN_EXECUTION_OWNERSHIP_LOST",
+            "Plan execution was superseded before failure state could be persisted.",
+        );
+    }
 }

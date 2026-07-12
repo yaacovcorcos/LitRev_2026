@@ -8,7 +8,6 @@ const inputSchema = z.object({
 });
 
 const outputSchema = z.object({
-    success: z.literal(true),
     studyId: z.string(),
     title: z.string(),
     reason: z.string().optional(),
@@ -18,7 +17,7 @@ export const deleteStudyTool: AITool = {
     definition: {
         name: "delete_study",
         description:
-            "Remove a study from the project's active ledger (soft delete). Use only when the user explicitly asks to delete, remove, or purge a study from the ledger. Use the study ID from [STUDY_CONTEXT] or [LEDGER_CONTEXT] when available.",
+            "Prepare a reviewable soft-deletion proposal for a study. This tool never deletes directly; the authenticated user must approve the resulting deletion card. Use only when the user explicitly asks to delete, remove, or purge a study.",
         parameters: {
             type: "object",
             properties: {
@@ -66,15 +65,9 @@ export const deleteStudyTool: AITool = {
                 return { callId: "", result: null, error: `Study not found: ${studyId}` };
             }
 
-            await prisma.study.updateMany({
-                where: { id: studyId, projectId, deletedAt: null },
-                data: { deletedAt: new Date() },
-            });
-
             return {
                 callId: "",
                 result: {
-                    success: true as const,
                     studyId: study.id,
                     title: study.title,
                     reason: reason || undefined,

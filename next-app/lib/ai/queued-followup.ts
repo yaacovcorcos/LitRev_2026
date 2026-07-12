@@ -1,6 +1,11 @@
 import type { QueuedFollowUp } from "@/types/queued-followup";
+import type { GenerationPreferenceSnapshot } from "@/types/queued-followup";
+import { createGenerationPreferenceSnapshot } from "@/lib/ai/generation-preferences";
 
-type CreateQueuedFollowUpInput = Omit<QueuedFollowUp, "id" | "createdAt">;
+type CreateQueuedFollowUpInput = Omit<
+    QueuedFollowUp,
+    "id" | "createdAt" | keyof GenerationPreferenceSnapshot
+> & Partial<GenerationPreferenceSnapshot>;
 
 export function createQueuedFollowUp(input: CreateQueuedFollowUpInput): QueuedFollowUp {
     const trimmed = input.text.trim();
@@ -14,6 +19,7 @@ export function createQueuedFollowUp(input: CreateQueuedFollowUpInput): QueuedFo
 
     return {
         ...input,
+        ...createGenerationPreferenceSnapshot(input),
         id,
         text: trimmed,
         createdAt: Date.now(),

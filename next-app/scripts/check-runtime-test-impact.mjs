@@ -1,23 +1,33 @@
 #!/usr/bin/env node
 
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 import { buildRuntimeTestImpactSummary, loadRuntimeTestImpactWaivers } from "../eslint/runtime-test-governance.mjs";
 
-function run(command, cwd) {
-  return execSync(command, { cwd, encoding: "utf8" }).trim();
+function runGit(args, cwd) {
+  return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+}
+
+function splitChangedFiles(output) {
+  return output ? output.split("\n").filter(Boolean) : [];
 }
 
 export function getChangedFiles({
   cwd = process.cwd(),
   env = process.env,
+  runGitImpl = runGit,
 } = {}) {
   const base = env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : "origin/main";
-  const mergeBase = run(`git merge-base HEAD ${base}`, cwd);
-  const output = run(`git diff --name-only ${mergeBase}..HEAD`, cwd);
-  return output ? output.split("\n").filter(Boolean) : [];
+  const mergeBase = runGitImpl(["merge-base", "HEAD", base], cwd);
+  const changedFiles = [
+    ...splitChangedFiles(runGitImpl(["diff", "--name-only", "--relative", `${mergeBase}..HEAD`], cwd)),
+    ...splitChangedFiles(runGitImpl(["diff", "--name-only", "--relative", "--cached"], cwd)),
+    ...splitChangedFiles(runGitImpl(["diff", "--name-only", "--relative"], cwd)),
+    ...splitChangedFiles(runGitImpl(["ls-files", "--others", "--exclude-standard"], cwd)),
+  ];
+  return [...new Set(changedFiles)];
 }
 
 export function runRuntimeTestImpactCheck(argv = [], {
@@ -40,6 +50,7 @@ export function runRuntimeTestImpactCheck(argv = [], {
     waivers,
     waiverPath: path.relative(cwd, path.join(cwd, "eslint/runtime-test-impact-waivers.json")),
     generatedAt,
+    cwd,
   });
 
   if (summary.failures.length > 0) {

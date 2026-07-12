@@ -15,6 +15,10 @@ import { toAIErrorEnvelope } from "../error-classification";
 import { normalizeChatOptionsForModel } from "../request-policy";
 import { getToolCallDeltas } from "./tool-call-delta";
 import { isAbortLikeError } from "@/lib/abort";
+import {
+    createProviderTerminationError,
+    isCompatibleSuccessFinishReason,
+} from "./stream-termination";
 
 export class GoogleProvider extends BaseAIProvider {
     readonly id = "google";
@@ -48,6 +52,12 @@ export class GoogleProvider extends BaseAIProvider {
         const response = await client.chat.completions.create(params, { signal: normalizedOptions.signal });
 
         const choice = response.choices[0];
+        if (!choice || !isCompatibleSuccessFinishReason(choice.finish_reason)) {
+            throw new AIErrorWithEnvelope(createProviderTerminationError({
+                provider: this.name,
+                reason: choice?.finish_reason,
+            }));
+        }
 
         const toolCalls: ToolCall[] = [];
         for (const tc of choice.message.tool_calls
@@ -62,6 +72,10 @@ export class GoogleProvider extends BaseAIProvider {
                 name: tc.function.name,
                 arguments: parsedArgs.args,
             });
+        }
+
+        if (choice.finish_reason === "tool_calls" && toolCalls.length === 0) {
+            throw new AIErrorWithEnvelope(createProviderTerminationError({ provider: this.name }));
         }
 
         return {
@@ -90,6 +104,7 @@ export class GoogleProvider extends BaseAIProvider {
         let usage: AIStreamChunk["usage"] | undefined;
         let observedModel: string | undefined;
         const pendingToolCalls = new Map<number, { id: string; name: string; arguments: string }>();
+        let sawTerminalFinish = false;
 
         try {
             for await (const chunk of stream) {
@@ -119,9 +134,25 @@ export class GoogleProvider extends BaseAIProvider {
                         if (tc.function?.name) pending.name += tc.function.name;
                         if (tc.function?.arguments) pending.arguments += tc.function.arguments;
                     }
+                    if (choice.finish_reason && !isCompatibleSuccessFinishReason(choice.finish_reason)) {
+                        yield buildStreamErrorChunk(createProviderTerminationError({
+                            provider: this.name,
+                            reason: choice.finish_reason,
+                        }));
+                        return;
+                    }
                     if (choice.finish_reason === "tool_calls") {
+                        if (pendingToolCalls.size === 0) {
+                            yield buildStreamErrorChunk(createProviderTerminationError({ provider: this.name }));
+                            return;
+                        }
                         const parsedToolCalls: ToolCall[] = [];
                         for (const [, tc] of pendingToolCalls) {
+                            if (!tc.id.trim() || !tc.name.trim()) {
+                                yield buildStreamErrorChunk(createProviderTerminationError({ provider: this.name }));
+                                pendingToolCalls.clear();
+                                return;
+                            }
                             const parsedArgs = parseToolArgs(tc.arguments, tc.name, "google:stream");
                             if (!parsedArgs.success) {
                                 yield buildStreamErrorChunk(parsedArgs.errorMeta);
@@ -137,8 +168,14 @@ export class GoogleProvider extends BaseAIProvider {
                         for (const toolCall of parsedToolCalls) {
                             yield { type: "tool_call", toolCall };
                         }
+                        sawTerminalFinish = true;
                         pendingToolCalls.clear();
                     } else if (choice.finish_reason === "stop") {
+                        if (pendingToolCalls.size > 0) {
+                            yield buildStreamErrorChunk(createProviderTerminationError({ provider: this.name }));
+                            return;
+                        }
+                        sawTerminalFinish = true;
                         if (chunk.usage) {
                             usage = {
                                 inputTokens: chunk.usage.prompt_tokens,
@@ -156,6 +193,11 @@ export class GoogleProvider extends BaseAIProvider {
                         totalTokens: chunk.usage.total_tokens,
                     };
                 }
+            }
+
+            if (!sawTerminalFinish) {
+                yield buildStreamErrorChunk(createProviderTerminationError({ provider: this.name }));
+                return;
             }
 
             yield {

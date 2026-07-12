@@ -5,7 +5,6 @@
 
 import "server-only";
 import { prisma } from "@/lib/server/prisma";
-import { logServerError } from "@/lib/server/logging";
 import type { Prisma } from "@prisma/client";
 import type {
     AgentMode,
@@ -15,8 +14,12 @@ import type {
     RunStatus,
     RunTrigger,
 } from "@/types/agent";
-import { extractMemoriesFromConversation } from "@/lib/server/memory/conversation-extractor";
+import { scheduleConversationMemoryExtractionAfterResponse } from "@/lib/server/memory/conversation-extraction-jobs";
 import { transitionRunPhaseInTransaction } from "@/lib/server/agent/run-phase";
+import {
+    AIErrorWithEnvelope,
+    createRunConflictErrorEnvelope,
+} from "@/lib/ai/error-envelope";
 
 export interface StartRunInput {
     projectId?: string | null;
@@ -27,6 +30,9 @@ export interface StartRunInput {
     trigger: RunTrigger;
     agentMode: AgentMode;
     model?: string;
+    provider?: string;
+    reasoningEffort?: string;
+    deliveryMode?: string;
     initialPhase?: RunPhase;
 }
 
@@ -41,6 +47,13 @@ export interface RunLineageNode {
     agentMode: AgentMode;
     status: RunStatus;
     model: string | null;
+    provider: string | null;
+    reasoningEffort: string | null;
+    deliveryMode: string | null;
+    actualModel: string | null;
+    actualProvider: string | null;
+    actualReasoningEffort: string | null;
+    actualDeliveryMode: string | null;
     costTokensIn: number;
     costTokensOut: number;
     startedAt: string;
@@ -55,6 +68,7 @@ type RunWritableStatus = Extract<RunStatus, "running" | "paused">;
 
 type RunWriteSnapshot = {
     id: string;
+    rootRunId: string | null;
     status: RunStatus;
     runPhase: RunPhase;
     completedAt: Date | null;
@@ -99,6 +113,7 @@ async function getRunWriteSnapshot(
         where: { id: runId },
         select: {
             id: true,
+            rootRunId: true,
             status: true,
             runPhase: true,
             completedAt: true,
@@ -108,6 +123,7 @@ async function getRunWriteSnapshot(
     if (!run) return null;
     return {
         id: run.id,
+        rootRunId: run.rootRunId,
         status: run.status as RunStatus,
         runPhase: run.runPhase as RunPhase,
         completedAt: run.completedAt,
@@ -350,12 +366,22 @@ export function startRunHeartbeat(
     let lastObservedActivityAt = getNow().getTime();
     let stopped = false;
     let inFlight = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
 
     const unsubscribe = subscribeRunActivity(runId, (at) => {
         lastObservedActivityAt = at.getTime();
     });
 
-    const timer = schedule(async () => {
+    const stopHeartbeat = () => {
+        if (stopped) return;
+        stopped = true;
+        unsubscribe();
+        if (timer) {
+            cancel(timer);
+        }
+    };
+
+    timer = schedule(async () => {
         if (stopped || inFlight) return;
         const now = getNow();
         if (now.getTime() - lastObservedActivityAt < intervalMs) return;
@@ -364,6 +390,8 @@ export function startRunHeartbeat(
             const updatedCount = await heartbeatTouch(runId, now);
             if (updatedCount > 0) {
                 lastObservedActivityAt = now.getTime();
+            } else {
+                stopHeartbeat();
             }
         } catch (error) {
             options?.onError?.(error);
@@ -376,12 +404,7 @@ export function startRunHeartbeat(
     }
 
     return {
-        stop() {
-            if (stopped) return;
-            stopped = true;
-            unsubscribe();
-            cancel(timer);
-        },
+        stop: stopHeartbeat,
     };
 }
 
@@ -392,41 +415,135 @@ export async function startRun(input: StartRunInput) {
     const startedAt = new Date();
     let lineageRootRunId = input.rootRunId ?? null;
 
-    if (input.parentRunId && !lineageRootRunId) {
+    if (input.rootRunId && !input.parentRunId) {
+        throw new Error("A root run can only be inherited through a validated parent run");
+    }
+
+    if (input.parentRunId) {
         const parentRun = await prisma.agentRun.findUnique({
             where: { id: input.parentRunId },
-            select: { id: true, projectId: true, rootRunId: true },
+            select: {
+                id: true,
+                projectId: true,
+                conversationId: true,
+                userId: true,
+                rootRunId: true,
+            },
         });
 
         if (!parentRun) {
             throw new Error(`Parent run not found: ${input.parentRunId}`);
         }
-        if (parentRun.projectId && input.projectId && parentRun.projectId !== input.projectId) {
+        const childProjectId = input.projectId ?? null;
+        const childConversationId = input.conversationId ?? null;
+        const childUserId = input.userId ?? null;
+        if (parentRun.projectId !== childProjectId) {
             throw new Error("Parent run project does not match child run project");
         }
+        if (parentRun.conversationId !== childConversationId) {
+            throw new Error("Parent run conversation does not match child run conversation");
+        }
+        if (parentRun.userId !== childUserId) {
+            throw new Error("Parent run actor does not match child run actor");
+        }
 
-        lineageRootRunId = parentRun.rootRunId ?? parentRun.id;
+        const validatedRootRunId = parentRun.rootRunId ?? parentRun.id;
+        if (lineageRootRunId && lineageRootRunId !== validatedRootRunId) {
+            throw new Error("Requested root run does not match the validated parent lineage");
+        }
+        lineageRootRunId = validatedRootRunId;
     }
 
-    return prisma.agentRun.create({
-        data: {
-            projectId: input.projectId ?? undefined,
-            conversationId: input.conversationId ?? undefined,
-            userId: input.userId ?? undefined,
-            parentRunId: input.parentRunId ?? undefined,
-            rootRunId: lineageRootRunId ?? undefined,
-            trigger: input.trigger,
-            agentMode: input.agentMode,
+    const data = {
+        projectId: input.projectId ?? undefined,
+        conversationId: input.conversationId ?? undefined,
+        userId: input.userId ?? undefined,
+        parentRunId: input.parentRunId ?? undefined,
+        rootRunId: lineageRootRunId ?? undefined,
+        trigger: input.trigger,
+        agentMode: input.agentMode,
+        status: "running",
+        model: input.model ?? undefined,
+        provider: input.provider ?? undefined,
+        reasoningEffort: input.reasoningEffort ?? undefined,
+        deliveryMode: input.deliveryMode ?? undefined,
+        startedAt,
+        runPhase: input.initialPhase ?? "plan",
+        phaseEnteredAt: startedAt,
+        lastActivityAt: startedAt,
+        lastDurableProgressAt: startedAt,
+        durabilityState: "durable",
+        durabilityDegradedReason: null,
+        finalizationState: "not_started",
+    };
+
+    const run = input.trigger !== "user_message" || !input.conversationId
+        ? await prisma.agentRun.create({ data })
+        : await prisma.$transaction(async (tx) => {
+            const conversationId = input.conversationId!;
+            await tx.$queryRaw<{ locked: number }[]>`
+                SELECT 1 AS locked
+                FROM pg_advisory_xact_lock(hashtext(${`conversation-run-admission:${conversationId}`}))
+            `;
+            const activeRun = await tx.agentRun.findFirst({
+                where: {
+                    conversationId,
+                    status: "running",
+                    completedAt: null,
+                },
+                orderBy: [
+                    { lastActivityAt: "desc" },
+                    { startedAt: "desc" },
+                ],
+                select: {
+                    id: true,
+                    lastActivityAt: true,
+                },
+            });
+            if (activeRun) {
+                throw new AIErrorWithEnvelope(createRunConflictErrorEnvelope({
+                    code: "ACTIVE_RUN_EXISTS",
+                    conversationId,
+                    activeRunId: activeRun.id,
+                    lastActivityAt: activeRun.lastActivityAt.toISOString(),
+                    recoveryRecommendation: "reconnect",
+                }));
+            }
+
+            return tx.agentRun.create({ data });
+        });
+
+    // A later run boundary accelerates any durable extraction marker left by
+    // a serverless teardown or previous failed attempt.
+    scheduleConversationMemoryExtractionAfterResponse();
+    return run;
+}
+
+/**
+ * Record the provider-observed generation receipt without changing run
+ * lifecycle ownership. Repeated calls are safe and keep the latest truthful
+ * provider response for recovery and diagnostics.
+ */
+export async function recordRunGenerationReceipt(
+    runId: string,
+    receipt: {
+        actualModel?: string | null;
+        actualProvider?: string | null;
+        actualReasoningEffort?: string | null;
+        actualDeliveryMode?: string | null;
+    },
+): Promise<void> {
+    await prisma.agentRun.updateMany({
+        where: {
+            id: runId,
             status: "running",
-            model: input.model ?? undefined,
-            startedAt,
-            runPhase: input.initialPhase ?? "plan",
-            phaseEnteredAt: startedAt,
-            lastActivityAt: startedAt,
-            lastDurableProgressAt: startedAt,
-            durabilityState: "durable",
-            durabilityDegradedReason: null,
-            finalizationState: "not_started",
+            completedAt: null,
+        },
+        data: {
+            ...(receipt.actualModel ? { actualModel: receipt.actualModel } : {}),
+            ...(receipt.actualProvider ? { actualProvider: receipt.actualProvider } : {}),
+            ...(receipt.actualReasoningEffort ? { actualReasoningEffort: receipt.actualReasoningEffort } : {}),
+            ...(receipt.actualDeliveryMode ? { actualDeliveryMode: receipt.actualDeliveryMode } : {}),
         },
     });
 }
@@ -441,65 +558,65 @@ export async function endRun(
     costTokensOut?: number
 ) {
     const completedAt = new Date();
-    const existing = await prisma.agentRun.findUnique({
-        where: { id: runId },
-        select: { durabilityState: true },
+    const run = await prisma.$transaction(async (tx) => {
+        const existing = await tx.agentRun.findUnique({
+            where: { id: runId },
+            select: {
+                durabilityState: true,
+                conversationId: true,
+                projectId: true,
+            },
+        });
+        const preserveAbnormalClassification =
+            existing?.durabilityState === "degraded";
+        const shouldExtractMemory = status === "completed"
+            && Boolean(existing?.conversationId)
+            && Boolean(existing?.projectId);
+        const updated = await tx.agentRun.updateMany({
+            where: {
+                id: runId,
+                status: "running",
+                completedAt: null,
+            },
+            data: {
+                status,
+                completedAt,
+                lastActivityAt: completedAt,
+                lastDurableProgressAt: completedAt,
+                finalizationState: "completed",
+                memoryExtractionStatus: shouldExtractMemory ? "pending" : "skipped",
+                memoryExtractionAttempts: 0,
+                memoryExtractionLeaseToken: null,
+                memoryExtractionLeaseExpiresAt: null,
+                memoryExtractionCompletedAt: shouldExtractMemory ? null : completedAt,
+                memoryExtractionLastError: null,
+                ...(status === "completed" && !preserveAbnormalClassification
+                    ? { abnormalEndClassification: null }
+                    : {}),
+                ...(costTokensIn !== undefined ? { costTokensIn } : {}),
+                ...(costTokensOut !== undefined ? { costTokensOut } : {}),
+            },
+        });
+        if (updated.count !== 1) {
+            await throwRunOwnershipError(tx, runId);
+        }
+        const finalized = await tx.agentRun.findUnique({
+            where: { id: runId },
+        });
+        if (!finalized) {
+            throw new Error(`Run not found after finalization: ${runId}`);
+        }
+        return finalized;
     });
-    const preserveAbnormalClassification =
-        existing?.durabilityState === "degraded";
-    const updated = await prisma.agentRun.updateMany({
-        where: {
-            id: runId,
-            status: "running",
-            completedAt: null,
-        },
-        data: {
-            status,
-            completedAt,
-            lastActivityAt: completedAt,
-            lastDurableProgressAt: completedAt,
-            finalizationState: "completed",
-            ...(status === "completed" && !preserveAbnormalClassification
-                ? { abnormalEndClassification: null }
-                : {}),
-            ...(costTokensIn !== undefined ? { costTokensIn } : {}),
-            ...(costTokensOut !== undefined ? { costTokensOut } : {}),
-        },
-    });
-    if (updated.count !== 1) {
-        await throwRunOwnershipError({ agentRun: prisma.agentRun }, runId);
-    }
-    const run = await prisma.agentRun.findUnique({
-        where: { id: runId },
-    });
-    if (!run) {
-        throw new Error(`Run not found after finalization: ${runId}`);
-    }
     notifyRunActivity(runId, completedAt);
 
-    // Fire-and-forget: extract memories from completed conversations
-    if (status === "completed" && run.conversationId && run.projectId) {
-        scheduleMemoryExtraction(run.id, run.conversationId, run.projectId, run.userId ?? undefined)
-            .catch((err) => logServerError("conversation-extractor", "memory extraction failed", {
-                conversationId: run.conversationId,
-            }, err));
-    }
+    // This only registers post-response acceleration. The pending marker was
+    // committed atomically above and remains retryable if registration fails.
+    scheduleConversationMemoryExtractionAfterResponse(
+        run.memoryExtractionStatus === "pending" ? run.id : undefined,
+    );
 
     return run;
-}
-
-async function scheduleMemoryExtraction(
-    runId: string,
-    conversationId: string,
-    projectId: string,
-    userId?: string,
-) {
-    const count = await prisma.aIMessage.count({
-        where: { conversationId, role: { in: ["user", "assistant"] } },
-    });
-    if (count >= 5) {
-        await extractMemoriesFromConversation(conversationId, projectId, runId, userId);
-    }
 }
 
 /**
@@ -602,6 +719,13 @@ export async function getRunLineage(runId: string): Promise<RunLineageNode | nul
             agentMode: run.agentMode as AgentMode,
             status: run.status as RunStatus,
             model: run.model,
+            provider: run.provider,
+            reasoningEffort: run.reasoningEffort,
+            deliveryMode: run.deliveryMode,
+            actualModel: run.actualModel,
+            actualProvider: run.actualProvider,
+            actualReasoningEffort: run.actualReasoningEffort,
+            actualDeliveryMode: run.actualDeliveryMode,
             costTokensIn: run.costTokensIn,
             costTokensOut: run.costTokensOut,
             startedAt: run.startedAt.toISOString(),

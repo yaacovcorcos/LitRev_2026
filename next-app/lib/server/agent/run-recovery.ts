@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getProviderModelId } from "@/lib/ai/config";
 import { resolveUserInputQuestionId } from "@/lib/ai/user-input";
 import { prisma } from "@/lib/server/prisma";
 import { DEFAULT_CONVERSATION_RUN_STALE_MS } from "@/lib/server/chat-runtime/conversation-run-lock";
@@ -35,6 +36,10 @@ type RecoveryRunRecord = {
     runPhase: RunPhase;
     phaseEnteredAt: Date;
     model: string | null;
+    actualModel: string | null;
+    actualProvider: string | null;
+    actualReasoningEffort: string | null;
+    actualDeliveryMode: string | null;
     costTokensIn: number;
     costTokensOut: number;
     lastActivityAt: Date;
@@ -74,14 +79,24 @@ function buildSyntheticTerminalReconciliationChunk(
     runStatusOverride?: Extract<RunStatus, "completed" | "failed" | "cancelled" | "paused">,
 ): AIStreamChunk {
     const runStatus = runStatusOverride ?? run.status;
+    const requestedProviderModel = run.model
+        ? (getProviderModelId(run.model) ?? run.model)
+        : null;
     return {
         type: "run_end",
         runId: run.id,
         runStatus,
         runCostTokensIn: run.costTokensIn,
         runCostTokensOut: run.costTokensOut,
-        actualModel: run.model ?? undefined,
-        actualModelSource: run.model ? "requested" : "unknown",
+        actualModel: run.actualModel ?? requestedProviderModel ?? undefined,
+        actualModelSource: run.actualModel ? "provider" : run.model ? "requested" : "unknown",
+        actualProvider: run.actualProvider ?? undefined,
+        actualReasoningEffort: run.actualReasoningEffort
+            ? run.actualReasoningEffort as NonNullable<AIStreamChunk["actualReasoningEffort"]>
+            : undefined,
+        actualDeliveryMode: run.actualDeliveryMode
+            ? run.actualDeliveryMode as NonNullable<AIStreamChunk["actualDeliveryMode"]>
+            : undefined,
         conversationId: run.conversationId ?? undefined,
         stopReason:
             runStatus === "paused"
@@ -259,6 +274,10 @@ export async function buildRunRecoveryResponse(params: {
             runPhase: true,
             phaseEnteredAt: true,
             model: true,
+            actualModel: true,
+            actualProvider: true,
+            actualReasoningEffort: true,
+            actualDeliveryMode: true,
             costTokensIn: true,
             costTokensOut: true,
             lastActivityAt: true,

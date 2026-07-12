@@ -4,8 +4,9 @@
  */
 
 import { prisma } from "@/lib/server/prisma";
-import { AI_CONFIG } from "@/lib/ai/config";
-import type { UsageStats } from "@/types/ai";
+import { AI_CONFIG, getModelCapabilityRecord } from "@/lib/ai/config";
+import { AIErrorWithEnvelope } from "@/lib/ai/error-envelope";
+import type { DeliveryMode, ReasoningEffort, UsageStats } from "@/types/ai";
 
 type CacheMetricAccumulator = {
     requestCount: number;
@@ -15,6 +16,82 @@ type CacheMetricAccumulator = {
     lastModel: string;
     updatedAt: string;
 };
+
+export function estimateUsageCostUsd(params: {
+    modelId: string;
+    inputTokens: number;
+    cachedInputTokens?: number;
+    cacheWriteInputTokens?: number;
+    outputTokens: number;
+    actualProvider?: string | null;
+    requestedDeliveryMode?: DeliveryMode | null;
+    actualDeliveryMode?: DeliveryMode | null;
+    /** @deprecated Compatibility alias; prefer actualDeliveryMode. */
+    confirmedDeliveryMode?: DeliveryMode | null;
+}): number | undefined {
+    const model = getModelCapabilityRecord(params.modelId);
+    const pricing = model?.pricing;
+    if (!model || !pricing) return undefined;
+    const actualDeliveryMode = params.actualDeliveryMode ?? params.confirmedDeliveryMode;
+
+    if (model.provider === "gateway") {
+        const actualHost = params.actualProvider?.trim().toLowerCase() ?? "";
+        const hasKnownHostPricing = model.providerDialect === "deepseek"
+            ? actualHost === "deepseek"
+            : model.providerDialect === "qwen"
+                ? actualHost === "alibaba"
+                : false;
+        if (!hasKnownHostPricing) return undefined;
+    }
+
+    // A requested paid tier is not evidence that the provider accepted it.
+    if (
+        params.requestedDeliveryMode === "priority"
+        && actualDeliveryMode !== "standard"
+        && actualDeliveryMode !== "priority"
+    ) {
+        return undefined;
+    }
+
+    // OpenAI priority processing is account/product specific. Persisting a
+    // base-tier estimate here would look exact while knowingly undercounting.
+    if (model.providerDialect === "openai" && actualDeliveryMode === "priority") {
+        return undefined;
+    }
+
+    const inputTokens = Math.max(0, params.inputTokens);
+    const cachedInputTokens = Math.max(0, Math.min(inputTokens, params.cachedInputTokens ?? 0));
+    const cacheWriteInputTokens = Math.max(0, Math.min(inputTokens, params.cacheWriteInputTokens ?? 0));
+    if (cachedInputTokens + cacheWriteInputTokens > inputTokens) return undefined;
+    if (cacheWriteInputTokens > 0 && pricing.cacheWriteInputPerMillion === undefined) return undefined;
+    const ordinaryInputTokens = inputTokens - cachedInputTokens - cacheWriteInputTokens;
+    const outputTokens = Math.max(0, params.outputTokens);
+
+    let inputMultiplier = 1;
+    let outputMultiplier = 1;
+    if (model.providerDialect === "openai" && inputTokens > 272_000) {
+        inputMultiplier = 2;
+        outputMultiplier = 1.5;
+    } else if (model.providerDialect === "qwen" && inputTokens > 256_000) {
+        inputMultiplier = 3;
+        outputMultiplier = 3;
+    } else if (model.providerDialect === "xai" && inputTokens > 200_000) {
+        inputMultiplier = 2;
+        outputMultiplier = 2;
+    }
+
+    if (model.providerDialect === "xai" && actualDeliveryMode === "priority") {
+        inputMultiplier *= 2;
+        outputMultiplier *= 2;
+    }
+
+    return (
+        (ordinaryInputTokens * pricing.inputPerMillion * inputMultiplier)
+        + (cachedInputTokens * (pricing.cachedInputPerMillion ?? pricing.inputPerMillion) * inputMultiplier)
+        + (cacheWriteInputTokens * (pricing.cacheWriteInputPerMillion ?? pricing.inputPerMillion) * inputMultiplier)
+        + (outputTokens * pricing.outputPerMillion * outputMultiplier)
+    ) / 1_000_000;
+}
 
 export interface CacheMetricSummary {
     requestCount: number;
@@ -43,6 +120,55 @@ type UsageScope = {
     userId: string | null;
     workspaceId: string | null;
 };
+
+export type UsageReservationStatus = "active" | "failed" | "unknown" | "settled";
+
+export type ReserveProviderUsageAttemptInput = {
+    attemptKey: string;
+    scope: UsageScopeInput;
+    provider: string;
+    model: string;
+    estimatedTokens: number;
+    source?: string | null;
+    contextPage?: string | null;
+    conversationId?: string | null;
+    dailyAttemptLimit?: number;
+};
+
+export type UsageAttemptReservation = {
+    id: string;
+    reservedTokens: number;
+    status: UsageReservationStatus;
+};
+
+export type SettleUsageReservationInput = {
+    reservationId: string;
+    model: string;
+    provider?: string | null;
+    requestedModel?: string | null;
+    requestedProvider?: string | null;
+    requestedReasoningEffort?: ReasoningEffort | null;
+    requestedDeliveryMode?: DeliveryMode | null;
+    actualReasoningEffort?: ReasoningEffort | null;
+    actualDeliveryMode?: DeliveryMode | null;
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens?: number;
+    cacheWriteInputTokens?: number;
+    reasoningTokens?: number;
+};
+
+const USAGE_ADMISSION_MAX_WAIT_MS = 750;
+const USAGE_ADMISSION_TRANSACTION_TIMEOUT_MS = 1_500;
+export const USAGE_ADMISSION_DEADLINE_MS = 2_250;
+export const USAGE_SETTLEMENT_DEADLINE_MS = 750;
+
+class UsageAdmissionDeadlineError extends Error {
+    constructor() {
+        super("AI usage admission timed out before the provider was called.");
+        this.name = "UsageAdmissionDeadlineError";
+    }
+}
 
 const LEGACY_UNKNOWN = "legacy_unknown" as const;
 
@@ -105,6 +231,473 @@ function normalizeScope(input: UsageScopeInput): UsageScope {
         userId: input.userId ?? null,
         workspaceId: input.workspaceId ?? null,
     };
+}
+
+function usageScopeKey(scope: UsageScope): string {
+    if (scope.userId) {
+        return `user:${scope.userId}:workspace:${scope.workspaceId ?? "none"}`;
+    }
+    return `project:${scope.projectId ?? "global"}`;
+}
+
+function safeTokenCount(value: number): number {
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.round(value));
+}
+
+function positiveLimit(value: number, fallback: number): number {
+    if (!Number.isFinite(value) || value <= 0) return fallback;
+    return Math.max(1, Math.round(value));
+}
+
+function assertMatchingActiveReservation(
+    reservation: {
+        id: string;
+        scopeKey: string;
+        provider: string;
+        requestedModel: string;
+        reservedTokens: number;
+        status: string;
+    } | null,
+    expected: {
+        attemptKey: string;
+        scopeKey: string;
+        provider: string;
+        model: string;
+    },
+): UsageAttemptReservation | null {
+    if (!reservation) return null;
+    if (
+        reservation.scopeKey !== expected.scopeKey
+        || reservation.provider !== expected.provider
+        || reservation.requestedModel !== expected.model
+        || reservation.status !== "active"
+    ) {
+        throw new Error(
+            `Usage reservation attempt key is already owned by another or invoked attempt: ${expected.attemptKey}`,
+        );
+    }
+    return {
+        id: reservation.id,
+        reservedTokens: reservation.reservedTokens,
+        status: "active",
+    };
+}
+
+function withDeadline<T>(operation: Promise<T>, timeoutMs: number, timeoutError: () => Error): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(timeoutError()), Math.max(1, timeoutMs));
+        if (typeof (timer as { unref?: () => void }).unref === "function") {
+            (timer as { unref: () => void }).unref();
+        }
+        operation.then(
+            (value) => {
+                clearTimeout(timer);
+                resolve(value);
+            },
+            (error) => {
+                clearTimeout(timer);
+                reject(error);
+            },
+        );
+    });
+}
+
+function admissionError(error: unknown): AIErrorWithEnvelope {
+    if (error instanceof AIErrorWithEnvelope) return error;
+    const candidate = error && typeof error === "object"
+        ? error as { code?: unknown; message?: unknown; meta?: { code?: unknown; message?: unknown } }
+        : null;
+    const errorCode = String(candidate?.code ?? "");
+    const metadataValues = candidate?.meta && typeof candidate.meta === "object"
+        ? Object.values(candidate.meta)
+        : [];
+    const databaseCode = String(candidate?.meta?.code ?? "");
+    const errorMessage = [candidate?.message, candidate?.meta?.message, ...metadataValues]
+        .filter((value): value is string => typeof value === "string")
+        .join(" ");
+    const timedOut = error instanceof UsageAdmissionDeadlineError
+        || ["P1002", "P2024", "P2028", "ETIMEDOUT", "55P03", "57014"].includes(errorCode)
+        || ["55P03", "57014"].includes(databaseCode)
+        || /55P03|57014|lock not available|lock timeout|timed?\s*out|timeout|canceling statement/i.test(errorMessage);
+    return new AIErrorWithEnvelope({
+        kind: "runtime",
+        code: timedOut ? "AI_USAGE_ADMISSION_TIMEOUT" : "AI_USAGE_ADMISSION_FAILED",
+        retryable: true,
+        source: "usage_reservation",
+        status: 503,
+        message: timedOut
+            ? "Usage admission timed out before the AI provider was called. Please retry."
+            : "Usage admission could not be persisted before the AI provider was called. Please retry.",
+    });
+}
+
+/**
+ * Atomically admit one provider attempt and reserve its conservative daily
+ * token budget. The transaction-scoped advisory lock serializes admission for
+ * the effective user/workspace or legacy project/global scope.
+ */
+export async function reserveProviderUsageAttempt(
+    input: ReserveProviderUsageAttemptInput,
+    options?: { deadlineMs?: number },
+): Promise<UsageAttemptReservation> {
+    const scope = normalizeScope(input.scope);
+    const scopeKey = usageScopeKey(scope);
+    const attemptKey = input.attemptKey.trim();
+    if (!attemptKey) {
+        throw new Error("Provider usage admission requires a non-empty attempt key.");
+    }
+    const requestLimit = positiveLimit(AI_CONFIG.maxRequestsPerMinute, 20);
+    const dailyTokenLimit = positiveLimit(AI_CONFIG.maxTokensPerDay, 500_000);
+    const reservedTokens = Number.isFinite(input.estimatedTokens)
+        ? Math.max(1, safeTokenCount(input.estimatedTokens))
+        : dailyTokenLimit;
+    const now = new Date();
+    const oneMinuteAgo = new Date(now.getTime() - 60_000);
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const source = normalizeUsageSource(input.source, scope.projectId);
+    const contextPage = normalizeUsageContextPage(input.contextPage);
+
+    try {
+        const transaction = prisma.$transaction(async (tx) => {
+            await tx.$queryRaw<{ configured: string }[]>`
+                SELECT set_config('lock_timeout', '750ms', true) AS configured
+            `;
+            await tx.$queryRaw<{ locked: number }[]>`
+                SELECT 1 AS locked
+                FROM pg_advisory_xact_lock(hashtext(${`ai-usage-admission:${scopeKey}`}))
+            `;
+
+            const existing = assertMatchingActiveReservation(
+                await tx.aIUsageReservation.findUnique({
+                    where: { attemptKey },
+                    select: {
+                        id: true,
+                        scopeKey: true,
+                        provider: true,
+                        requestedModel: true,
+                        reservedTokens: true,
+                        status: true,
+                    },
+                }),
+                {
+                    attemptKey,
+                    scopeKey,
+                    provider: input.provider,
+                    model: input.model,
+                },
+            );
+            if (existing) return existing;
+
+            const legacyRequestCount = await tx.aIUsage.count({
+                where: {
+                    ...usageWhere(scope, oneMinuteAgo),
+                    reservationId: null,
+                },
+            });
+            const reservationRequestCount = await tx.aIUsageReservation.count({
+                where: {
+                    scopeKey,
+                    createdAt: { gte: oneMinuteAgo },
+                },
+            });
+            if (legacyRequestCount + reservationRequestCount >= requestLimit) {
+                throw new AIErrorWithEnvelope({
+                    kind: "provider_request",
+                    code: "AI_RATE_LIMIT_EXCEEDED",
+                    retryable: true,
+                    source: "usage_reservation",
+                    status: 429,
+                    headers: { "retry-after": "60" },
+                    message: `Rate limit exceeded. Maximum ${requestLimit} provider attempts per minute.`,
+                });
+            }
+
+            const dailyAttemptLimit = input.dailyAttemptLimit === undefined
+                ? null
+                : positiveLimit(input.dailyAttemptLimit, 1);
+            if (dailyAttemptLimit !== null) {
+                const [legacySourceAttempts, reservationSourceAttempts] = await Promise.all([
+                    tx.aIUsage.count({
+                        where: {
+                            ...usageWhere(scope, startOfDay),
+                            reservationId: null,
+                            source,
+                        },
+                    }),
+                    tx.aIUsageReservation.count({
+                        where: {
+                            scopeKey,
+                            source,
+                            createdAt: { gte: startOfDay },
+                        },
+                    }),
+                ]);
+                if (legacySourceAttempts + reservationSourceAttempts >= dailyAttemptLimit) {
+                    throw new AIErrorWithEnvelope({
+                        kind: "provider_request",
+                        code: "AI_SOURCE_DAILY_ATTEMPT_LIMIT_EXCEEDED",
+                        retryable: false,
+                        source: "usage_reservation",
+                        status: 429,
+                        message: `Daily ${source} provider-attempt limit exceeded. Maximum ${dailyAttemptLimit} attempts per day.`,
+                    });
+                }
+            }
+
+            const actualUsage = await tx.aIUsage.aggregate({
+                where: usageWhere(scope, startOfDay),
+                _sum: {
+                    inputTokens: true,
+                    outputTokens: true,
+                },
+            });
+            const outstandingReservations = await tx.aIUsageReservation.aggregate({
+                where: {
+                    scopeKey,
+                    createdAt: { gte: startOfDay },
+                    status: { not: "settled" },
+                },
+                _sum: { reservedTokens: true },
+            });
+            const usedTokens = (actualUsage._sum.inputTokens ?? 0)
+                + (actualUsage._sum.outputTokens ?? 0);
+            const outstandingTokens = outstandingReservations._sum.reservedTokens ?? 0;
+            if (usedTokens + outstandingTokens + reservedTokens > dailyTokenLimit) {
+                throw new AIErrorWithEnvelope({
+                    kind: "provider_request",
+                    code: "DAILY_TOKEN_LIMIT_EXCEEDED",
+                    retryable: false,
+                    source: "usage_reservation",
+                    status: 429,
+                    message: `Daily token limit exceeded. Maximum ${dailyTokenLimit} tokens per day.`,
+                });
+            }
+
+            return tx.aIUsageReservation.create({
+                data: {
+                    attemptKey,
+                    scopeKey,
+                    userId: scope.userId,
+                    workspaceId: scope.workspaceId,
+                    projectId: scope.projectId,
+                    conversationId: input.conversationId ?? null,
+                    source,
+                    contextPage,
+                    provider: input.provider,
+                    requestedModel: input.model,
+                    reservedTokens,
+                    status: "active",
+                },
+                select: {
+                    id: true,
+                    reservedTokens: true,
+                    status: true,
+                },
+            });
+        }, {
+            maxWait: USAGE_ADMISSION_MAX_WAIT_MS,
+            timeout: USAGE_ADMISSION_TRANSACTION_TIMEOUT_MS,
+        });
+
+        const reservation = await withDeadline(
+            transaction,
+            options?.deadlineMs ?? USAGE_ADMISSION_DEADLINE_MS,
+            () => new UsageAdmissionDeadlineError(),
+        );
+        return reservation as UsageAttemptReservation;
+    } catch (error) {
+        try {
+            const reconciled = assertMatchingActiveReservation(
+                await withDeadline(
+                    prisma.aIUsageReservation.findUnique({
+                        where: { attemptKey },
+                        select: {
+                            id: true,
+                            scopeKey: true,
+                            provider: true,
+                            requestedModel: true,
+                            reservedTokens: true,
+                            status: true,
+                        },
+                    }),
+                    Math.min(options?.deadlineMs ?? USAGE_ADMISSION_DEADLINE_MS, 750),
+                    () => new UsageAdmissionDeadlineError(),
+                ),
+                {
+                    attemptKey,
+                    scopeKey,
+                    provider: input.provider,
+                    model: input.model,
+                },
+            );
+            if (reconciled) return reconciled;
+        } catch (reconciliationError) {
+            if (reconciliationError instanceof Error && /already owned/.test(reconciliationError.message)) {
+                throw reconciliationError;
+            }
+        }
+        throw admissionError(error);
+    }
+}
+
+/** Idempotently settle a durable reservation into exactly one AIUsage row. */
+export async function settleUsageReservation(
+    input: SettleUsageReservationInput,
+): Promise<{ settledNow: boolean }> {
+    const inputTokens = safeTokenCount(input.inputTokens);
+    const outputTokens = safeTokenCount(input.outputTokens);
+    const cachedInputTokens = clampCachedTokens(inputTokens, input.cachedInputTokens ?? 0);
+    const cacheWriteInputTokens = clampCachedTokens(inputTokens, input.cacheWriteInputTokens ?? 0);
+    const reasoningTokens = safeTokenCount(input.reasoningTokens ?? 0);
+    const requestedModel = input.requestedModel ?? input.model;
+    const estimatedCostUsd = estimateUsageCostUsd({
+        modelId: requestedModel,
+        inputTokens,
+        cachedInputTokens,
+        cacheWriteInputTokens,
+        outputTokens,
+        actualProvider: input.provider,
+        requestedDeliveryMode: input.requestedDeliveryMode,
+        actualDeliveryMode: input.actualDeliveryMode,
+    });
+    const result = await prisma.$transaction(async (tx) => {
+        const initial = await tx.aIUsageReservation.findUnique({
+            where: { id: input.reservationId },
+            select: { scopeKey: true },
+        });
+        if (!initial) {
+            throw new Error(`Usage reservation not found: ${input.reservationId}`);
+        }
+        await tx.$queryRaw<{ configured: string }[]>`
+            SELECT set_config('lock_timeout', '750ms', true) AS configured
+        `;
+        await tx.$queryRaw<{ locked: number }[]>`
+            SELECT 1 AS locked
+            FROM pg_advisory_xact_lock(hashtext(${`ai-usage-admission:${initial.scopeKey}`}))
+        `;
+        await tx.$queryRaw<{ locked: number }[]>`
+            SELECT 1 AS locked
+            FROM pg_advisory_xact_lock(hashtext(${`ai-usage-settle:${input.reservationId}`}))
+        `;
+        const reservation = await tx.aIUsageReservation.findUnique({
+            where: { id: input.reservationId },
+        });
+        if (!reservation) {
+            throw new Error(`Usage reservation not found: ${input.reservationId}`);
+        }
+        if (reservation.status === "settled") {
+            return { settledNow: false, projectId: reservation.projectId };
+        }
+
+        await tx.aIUsage.create({
+            data: {
+                reservationId: reservation.id,
+                projectId: reservation.projectId,
+                userId: reservation.userId,
+                workspaceId: reservation.workspaceId,
+                source: reservation.source,
+                contextPage: reservation.contextPage,
+                conversationId: reservation.conversationId,
+                model: input.model,
+                provider: input.provider ?? null,
+                requestedModel,
+                requestedProvider: input.requestedProvider ?? reservation.provider,
+                requestedReasoningEffort: input.requestedReasoningEffort ?? null,
+                requestedDeliveryMode: input.requestedDeliveryMode ?? null,
+                actualReasoningEffort: input.actualReasoningEffort ?? null,
+                actualDeliveryMode: input.actualDeliveryMode ?? null,
+                inputTokens,
+                cachedInputTokens,
+                cacheWriteInputTokens,
+                outputTokens,
+                reasoningTokens,
+                estimatedCostUsd,
+                createdAt: reservation.createdAt,
+            },
+        });
+        const settledAt = new Date();
+        await tx.aIUsageReservation.update({
+            where: { id: reservation.id },
+            data: {
+                status: "settled",
+                actualModel: input.model,
+                inputTokens,
+                outputTokens,
+                failureCode: null,
+                settledAt,
+            },
+        });
+        return { settledNow: true, projectId: reservation.projectId };
+    }, {
+        maxWait: USAGE_ADMISSION_MAX_WAIT_MS,
+        timeout: USAGE_ADMISSION_TRANSACTION_TIMEOUT_MS,
+    });
+
+    if (result.settledNow && result.projectId) {
+        recordCacheMetric(
+            result.projectId,
+            input.model,
+            inputTokens,
+            cachedInputTokens,
+        );
+    }
+    return { settledNow: result.settledNow };
+}
+
+export async function trySettleUsageReservation(
+    input: SettleUsageReservationInput,
+    options?: { deadlineMs?: number },
+): Promise<boolean> {
+    try {
+        await withDeadline(
+            settleUsageReservation(input),
+            options?.deadlineMs ?? USAGE_SETTLEMENT_DEADLINE_MS,
+            () => new Error("Usage settlement deadline exceeded"),
+        );
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+export async function markUsageReservationReconcilable(
+    reservationId: string,
+    status: Extract<UsageReservationStatus, "failed" | "unknown">,
+    failureCode?: string,
+): Promise<void> {
+    await prisma.$transaction((tx) => tx.aIUsageReservation.updateMany({
+        where: {
+            id: reservationId,
+            status: "active",
+        },
+        data: {
+            status,
+            failureCode: failureCode ?? null,
+        },
+    }), {
+        maxWait: USAGE_ADMISSION_MAX_WAIT_MS,
+        timeout: USAGE_ADMISSION_TRANSACTION_TIMEOUT_MS,
+    });
+}
+
+export async function tryMarkUsageReservationReconcilable(
+    reservationId: string,
+    status: Extract<UsageReservationStatus, "failed" | "unknown">,
+    failureCode?: string,
+    options?: { deadlineMs?: number },
+): Promise<boolean> {
+    try {
+        await withDeadline(
+            markUsageReservationReconcilable(reservationId, status, failureCode),
+            options?.deadlineMs ?? USAGE_SETTLEMENT_DEADLINE_MS,
+            () => new Error("Usage reservation outcome deadline exceeded"),
+        );
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 function usageWhere(scope: UsageScope, createdAtGte: Date) {
@@ -236,6 +829,15 @@ export async function recordUsage(
     outputTokens: number,
     options?: {
         cachedInputTokens?: number;
+        cacheWriteInputTokens?: number;
+        reasoningTokens?: number;
+        provider?: string | null;
+        requestedModel?: string | null;
+        requestedProvider?: string | null;
+        requestedReasoningEffort?: ReasoningEffort | null;
+        requestedDeliveryMode?: DeliveryMode | null;
+        actualReasoningEffort?: ReasoningEffort | null;
+        actualDeliveryMode?: DeliveryMode | null;
         userId?: string | null;
         workspaceId?: string | null;
         source?: string | null;
@@ -248,6 +850,18 @@ export async function recordUsage(
         userId: options?.userId ?? null,
         workspaceId: options?.workspaceId ?? null,
     });
+    const cachedInputTokens = Math.max(0, Math.min(inputTokens, options?.cachedInputTokens ?? 0));
+    const cacheWriteInputTokens = Math.max(0, Math.min(inputTokens, options?.cacheWriteInputTokens ?? 0));
+    const estimatedCostUsd = estimateUsageCostUsd({
+        modelId: options?.requestedModel ?? model,
+        inputTokens,
+        cachedInputTokens,
+        cacheWriteInputTokens,
+        outputTokens,
+        actualProvider: options?.provider,
+        requestedDeliveryMode: options?.requestedDeliveryMode,
+        actualDeliveryMode: options?.actualDeliveryMode,
+    });
 
     await prisma.aIUsage.create({
         data: {
@@ -258,8 +872,19 @@ export async function recordUsage(
             contextPage: normalizeUsageContextPage(options?.contextPage),
             conversationId: options?.conversationId ?? null,
             model,
+            provider: options?.provider ?? null,
+            requestedModel: options?.requestedModel ?? null,
+            requestedProvider: options?.requestedProvider ?? null,
+            requestedReasoningEffort: options?.requestedReasoningEffort ?? null,
+            requestedDeliveryMode: options?.requestedDeliveryMode ?? null,
+            actualReasoningEffort: options?.actualReasoningEffort ?? null,
+            actualDeliveryMode: options?.actualDeliveryMode ?? null,
             inputTokens,
+            cachedInputTokens,
+            cacheWriteInputTokens,
             outputTokens,
+            reasoningTokens: Math.max(0, options?.reasoningTokens ?? 0),
+            estimatedCostUsd,
         },
     });
 
@@ -268,7 +893,7 @@ export async function recordUsage(
             projectId,
             model,
             inputTokens,
-            options?.cachedInputTokens ?? 0,
+            cachedInputTokens,
         );
     }
 }

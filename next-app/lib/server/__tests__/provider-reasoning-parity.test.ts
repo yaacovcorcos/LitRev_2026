@@ -40,7 +40,7 @@ function attachMockClient(provider: object, chunks: unknown[]): void {
 }
 
 describe("provider reasoning stream parity", () => {
-    it("OpenAI provider emits reasoning events when includeReasoning is enabled", async () => {
+    it("OpenAI direct models suppress unsupported reasoning visibility even when requested", async () => {
         const provider = new OpenAIProvider();
         attachMockClient(provider, [
             {
@@ -57,13 +57,13 @@ describe("provider reasoning stream parity", () => {
         );
         const types = chunks.map((chunk) => chunk.type);
 
-        expect(types).toContain("reasoning_start");
-        expect(types).toContain("reasoning_delta");
-        expect(types).toContain("reasoning_end");
+        expect(types).not.toContain("reasoning_start");
+        expect(types).not.toContain("reasoning_delta");
+        expect(types).not.toContain("reasoning_end");
         expect(types).toContain("done");
     });
 
-    it("xAI provider emits reasoning events when includeReasoning is enabled", async () => {
+    it("xAI Chat Completions suppresses unsupported reasoning visibility even when requested", async () => {
         const provider = new XAIProvider();
         attachMockClient(provider, [
             {
@@ -80,9 +80,9 @@ describe("provider reasoning stream parity", () => {
         );
         const types = chunks.map((chunk) => chunk.type);
 
-        expect(types).toContain("reasoning_start");
-        expect(types).toContain("reasoning_delta");
-        expect(types).toContain("reasoning_end");
+        expect(types).not.toContain("reasoning_start");
+        expect(types).not.toContain("reasoning_delta");
+        expect(types).not.toContain("reasoning_end");
         expect(types).toContain("done");
     });
 
@@ -109,4 +109,3 @@ describe("provider reasoning stream parity", () => {
         expect(types).toContain("done");
     });
 });
-

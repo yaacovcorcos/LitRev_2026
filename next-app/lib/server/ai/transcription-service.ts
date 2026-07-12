@@ -1,15 +1,17 @@
 import "server-only";
 
+import { after } from "next/server";
 import { AI_CONFIG } from "@/lib/ai/config";
+import { extractAIErrorEnvelope } from "@/lib/ai/error-envelope";
 import { projectIdSchema } from "@/lib/schemas/ids";
 import { assertProjectAccess } from "@/lib/server/access";
 import type { AuthContext } from "@/lib/server/auth/session";
+import { logServerWarn } from "@/lib/server/logging";
 import type { CopilotPage } from "@/types/ai";
 import {
-    checkDailyTokenLimit,
-    checkRateLimit,
-    countUsageRequestsSince,
-    recordUsage,
+    reserveProviderUsageAttempt,
+    tryMarkUsageReservationReconcilable,
+    trySettleUsageReservation,
 } from "./rate-limiter";
 import { transcribeAudio, TRANSCRIPTION_MODEL } from "./transcription";
 
@@ -33,7 +35,9 @@ export type TranscriptionGovernanceErrorCode =
     | "TRANSCRIPTION_PROJECT_ACCESS_DENIED"
     | "AI_RATE_LIMIT_EXCEEDED"
     | "AI_DAILY_TOKEN_LIMIT_EXCEEDED"
-    | "AI_TRANSCRIPTION_DAILY_LIMIT_EXCEEDED";
+    | "AI_TRANSCRIPTION_DAILY_LIMIT_EXCEEDED"
+    | "AI_USAGE_ADMISSION_TIMEOUT"
+    | "AI_USAGE_ADMISSION_FAILED";
 
 export class TranscriptionGovernanceError extends Error {
     readonly code: TranscriptionGovernanceErrorCode;
@@ -110,10 +114,66 @@ async function parseAuthorizedProjectId(
     return parsed.data;
 }
 
-function startOfCurrentDay(): Date {
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    return startOfDay;
+function scheduleReservationRetry(
+    reservationId: string,
+    taskName: string,
+    task: () => Promise<boolean>,
+): void {
+    try {
+        after(async () => {
+            try {
+                const completed = await task();
+                if (!completed) {
+                    logServerWarn("transcription-service", `${taskName} remains pending`, {
+                        reservationId,
+                    });
+                }
+            } catch (error) {
+                logServerWarn("transcription-service", `${taskName} retry rejected`, {
+                    reservationId,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+        });
+    } catch (error) {
+        logServerWarn("transcription-service", `${taskName} retry was not scheduled`, {
+            reservationId,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+}
+
+function rethrowTranscriptionAdmissionError(error: unknown): never {
+    const errorMeta = extractAIErrorEnvelope(error);
+    switch (errorMeta?.code) {
+        case "AI_RATE_LIMIT_EXCEEDED":
+            throw new TranscriptionGovernanceError(
+                "AI_RATE_LIMIT_EXCEEDED",
+                `Rate limit exceeded. Maximum ${AI_CONFIG.maxRequestsPerMinute} provider attempts per minute.`,
+                { status: 429, retryAfterSeconds: 60 },
+            );
+        case "DAILY_TOKEN_LIMIT_EXCEEDED":
+            throw new TranscriptionGovernanceError(
+                "AI_DAILY_TOKEN_LIMIT_EXCEEDED",
+                `Daily token limit exceeded. Maximum ${AI_CONFIG.maxTokensPerDay} tokens per day.`,
+                { status: 429 },
+            );
+        case "AI_SOURCE_DAILY_ATTEMPT_LIMIT_EXCEEDED":
+            throw new TranscriptionGovernanceError(
+                "AI_TRANSCRIPTION_DAILY_LIMIT_EXCEEDED",
+                `Daily transcription limit exceeded. Maximum ${AI_CONFIG.maxTranscriptionsPerDay} provider attempts per day.`,
+                { status: 429 },
+            );
+        case "AI_USAGE_ADMISSION_TIMEOUT":
+        case "AI_USAGE_ADMISSION_FAILED":
+            throw new TranscriptionGovernanceError(
+                errorMeta.code,
+                "Usage admission could not complete before the transcription provider was called. Please retry.",
+                { status: 503, retryAfterSeconds: 1 },
+            );
+        default:
+            throw error;
+    }
 }
 
 export async function transcribeAudioForActor(input: {
@@ -132,49 +192,64 @@ export async function transcribeAudioForActor(input: {
         workspaceId: input.actor.workspaceId,
     };
 
-    const [rateOk, tokensOk, successfulTranscriptionCountToday] = await Promise.all([
-        checkRateLimit(scope),
-        checkDailyTokenLimit(scope),
-        countUsageRequestsSince(scope, startOfCurrentDay(), {
+    let reservation: Awaited<ReturnType<typeof reserveProviderUsageAttempt>>;
+    try {
+        reservation = await reserveProviderUsageAttempt({
+            attemptKey: crypto.randomUUID(),
+            scope,
+            provider: "openai",
+            model: TRANSCRIPTION_MODEL,
+            estimatedTokens: 1,
             source: TRANSCRIPTION_USAGE_SOURCE,
-        }),
-    ]);
-
-    if (!rateOk) {
-        throw new TranscriptionGovernanceError(
-            "AI_RATE_LIMIT_EXCEEDED",
-            `Rate limit exceeded. Maximum ${AI_CONFIG.maxRequestsPerMinute} requests per minute.`,
-            { status: 429 },
-        );
+            contextPage: page ?? LEGACY_UNKNOWN,
+            conversationId: null,
+            dailyAttemptLimit: AI_CONFIG.maxTranscriptionsPerDay,
+        });
+    } catch (error) {
+        rethrowTranscriptionAdmissionError(error);
     }
 
-    if (!tokensOk) {
-        throw new TranscriptionGovernanceError(
-            "AI_DAILY_TOKEN_LIMIT_EXCEEDED",
-            `Daily token limit exceeded. Maximum ${AI_CONFIG.maxTokensPerDay} tokens per day.`,
-            { status: 429 },
+    let result: { text: string };
+    try {
+        result = await transcribeAudio(input.audioFile, {
+            language: normalizeOptionalText(input.language),
+            prompt: normalizeOptionalText(input.prompt),
+        });
+    } catch (error) {
+        const marked = await tryMarkUsageReservationReconcilable(
+            reservation.id,
+            "failed",
+            "TRANSCRIPTION_PROVIDER_FAILED",
         );
+        if (!marked) {
+            scheduleReservationRetry(
+                reservation.id,
+                "usage reservation outcome update",
+                () => tryMarkUsageReservationReconcilable(
+                    reservation.id,
+                    "failed",
+                    "TRANSCRIPTION_PROVIDER_FAILED",
+                    { deadlineMs: 2_000 },
+                ),
+            );
+        }
+        throw error;
     }
 
-    if (successfulTranscriptionCountToday >= AI_CONFIG.maxTranscriptionsPerDay) {
-        throw new TranscriptionGovernanceError(
-            "AI_TRANSCRIPTION_DAILY_LIMIT_EXCEEDED",
-            `Daily transcription limit exceeded. Maximum ${AI_CONFIG.maxTranscriptionsPerDay} successful transcriptions per day.`,
-            { status: 429 },
+    const settlement = {
+        reservationId: reservation.id,
+        model: TRANSCRIPTION_MODEL,
+        inputTokens: 0,
+        outputTokens: 0,
+    };
+    const settled = await trySettleUsageReservation(settlement);
+    if (!settled) {
+        scheduleReservationRetry(
+            reservation.id,
+            "usage settlement",
+            () => trySettleUsageReservation(settlement, { deadlineMs: 2_000 }),
         );
     }
-
-    const result = await transcribeAudio(input.audioFile, {
-        language: normalizeOptionalText(input.language),
-        prompt: normalizeOptionalText(input.prompt),
-    });
-
-    await recordUsage(projectId, TRANSCRIPTION_MODEL, 0, 0, {
-        userId: input.actor.userId,
-        workspaceId: input.actor.workspaceId,
-        source: TRANSCRIPTION_USAGE_SOURCE,
-        contextPage: page ?? LEGACY_UNKNOWN,
-    });
 
     return result;
 }

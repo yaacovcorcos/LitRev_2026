@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatComposerCore } from "../ChatComposerCore";
 
@@ -51,6 +51,37 @@ describe("ChatComposerCore mode selection", () => {
         expect(screen.getByText("General (auto)")).toBeTruthy();
     });
 
+    it("restores input and releases its send lock when async bootstrap reports failure", async () => {
+        let resolveFailure!: (value: false) => void;
+        const failedSend = new Promise<false>((resolve) => {
+            resolveFailure = resolve;
+        });
+        const sendMessage = vi.fn()
+            .mockReturnValueOnce(failedSend)
+            .mockResolvedValueOnce(undefined);
+        render(
+            <ChatComposerCore
+                page="overview"
+                inputPlaceholder="Ask"
+                isLoading={false}
+                sendMessage={sendMessage}
+                cancelStream={vi.fn()}
+                showVoice={false}
+            />,
+        );
+
+        const input = screen.getByLabelText("Copilot prompt") as HTMLTextAreaElement;
+        fireEvent.change(input, { target: { value: "Recover this request" } });
+        fireEvent.keyDown(input, { key: "Enter" });
+        expect(input.value).toBe("");
+
+        resolveFailure(false);
+        await waitFor(() => expect(input.value).toBe("Recover this request"));
+
+        fireEvent.keyDown(input, { key: "Enter" });
+        await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(2));
+    });
+
     it("keeps manual mode visible and sticky across sends", async () => {
         const sendMessage = vi.fn();
         const { rerender } = render(
@@ -75,7 +106,7 @@ describe("ChatComposerCore mode selection", () => {
             "Find studies about diabetes",
             "overview",
             undefined,
-            "gpt-5.2",
+            "gpt-5.6-luna",
             "protocol",
             undefined,
             undefined,
@@ -113,7 +144,7 @@ describe("ChatComposerCore mode selection", () => {
             "Second message",
             "overview",
             undefined,
-            "gpt-5.2",
+            "gpt-5.6-luna",
             "protocol",
             undefined,
             undefined,
@@ -146,7 +177,7 @@ describe("ChatComposerCore mode selection", () => {
             "Find studies about diabetes",
             "overview",
             undefined,
-            "gpt-5.2",
+            "gpt-5.6-luna",
             "search",
             undefined,
             undefined,

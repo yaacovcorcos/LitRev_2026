@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/server/prisma";
+import { isAbortLikeError, throwIfAborted } from "@/lib/abort";
 
 type UtilityRow = {
     id: string;
@@ -57,10 +58,14 @@ export async function runMemoryMaintenance(options: {
     projectId?: string;
     userId?: string;
     dryRun?: boolean;
+    signal?: AbortSignal;
 }): Promise<MemoryMaintenanceResult> {
     const projectId = options.projectId;
     const userId = options.userId;
     const dryRun = options.dryRun ?? false;
+    const signal = options.signal;
+
+    throwIfAborted(signal);
 
     const [userRows, projectRows, studyRows] = await Promise.all([
         userId
@@ -106,40 +111,49 @@ export async function runMemoryMaintenance(options: {
             })
             : Promise.resolve([]),
     ]);
+    throwIfAborted(signal);
 
     const userArchiveIds = userRows.filter(shouldArchiveLowUtility).map((row) => row.id);
     const projectArchiveIds = projectRows.filter(shouldArchiveLowUtility).map((row) => row.id);
     const studyArchiveIds = studyRows.filter(shouldArchiveLowUtility).map((row) => row.id);
 
     if (!dryRun) {
+        throwIfAborted(signal);
         await prisma.$transaction(async (tx) => {
             if (userArchiveIds.length > 0) {
+                throwIfAborted(signal);
                 await tx.memoryEmbedding.deleteMany({
                     where: { memoryType: "user", memoryId: { in: userArchiveIds } },
                 });
+                throwIfAborted(signal);
                 await tx.userMemory.updateMany({
                     where: { id: { in: userArchiveIds } },
                     data: { status: "archived", archivedAt: new Date(), embeddingStatus: "pending" },
                 });
             }
             if (projectArchiveIds.length > 0) {
+                throwIfAborted(signal);
                 await tx.memoryEmbedding.deleteMany({
                     where: { memoryType: "project", memoryId: { in: projectArchiveIds } },
                 });
+                throwIfAborted(signal);
                 await tx.projectMemory.updateMany({
                     where: { id: { in: projectArchiveIds } },
                     data: { status: "archived", archivedAt: new Date(), embeddingStatus: "pending" },
                 });
             }
             if (studyArchiveIds.length > 0) {
+                throwIfAborted(signal);
                 await tx.memoryEmbedding.deleteMany({
                     where: { memoryType: "study", memoryId: { in: studyArchiveIds } },
                 });
+                throwIfAborted(signal);
                 await tx.studyMemory.updateMany({
                     where: { id: { in: studyArchiveIds } },
                     data: { status: "archived", archivedAt: new Date(), embeddingStatus: "pending" },
                 });
             }
+            throwIfAborted(signal);
         });
     }
 
@@ -162,7 +176,9 @@ export async function runMemoryMaintenance(options: {
 export async function runMemoryMaintenanceLoop(options: {
     projectId?: string;
     userId?: string;
+    signal?: AbortSignal;
 }): Promise<MemoryMaintenanceResult | null> {
+    throwIfAborted(options.signal);
     const key = scopedKey(options.projectId, options.userId);
     const now = Date.now();
     const lastRun = lastRunByScope.get(key) || 0;
@@ -173,8 +189,12 @@ export async function runMemoryMaintenanceLoop(options: {
             projectId: options.projectId,
             userId: options.userId,
             dryRun: false,
+            signal: options.signal,
         });
-    } catch {
+    } catch (error) {
+        if (options.signal?.aborted || isAbortLikeError(error)) {
+            throw error;
+        }
         return null;
     }
 }

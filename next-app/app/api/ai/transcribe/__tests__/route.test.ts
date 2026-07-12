@@ -141,6 +141,26 @@ describe("/api/ai/transcribe", () => {
     });
   });
 
+  it("returns retryable 503 semantics for a pre-provider admission timeout", async () => {
+    const formData = new FormData();
+    formData.append("audio", new File(["audio"], "voice.webm", { type: "audio/webm" }));
+    mocks.transcribeAudioForActor.mockRejectedValue(
+      new mocks.MockTranscriptionGovernanceError(
+        "AI_USAGE_ADMISSION_TIMEOUT",
+        "Usage admission could not complete before the transcription provider was called. Please retry.",
+        { status: 503, retryAfterSeconds: 1 },
+      ),
+    );
+
+    const response = await POST(buildRequest(formData));
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("1");
+    await expect(response.json()).resolves.toMatchObject({
+      code: "AI_USAGE_ADMISSION_TIMEOUT",
+    });
+  });
+
   it("passes validated voice attribution into the governed transcription service", async () => {
     const formData = new FormData();
     formData.append("audio", new File(["audio"], "voice.webm", { type: "audio/webm" }));

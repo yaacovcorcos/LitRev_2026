@@ -32,6 +32,51 @@ export type AgentQualityGateReport = {
   observedRuntimeSignals: string[];
 };
 
+export type AgentQualityScenarioExecutionGroup = {
+  testPath: string;
+  scenarioIds: readonly string[];
+};
+
+/**
+ * Deterministic production-runtime test files executed by the protected agent
+ * quality gate. The matrix keeps the catalog and executable regression lane in
+ * lockstep: adding a catalog scenario without assigning runtime proof fails the
+ * contract check before the gate can report success.
+ */
+export const AGENT_QUALITY_SCENARIO_EXECUTION_GROUPS = [
+  {
+    testPath: "lib/server/__tests__/ask-user-tool.test.ts",
+    scenarioIds: ["ask-user-clarify-pico"],
+  },
+  {
+    testPath: "lib/server/__tests__/delegation-tools.test.ts",
+    scenarioIds: ["delegation-general-search-route"],
+  },
+  {
+    testPath: "lib/server/__tests__/eval-runtime-search-scenarios.test.ts",
+    scenarioIds: [
+      "search-direct-pubmed-receipt",
+      "search-delegated-pubmed-runtime",
+      "search-direct-openalex-runtime",
+    ],
+  },
+  {
+    testPath: "lib/server/__tests__/ai-service-run-finalization.test.ts",
+    scenarioIds: [
+      "runtime-cancelled-terminal-truth",
+      "runtime-no-answer-failure-truth",
+    ],
+  },
+  {
+    testPath: "lib/server/__tests__/clarification-decision-requests.test.ts",
+    scenarioIds: ["runtime-decision-request-durable-pause"],
+  },
+  {
+    testPath: "lib/server/__tests__/bulk-screening-tiers.test.ts",
+    scenarioIds: ["screening-decision-audit"],
+  },
+] as const satisfies readonly AgentQualityScenarioExecutionGroup[];
+
 export const REQUIRED_AGENT_EVAL_SUITES = [
   "ask_user",
   "delegation",
@@ -147,6 +192,7 @@ function collectFixtureSignals(fixtures: ChatStreamFixture[]): string[] {
 function buildScenarioChecks(
   scenariosInput: EvalScenario[],
   observedRuntimeSignals: string[],
+  executionGroups: readonly AgentQualityScenarioExecutionGroup[],
 ): AgentQualityGateCheck[] {
   const checks: AgentQualityGateCheck[] = [];
   let scenarios: EvalScenario[] = [];
@@ -177,6 +223,41 @@ function buildScenarioChecks(
       ? `Required suites covered: ${REQUIRED_AGENT_EVAL_SUITES.join(", ")}.`
       : "Scenario catalog is missing required suites.",
     details: missingSuites.length ? missingSuites : undefined,
+  });
+
+  const scenarioIds = new Set(scenarios.map((scenario) => scenario.id));
+  const executionCounts = new Map<string, number>();
+  const invalidTestPaths: string[] = [];
+  for (const group of executionGroups) {
+    if (!/\.test\.[cm]?[jt]sx?$/.test(group.testPath)) {
+      invalidTestPaths.push(group.testPath);
+    }
+    for (const scenarioId of group.scenarioIds) {
+      executionCounts.set(scenarioId, (executionCounts.get(scenarioId) ?? 0) + 1);
+    }
+  }
+  const missingExecutions = [...scenarioIds]
+    .filter((scenarioId) => !executionCounts.has(scenarioId))
+    .map((scenarioId) => `missing executable scenario: ${scenarioId}`);
+  const unknownExecutions = [...executionCounts.keys()]
+    .filter((scenarioId) => !scenarioIds.has(scenarioId))
+    .map((scenarioId) => `unknown executable scenario: ${scenarioId}`);
+  const duplicateExecutions = [...executionCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([scenarioId, count]) => `duplicate executable scenario: ${scenarioId} (${count})`);
+  const executionMatrixDetails = [
+    ...missingExecutions,
+    ...unknownExecutions,
+    ...duplicateExecutions,
+    ...invalidTestPaths.map((testPath) => `invalid deterministic test path: ${testPath}`),
+  ];
+  checks.push({
+    id: "scenario-execution-matrix",
+    passed: executionMatrixDetails.length === 0,
+    summary: executionMatrixDetails.length === 0
+      ? `${scenarios.length} catalog scenarios map exactly once to deterministic runtime tests.`
+      : "Scenario catalog and deterministic runtime execution matrix drifted apart.",
+    details: executionMatrixDetails.length ? executionMatrixDetails : undefined,
   });
 
   const expectedSignals = Array.from(new Set(scenarios.flatMap((scenario) => scenario.expectedSignals))).sort();
@@ -277,14 +358,16 @@ export function evaluateAgentQualityGate(params?: {
   scenarios?: EvalScenario[];
   fixtures?: ChatStreamFixture[];
   burnInThresholds?: BurnInThresholds;
+  scenarioExecutionGroups?: readonly AgentQualityScenarioExecutionGroup[];
 }): AgentQualityGateReport {
   const scenarios = params?.scenarios ?? CORE_EVAL_SCENARIOS;
   const fixtures = params?.fixtures ?? CHAT_STREAM_FIXTURES_V1;
   const thresholds = params?.burnInThresholds ?? DEFAULT_BURN_IN_THRESHOLDS;
+  const executionGroups = params?.scenarioExecutionGroups ?? AGENT_QUALITY_SCENARIO_EXECUTION_GROUPS;
   const observedRuntimeSignals = collectFixtureSignals(fixtures);
 
   const checks = [
-    ...buildScenarioChecks(scenarios, observedRuntimeSignals),
+    ...buildScenarioChecks(scenarios, observedRuntimeSignals, executionGroups),
     ...buildFixtureChecks(observedRuntimeSignals),
     ...buildBurnInChecks(thresholds),
   ];

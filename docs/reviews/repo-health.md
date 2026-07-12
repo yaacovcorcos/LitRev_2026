@@ -37,7 +37,7 @@ This file is the living summary of current repo health. Keep it concise and fact
 - Added direct regression coverage for `useTimelineWindowing`, provider streamed tool-call delta assembly, conversation attachment/tool-call JSON serialization, and `CommandPalette` hydration/body-scroll behavior so the cleanup wave stays evidence-backed instead of relying on lint-only confidence.
 - Closed the known `FIX-011b` agent-runtime code delta: semantic run cancellation is explicit, cancelled terminal truth is durable, long-lineage clarification hydration uses the newest relevant window, optional post-answer failures are degrade-only, and loop budget/repeat/no-answer exits are truthful.
 - Added durable `ToolIdempotencyRecord` receipts for mutating tool replay across retry/continuation lineage and first-class `DecisionRequestRecord` / `DecisionResolutionRecord` persistence for `ask_user`.
-- Promoted a deterministic agent-quality gate into protected CI through `npm run check:agent-quality`, covering scenario catalog validity, runtime-signal fixture coverage, and the strict U1.6 burn-in contract shape.
+- Promoted a deterministic agent-quality gate into protected CI through `npm run check:agent-quality`; it now executes the runtime-scenario matrix before validating scenario catalog coverage, runtime-signal fixtures, and the strict U1.6 burn-in contract shape.
 - Hardened the follow-up agent-runtime review findings: mutating-tool reservations now recover from executor failure and stale abort/crash leases, OpenAlex Crossref enrichment is bounded and abort-aware, and restartable interrupted tool calls now have typed continuation policy.
 
 ## Next Review Inputs

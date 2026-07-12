@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ReliabilityMetricEvent } from "@/types/reliability-telemetry";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import type { ReliabilityMetricDraft } from "@/types/reliability-telemetry";
 
 const originalFetch = globalThis.fetch;
 const originalPublicMode = process.env.NEXT_PUBLIC_E2E_TEST_MODE;
@@ -11,10 +13,7 @@ async function importTelemetryModule() {
   return await import("@/lib/ai/reliability-telemetry");
 }
 
-function makeMetric(): Omit<
-  ReliabilityMetricEvent,
-  "eventId" | "version" | "timestamp" | "dimensions"
-> {
+function makeMetric(): ReliabilityMetricDraft {
   return {
     type: "reliability.v1.route.ready" as const,
     surface: "home" as const,
@@ -60,6 +59,58 @@ describe("reliability telemetry shipping", () => {
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     expect(vi.mocked(globalThis.fetch).mock.calls[0]?.[0]).toBe("/api/telemetry/reliability");
+  });
+
+  it("records statically inlined public cohort flags in browser dimensions", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SCROLL_OWNERSHIP_A1", "1");
+    vi.stubEnv("NEXT_PUBLIC_STREAM_RELIABILITY_A2", "false");
+    vi.stubEnv("NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2", "on");
+    const { getReliabilityDimensions } = await importTelemetryModule();
+
+    expect(getReliabilityDimensions().flags).toEqual({
+      scrollOwnershipA1: true,
+      streamReliabilityA2: false,
+      mobileScrollLockV2: true,
+    });
+  });
+
+  it("uses exact NEXT_PUBLIC property references so Next can inline flags into the client bundle", () => {
+    const source = readFileSync(path.resolve(process.cwd(), "lib/ai/reliability-telemetry.ts"), "utf8");
+    expect(source).not.toContain("process.env[name]");
+    expect(source).toContain("process.env.NEXT_PUBLIC_SCROLL_OWNERSHIP_A1");
+    expect(source).toContain("process.env.NEXT_PUBLIC_STREAM_RELIABILITY_A2");
+    expect(source).toContain("process.env.NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2");
+  });
+
+  it("ships the typed dead-scroll incident contract to the authoritative endpoint", async () => {
+    const {
+      flushReliabilityMetricsForTests,
+      recordDeadScrollIncident,
+      setReliabilityMetricShippingOverrideForTests,
+    } = await importTelemetryModule();
+    setReliabilityMetricShippingOverrideForTests(true);
+
+    recordDeadScrollIncident("project-1", {
+      sessionId: "shell-session-1",
+      input: "touch",
+      blockedDurationMs: 2_500,
+      shellMode: "conversation",
+    });
+    await flushReliabilityMetricsForTests();
+
+    const requestInit = vi.mocked(globalThis.fetch).mock.calls[0]?.[1];
+    const body = JSON.parse(String(requestInit?.body));
+    expect(body).toMatchObject({
+      type: "reliability.v1.shell.dead_scroll_detected",
+      surface: "shell",
+      projectId: "project-1",
+      payload: {
+        sessionId: "shell-session-1",
+        input: "touch",
+        blockedDurationMs: 2_500,
+        shellMode: "conversation",
+      },
+    });
   });
 
   it("does not ship reliability metrics in explicit E2E mode", async () => {

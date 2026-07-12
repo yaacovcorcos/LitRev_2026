@@ -9,6 +9,11 @@ const defaultExport = {
     "lib/agent/**/*.ts",
     "lib/server/agent/**/*.ts",
     "lib/server/ai/tools/**/*.ts",
+    "lib/server/ai/ai-service.ts",
+    "lib/server/ai/providers/{anthropic,google,openai,stream-termination,xai}.ts",
+    "lib/server/ai/tool-middleware.ts",
+    "app/actions/agent.ts",
+    "app/api/ai/stream/route.ts",
   ],
   rules: {
     "litrev/require-tests-for-runtime-files": [

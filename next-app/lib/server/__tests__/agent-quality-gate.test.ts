@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  AGENT_QUALITY_SCENARIO_EXECUTION_GROUPS,
   REQUIRED_RUNTIME_FIXTURE_SIGNALS,
   evaluateAgentQualityGate,
 } from "@/lib/server/evals/agent-quality-gate";
@@ -56,5 +57,38 @@ describe("agent quality gate", () => {
 
     expect(report.passed).toBe(false);
     expect(report.failures).toContain("scenario-signal-vocabulary: run-end-completed");
+  });
+
+  it("fails when a catalog scenario has no deterministic runtime execution assignment", () => {
+    const report = evaluateAgentQualityGate({
+      scenarioExecutionGroups: AGENT_QUALITY_SCENARIO_EXECUTION_GROUPS.filter(
+        (group) => !(group.scenarioIds as readonly string[]).includes("runtime-no-answer-failure-truth"),
+      ),
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.failures).toContain(
+      "scenario-execution-matrix: missing executable scenario: runtime-no-answer-failure-truth",
+    );
+  });
+
+  it("fails duplicate and stale deterministic runtime execution assignments", () => {
+    const report = evaluateAgentQualityGate({
+      scenarioExecutionGroups: [
+        ...AGENT_QUALITY_SCENARIO_EXECUTION_GROUPS,
+        {
+          testPath: "lib/server/__tests__/stale.test.ts",
+          scenarioIds: ["ask-user-clarify-pico", "removed-scenario"],
+        },
+      ],
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.failures).toContain(
+      "scenario-execution-matrix: duplicate executable scenario: ask-user-clarify-pico (2)",
+    );
+    expect(report.failures).toContain(
+      "scenario-execution-matrix: unknown executable scenario: removed-scenario",
+    );
   });
 });

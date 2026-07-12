@@ -29,6 +29,9 @@ const SAFE_MESSAGES: Record<string, string> = {
   ARTIFACT_INVALID_STATE: "This artifact can no longer be reviewed.",
   ARTIFACT_INVALID_PAYLOAD: "The artifact data is invalid. Please refresh and try again.",
   ARTIFACT_APPLY_FAILED: "The proposed change could not be applied.",
+  ARTIFACT_UNDO_UNSUPPORTED: "This artifact type cannot be undone.",
+  ARTIFACT_UNDO_FAILED: "The applied change could not be restored. No undo was recorded.",
+  ARTIFACT_UNDO_CONFLICT: "This content changed after the artifact was applied, so undo was not performed.",
   ARTIFACT_CONTEXT_MISSING: "The artifact could not be applied because required context is missing.",
 };
 

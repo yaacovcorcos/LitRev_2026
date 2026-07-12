@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import type { ToolResult } from "@/types/ai";
 import type { ToolExecutionContext } from "@/lib/server/ai/tools/base";
 import { logServerError } from "@/lib/server/logging";
-import { isAbortLikeError } from "@/lib/abort";
+import { isAbortLikeError, throwIfAborted } from "@/lib/abort";
+import { isRunOwnershipError } from "@/lib/server/agent/run";
 import {
   createPrismaToolIdempotencyStore,
   type ToolIdempotencyReservationInput,
@@ -24,15 +25,24 @@ export type ToolExecutionRequest = {
   /**
    * Internal per-request idempotency receipt set by idempotency middleware.
    */
-  idempotencyReceipt?: {
-    key: ToolIdempotencyReservationInput;
-    reservationId?: string | null;
-    persistent: boolean;
-  };
+  idempotencyReceipt?:
+    | {
+        key: ToolIdempotencyReservationInput;
+        reservationId: string;
+        persistent: true;
+      }
+    | {
+        key: ToolIdempotencyReservationInput;
+        persistent: false;
+      };
+  /** Canonical fingerprint computed once and shared by persistence boundaries. */
+  executionFingerprint?: string;
 };
 
 export type ToolMiddleware = {
   name?: string;
+  /** Persistence/safety hooks may require fail-closed settlement. */
+  afterFailureMode?: "open" | "closed";
   before?: (
     request: ToolExecutionRequest
   ) => ToolExecutionRequest | null | void | Promise<ToolExecutionRequest | null | void>;
@@ -66,22 +76,55 @@ type IdempotencyCacheEntry = {
   expiresAt: number;
 };
 
-function stableSerialize(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableSerialize(item)).join(",")}]`;
+const MAX_FINGERPRINT_DEPTH = 20;
+const MAX_FINGERPRINT_SERIALIZED_BYTES = 512 * 1024;
+
+function stableSerialize(
+  value: unknown,
+  state = { depth: 0, bytes: 0, seen: new WeakSet<object>() },
+): string {
+  if (state.depth > MAX_FINGERPRINT_DEPTH) {
+    throw new Error(`Tool arguments exceed the fingerprint depth limit (${MAX_FINGERPRINT_DEPTH}).`);
   }
-  if (value && typeof value === "object") {
+
+  const append = (serialized: string): string => {
+    state.bytes += Buffer.byteLength(serialized, "utf8");
+    if (state.bytes > MAX_FINGERPRINT_SERIALIZED_BYTES) {
+      throw new Error(`Tool arguments exceed the fingerprint size limit (${MAX_FINGERPRINT_SERIALIZED_BYTES} bytes).`);
+    }
+    return serialized;
+  };
+
+  if (!value || typeof value !== "object") {
+    try {
+      return append(JSON.stringify(value) ?? '"__undefined__"');
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Tool arguments exceed")) throw error;
+      throw new Error("Tool arguments contain a value that cannot be fingerprinted.");
+    }
+  }
+  if (state.seen.has(value)) {
+    throw new Error("Tool arguments contain a circular reference and cannot be fingerprinted.");
+  }
+  state.seen.add(value);
+  state.depth += 1;
+  try {
+    if (Array.isArray(value)) {
+      const body = value.map((item) => stableSerialize(item, state)).join(",");
+      return append(`[${body}]`);
+    }
     const record = value as Record<string, unknown>;
-    const keys = Object.keys(record).sort();
-    const body = keys
-      .map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`)
+    const body = Object.keys(record).sort()
+      .map((key) => `${append(JSON.stringify(key))}:${stableSerialize(record[key], state)}`)
       .join(",");
-    return `{${body}}`;
+    return append(`{${body}}`);
+  } finally {
+    state.depth -= 1;
+    state.seen.delete(value);
   }
-  return JSON.stringify(value) ?? '"__undefined__"';
 }
 
-function requestFingerprint(request: ToolExecutionRequest): string {
+export function createToolExecutionFingerprint(request: ToolExecutionRequest): string {
   const payload = {
     name: request.name,
     args: request.args,
@@ -198,10 +241,12 @@ export function createIdempotencyMiddleware(config?: {
 
   return {
     name: "idempotency-envelope",
+    afterFailureMode: "closed",
     before: async (request) => {
       if (!protectedTools.has(request.name)) return request;
       const scopeKey = toolIdempotencyScopeKey(request);
-      const fingerprint = requestFingerprint(request);
+      const fingerprint = request.executionFingerprint ?? createToolExecutionFingerprint(request);
+      request = { ...request, executionFingerprint: fingerprint };
 
       if (store && scopeKey) {
         const receiptKey = buildReceiptKey(request, scopeKey, fingerprint);
@@ -266,12 +311,12 @@ export function createIdempotencyMiddleware(config?: {
             toolName: request.idempotencyReceipt.key.toolName,
             fingerprint: request.idempotencyReceipt.key.fingerprint,
             reservationId: request.idempotencyReceipt.reservationId,
+            callId: request.idempotencyReceipt.key.callId,
           });
           return;
         }
         await store.complete({
           ...request.idempotencyReceipt.key,
-          callId: request.callId,
           reservationId: request.idempotencyReceipt.reservationId,
           result,
         });
@@ -316,6 +361,9 @@ async function runAfterHooks(
         toolName: request.name,
         error: error instanceof Error ? error.message : String(error),
       });
+      if (middleware.afterFailureMode === "closed") {
+        throw error;
+      }
     }
   }
   return result;
@@ -328,6 +376,8 @@ export async function executeWithToolMiddleware(
 ): Promise<ToolResult> {
   let resolvedRequest = request;
   const appliedBeforeMiddlewares: ToolMiddleware[] = [];
+
+  throwIfAborted(resolvedRequest.context?.signal);
 
   for (const middleware of middlewares) {
     if (!middleware.before) continue;
@@ -356,7 +406,11 @@ export async function executeWithToolMiddleware(
       }
       appliedBeforeMiddlewares.push(middleware);
     } catch (error) {
-      if (resolvedRequest.context?.signal?.aborted || isAbortLikeError(error)) {
+      if (
+        resolvedRequest.context?.signal?.aborted
+        || isAbortLikeError(error)
+        || isRunOwnershipError(error)
+      ) {
         await runAfterHooks(
           resolvedRequest,
           appliedBeforeMiddlewares,
@@ -382,9 +436,14 @@ export async function executeWithToolMiddleware(
 
   let result: ToolResult;
   try {
+    throwIfAborted(resolvedRequest.context?.signal);
     result = await executor(resolvedRequest);
   } catch (error) {
-    if (resolvedRequest.context?.signal?.aborted || isAbortLikeError(error)) {
+    if (
+      resolvedRequest.context?.signal?.aborted
+      || isAbortLikeError(error)
+      || isRunOwnershipError(error)
+    ) {
       await runAfterHooks(
         resolvedRequest,
         appliedBeforeMiddlewares,

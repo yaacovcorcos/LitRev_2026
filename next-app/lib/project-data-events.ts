@@ -58,6 +58,7 @@ export function getChangedDomainsForAcceptedArtifact(
     switch (artifactType) {
         case "study_proposal":
         case "study_update":
+        case "study_deletion":
         case "screening_batch":
             return ["ledger"];
         case "protocol_suggestion":

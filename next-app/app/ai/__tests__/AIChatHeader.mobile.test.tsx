@@ -19,14 +19,18 @@ const defaultProps = {
   selectedProjectId: null,
   selectedScopeLabel: "Global",
   projects: [{ id: "project-1", name: "Project Alpha" }],
-  selectedModel: "gpt-5.2" as const,
+  selectedModel: "gpt-5.6-luna" as const,
+  reasoningEffort: "medium" as const,
+  deliveryMode: "standard" as const,
   showReasoningControls: true,
   reasoningMode: "summary" as const,
-  reasoningSupport: "explicit" as const,
+  reasoningVisibilitySupport: "full" as const,
   onHistoryToggle: vi.fn(),
   onNewChat: vi.fn(),
   onSelectProject: vi.fn(),
   onModelChange: vi.fn(),
+  onReasoningEffortChange: vi.fn(),
+  onDeliveryModeChange: vi.fn(),
   onReasoningModeChange: vi.fn(),
 };
 
@@ -50,12 +54,73 @@ describe("AIChatHeader mobile shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open AI options" }));
 
     expect(screen.getByText("Scope")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Project Alpha" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Project Alpha" }));
     expect(onSelectProject).toHaveBeenCalledWith("project-1");
 
     fireEvent.click(screen.getByRole("button", { name: "Open AI options" }));
-    fireEvent.click(screen.getByRole("button", { name: "Grok 4.1 Fast" }));
-    expect(onModelChange).toHaveBeenCalledWith("grok-4-1-fast");
+    fireEvent.click(screen.getByRole("radio", { name: /DeepSeek V4 Pro/i }));
+    expect(onModelChange).toHaveBeenCalledWith("deepseek-v4-pro");
+  });
+
+  it("exposes effort, visibility, and paid delivery as separate mobile controls", () => {
+    const onReasoningEffortChange = vi.fn();
+    const onReasoningModeChange = vi.fn();
+    const onDeliveryModeChange = vi.fn();
+    render(
+      <AIChatHeader
+        {...defaultProps}
+        onReasoningEffortChange={onReasoningEffortChange}
+        onReasoningModeChange={onReasoningModeChange}
+        onDeliveryModeChange={onDeliveryModeChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open AI options" }));
+
+    expect(screen.getByText("Reasoning effort")).toBeTruthy();
+    expect(screen.getByText("Reasoning visibility")).toBeTruthy();
+    expect(screen.getByText("Delivery")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("radio", { name: /^High/i }));
+    expect(onReasoningEffortChange).toHaveBeenCalledWith("high");
+
+    fireEvent.click(screen.getByRole("radio", { name: /^Full/i }));
+    expect(onReasoningModeChange).toHaveBeenCalledWith("full");
+
+    fireEvent.click(screen.getByRole("switch", { name: /faster delivery: off/i }));
+    expect(onDeliveryModeChange).toHaveBeenCalledWith("priority");
+  });
+
+  it("keeps compute effort but hides unsupported visible reasoning for direct models", () => {
+    render(
+      <AIChatHeader
+        {...defaultProps}
+        showReasoningControls={false}
+        reasoningVisibilitySupport="none"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open AI options" }));
+
+    expect(screen.getByText("Reasoning effort")).toBeTruthy();
+    expect(screen.queryByText("Reasoning visibility")).toBeNull();
+    expect(screen.getByText(/reasoning effort still applies/i)).toBeTruthy();
+    expect(screen.getByText(/does not return visible reasoning/i)).toBeTruthy();
+  });
+
+  it("shows unconfigured models as disabled setup-required choices", () => {
+    render(
+      <AIChatHeader
+        {...defaultProps}
+        modelAvailability={{ "deepseek-v4-pro": false }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open AI options" }));
+
+    const unavailableModel = screen.getByRole("radio", { name: /DeepSeek V4 Pro/i }) as HTMLButtonElement;
+    expect(unavailableModel.disabled).toBe(true);
+    expect(screen.getAllByText("Setup required").length).toBeGreaterThan(0);
   });
 
   it("shows a compact return-to-project action when a previous project is available", () => {

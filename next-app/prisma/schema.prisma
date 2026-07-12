@@ -123,19 +123,19 @@ model WorkspaceMember {
 }
 
 model Project {
-  id             String   @id @default(cuid())
-  workspaceId    String
-  ownerId        String
-  demoKey        String?
-  name           String
-  description    String?
-  status         String
-  statusText     String
-  papers         Int?
-  progress       Json?
-  projectConversation Json? @map("projectCopilot")
-  created        DateTime @default(now())
-  modified       DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  workspaceId         String
+  ownerId             String
+  demoKey             String?
+  name                String
+  description         String?
+  status              String
+  statusText          String
+  papers              Int?
+  progress            Json?
+  projectConversation Json?    @map("projectCopilot")
+  created             DateTime @default(now())
+  modified            DateTime @updatedAt
 
   workspace              Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   owner                  User                    @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Restrict)
@@ -203,7 +203,7 @@ model DraftVersion {
 }
 
 model DraftCheckpoint {
-  id             String    @id @default(cuid())
+  id             String   @id @default(cuid())
   projectId      String
   workspaceId    String?
   label          String?
@@ -212,7 +212,7 @@ model DraftCheckpoint {
   fileAssetId    String?
   artifactId     String?
   conversationId String?
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime @default(now())
 
   project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   fileAsset    FileAsset?      @relation("DraftCheckpointFileAsset", fields: [fileAssetId], references: [id], onDelete: SetNull)
@@ -281,7 +281,7 @@ model FileAsset {
 }
 
 model StudyProcessingJob {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   studyId          String
   projectId        String
   workspaceId      String?
@@ -290,18 +290,18 @@ model StudyProcessingJob {
   state            String
   priority         String
   requestSource    String
-  attemptCount     Int      @default(0)
-  requestedAt      DateTime @default(now())
+  attemptCount     Int       @default(0)
+  requestedAt      DateTime  @default(now())
   startedAt        DateTime?
   leaseExpiresAt   DateTime?
   completedAt      DateTime?
   lastErrorCode    String?
   lastErrorMessage String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  study     Study     @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  study     Study      @relation(fields: [studyId], references: [id], onDelete: Cascade)
   fileAsset FileAsset? @relation(fields: [fileAssetId], references: [id], onDelete: SetNull)
 
   @@unique([studyId, phase])
@@ -313,22 +313,22 @@ model StudyProcessingJob {
 // AI Conversation - stores chat history for copilot and AI assistant
 // Multi-user ready: userId + workspaceId for ownership scoping
 model AIConversation {
-  id          String               @id @default(cuid())
-  userId      String? // Owner of the conversation (required for multi-user)
-  workspaceId String? // Workspace scope (required for multi-user)
-  title       String? // Auto-generated or user-edited title
-  context     String // "global" | "project" | "study"
-  page        String? // "ledger" | "protocol" | "draft" | "study" | "ai"
-  projectId   String?
-  studyId     String?
-  archived    Boolean              @default(false)
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  messages    AIMessage[]
-  summary     ConversationSummary?
-  usage       AIUsage[]
-  draftCheckpoints DraftCheckpoint[] @relation("DraftCheckpointConversation")
-  project     Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id               String               @id @default(cuid())
+  userId           String? // Owner of the conversation (required for multi-user)
+  workspaceId      String? // Workspace scope (required for multi-user)
+  title            String? // Auto-generated or user-edited title
+  context          String // "global" | "project" | "study"
+  page             String? // "ledger" | "protocol" | "draft" | "study" | "ai"
+  projectId        String?
+  studyId          String?
+  archived         Boolean              @default(false)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  messages         AIMessage[]
+  summary          ConversationSummary?
+  usage            AIUsage[]
+  draftCheckpoints DraftCheckpoint[]    @relation("DraftCheckpointConversation")
+  project          Project?             @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([userId, context])
   @@index([userId, projectId])
@@ -359,19 +359,33 @@ model AIMessage {
 // AI Usage - tracks token usage for rate limiting and cost control
 // Multi-user ready: userId + workspaceId for per-user/workspace tracking
 model AIUsage {
-  id             String          @id @default(cuid())
+  id             String  @id @default(cuid())
+  reservationId  String? @unique
   userId         String? // User who made the request (required for multi-user)
   workspaceId    String? // Workspace for billing/limits (required for multi-user)
   projectId      String? // Optional: specific project context
   conversationId String?
-  source         String          @default("legacy_unknown")
-  contextPage    String          @default("legacy_unknown")
-  model          String
-  inputTokens    Int
-  outputTokens   Int
-  createdAt      DateTime        @default(now())
-  conversation   AIConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  source                   String @default("legacy_unknown")
+  contextPage              String @default("legacy_unknown")
+  model                    String // Provider-observed model when available
+  provider                 String? // Provider-observed upstream when available; null when unknown
+  requestedModel           String?
+  requestedProvider        String?
+  requestedReasoningEffort String?
+  requestedDeliveryMode    String?
+  actualReasoningEffort    String?
+  actualDeliveryMode       String?
+  inputTokens              Int
+  cachedInputTokens        Int    @default(0)
+  cacheWriteInputTokens    Int    @default(0)
+  outputTokens             Int
+  reasoningTokens          Int    @default(0)
+  estimatedCostUsd         Float?
+  createdAt                DateTime @default(now())
+
+  conversation AIConversation?     @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  project      Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  reservation  AIUsageReservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@index([workspaceId, createdAt])
@@ -379,6 +393,39 @@ model AIUsage {
   @@index([conversationId, createdAt])
   @@index([source, createdAt])
   @@index([contextPage, createdAt])
+}
+
+// Durable admission and reconciliation record for one provider attempt.
+// Non-settled rows retain their conservative token reservation so a failed or
+// interrupted attempt cannot disappear from quota accounting.
+model AIUsageReservation {
+  id             String    @id @default(cuid())
+  attemptKey     String    @unique
+  scopeKey       String
+  userId         String?
+  workspaceId    String?
+  projectId      String?
+  conversationId String?
+  source         String
+  contextPage    String
+  provider       String
+  requestedModel String
+  reservedTokens Int
+  status         String    @default("active") // "active" | "failed" | "unknown" | "settled"
+  actualModel    String?
+  inputTokens    Int?
+  outputTokens   Int?
+  failureCode    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  settledAt      DateTime?
+
+  usage AIUsage?
+
+  @@index([scopeKey, createdAt])
+  @@index([scopeKey, status, createdAt])
+  @@index([status, updatedAt])
+  @@index([conversationId, createdAt])
 }
 
 // ============================================================================
@@ -493,30 +540,30 @@ model StudyMemory {
   projectId String
 
   // Memory content
-  type       String // "summary" | "finding" | "limitation" | "quality"
-  key        String?
-  category   String? // "methods" | "results" | "bias" | "population"
-  content    String // The extracted/generated content
-  source     String? // "deep_analysis" | "artifact_accept" | "explicit_user" | "ai_generated" | "extracted" | "legacy"
-  authority  String  @default("inferred") // "canonical" | "confirmed" | "inferred" | "proposed"
-  polarity   String  @default("affirming") // "affirming" | "rejecting" | "neutral"
+  type          String // "summary" | "finding" | "limitation" | "quality"
+  key           String?
+  category      String? // "methods" | "results" | "bias" | "population"
+  content       String // The extracted/generated content
+  source        String? // "deep_analysis" | "artifact_accept" | "explicit_user" | "ai_generated" | "extracted" | "legacy"
+  authority     String  @default("inferred") // "canonical" | "confirmed" | "inferred" | "proposed"
+  polarity      String  @default("affirming") // "affirming" | "rejecting" | "neutral"
   sourceRefType String?
   sourceRefId   String?
-  locator    Json?
-  confidence Float? // AI confidence score (0-1)
+  locator       Json?
+  confidence    Float? // AI confidence score (0-1)
 
   // Lifecycle
-  status             String   @default("active")
-  retrievalCount     Int      @default(0)
-  usedInAnswerCount  Int      @default(0)
-  acceptedCount      Int      @default(0)
-  rejectedCount      Int      @default(0)
-  contradictionCount Int      @default(0)
-  pinned             Boolean  @default(false)
-  embeddingStatus    String   @default("pending") // "pending" | "ready" | "failed"
+  status             String    @default("active")
+  retrievalCount     Int       @default(0)
+  usedInAnswerCount  Int       @default(0)
+  acceptedCount      Int       @default(0)
+  rejectedCount      Int       @default(0)
+  contradictionCount Int       @default(0)
+  pinned             Boolean   @default(false)
+  embeddingStatus    String    @default("pending") // "pending" | "ready" | "failed"
   lastUsedAt         DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
   archivedAt         DateTime?
 
   // For retrieval
@@ -573,8 +620,8 @@ model MemoryRetrieval {
   // Context
   userId    String?
   projectId String?
-  createdAt DateTime @default(now())
-  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime              @default(now())
+  project   Project?              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   items     MemoryRetrievalItem[]
 
   @@index([conversationId])
@@ -635,37 +682,50 @@ model MemoryEmbedding {
 // ============================================================================
 
 model AgentRun {
-  id                        String    @id @default(cuid())
-  projectId                 String?
-  conversationId            String?
-  userId                    String?
-  parentRunId               String?
-  rootRunId                 String?
-  trigger                   String // "user_message" | "proactive" | "event"
-  agentMode                 String // "protocol" | "search" | "screening" | "drafting" | "qa" | "general"
-  status                    String // "running" | "completed" | "failed" | "cancelled" | "paused"
-  model                     String?
-  costTokensIn              Int       @default(0)
-  costTokensOut             Int       @default(0)
-  startedAt                 DateTime  @default(now())
-  runPhase                  String    @default("plan") // "plan" | "ask" | "act" | "verify" | "finalize"
-  phaseEnteredAt            DateTime  @default(now())
-  lastActivityAt            DateTime  @default(now())
-  lastDurableProgressAt     DateTime  @default(now())
-  durabilityState           String    @default("durable") // "durable" | "degraded"
-  durabilityDegradedReason  String?
-  finalizationState         String    @default("not_started") // "not_started" | "in_progress" | "completed" | "failed"
-  abnormalEndClassification String?
-  completedAt               DateTime?
+  id                             String    @id @default(cuid())
+  projectId                      String?
+  conversationId                 String?
+  userId                         String?
+  parentRunId                    String?
+  rootRunId                      String?
+  trigger                        String // "user_message" | "proactive" | "event"
+  agentMode                      String // "protocol" | "search" | "screening" | "drafting" | "qa" | "general"
+  status                         String // "running" | "completed" | "failed" | "cancelled" | "paused"
+  model                          String? // Requested product model ID
+  provider                       String? // Requested provider route
+  reasoningEffort                String?
+  deliveryMode                   String?
+  actualModel                    String?
+  actualProvider                 String?
+  actualReasoningEffort          String?
+  actualDeliveryMode             String?
+  costTokensIn                   Int       @default(0)
+  costTokensOut                  Int       @default(0)
+  startedAt                      DateTime  @default(now())
+  runPhase                       String    @default("plan") // "plan" | "ask" | "act" | "verify" | "finalize"
+  phaseEnteredAt                 DateTime  @default(now())
+  lastActivityAt                 DateTime  @default(now())
+  lastDurableProgressAt          DateTime  @default(now())
+  durabilityState                String    @default("durable") // "durable" | "degraded"
+  durabilityDegradedReason       String?
+  finalizationState              String    @default("not_started") // "not_started" | "in_progress" | "completed" | "failed"
+  abnormalEndClassification      String?
+  completedAt                    DateTime?
+  memoryExtractionStatus         String    @default("skipped") // "pending" | "processing" | "succeeded" | "skipped" | "failed"
+  memoryExtractionAttempts       Int       @default(0)
+  memoryExtractionLeaseToken     String?
+  memoryExtractionLeaseExpiresAt DateTime?
+  memoryExtractionCompletedAt    DateTime?
+  memoryExtractionLastError      String?
 
-  project     Project?        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  parent      AgentRun?       @relation("AgentRunLineage", fields: [parentRunId], references: [id], onDelete: SetNull)
-  children    AgentRun[]      @relation("AgentRunLineage")
-  events      RunEvent[]
-  checkpoints RunCheckpoint[]
+  project                Project?                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent                 AgentRun?               @relation("AgentRunLineage", fields: [parentRunId], references: [id], onDelete: SetNull)
+  children               AgentRun[]              @relation("AgentRunLineage")
+  events                 RunEvent[]
+  checkpoints            RunCheckpoint[]
   toolIdempotencyRecords ToolIdempotencyRecord[]
-  decisionRequests DecisionRequestRecord[]
-  artifacts   Artifact[]
+  decisionRequests       DecisionRequestRecord[]
+  artifacts              Artifact[]
 
   @@index([projectId, startedAt])
   @@index([conversationId])
@@ -675,6 +735,7 @@ model AgentRun {
   @@index([userId])
   @@index([parentRunId, startedAt])
   @@index([rootRunId, startedAt])
+  @@index([memoryExtractionStatus, memoryExtractionLeaseExpiresAt], map: "AgentRun_memoryExtractionStatus_leaseExpiry_idx")
 }
 
 model RunEvent {
@@ -839,9 +900,9 @@ model Artifact {
   reviewNote      String?
   createdAt       DateTime  @default(now())
 
-  run              AgentRun           @relation(fields: [runId], references: [id], onDelete: Cascade)
-  project          Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  draftCheckpoints DraftCheckpoint[]  @relation("DraftCheckpointArtifact")
+  run              AgentRun          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  project          Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  draftCheckpoints DraftCheckpoint[] @relation("DraftCheckpointArtifact")
 
   @@index([runId])
   @@index([projectId, status])

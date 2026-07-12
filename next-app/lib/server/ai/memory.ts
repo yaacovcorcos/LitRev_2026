@@ -13,6 +13,7 @@ import {
     noteObservedRunActivity,
 } from "@/lib/server/agent/run";
 import { emitEventWithinTransaction } from "@/lib/server/agent/events";
+import { assertProjectAccess, assertStudyAccess } from "@/lib/server/access";
 import type {
     AIMessage,
     ConversationContext,
@@ -20,6 +21,7 @@ import type {
     ConversationMessageAttachment,
 } from "@/types/ai";
 import { COMPACTION_THRESHOLD_MESSAGES, COMPACTION_SUMMARY_PROMPT } from "@/lib/agent/compaction";
+import { getBackgroundModel } from "@/lib/server/ai/background-model-policy";
 
 export type SummaryData = {
     summary: string;
@@ -31,6 +33,9 @@ export type SummaryData = {
 };
 
 export type AIConversationWithSummary = AIConversation & { summaryData?: SummaryData };
+export type AssistantMessagePersistenceResult = AIMessage & {
+    conversationTitle?: string;
+};
 export type ConversationOwnerScope = {
     userId: string;
     workspaceId: string;
@@ -258,7 +263,8 @@ export async function addAssistantMessageToConversationForRun(params: {
     conversationId: string;
     content: string;
     attachments?: ConversationMessageAttachment[];
-}): Promise<AIMessage> {
+    fallbackConversationTitle?: string;
+}): Promise<AssistantMessagePersistenceResult> {
     const created = await prisma.$transaction(async (tx) => {
         await assertRunWritableInTransaction(tx, {
             runId: params.runId,
@@ -276,10 +282,30 @@ export async function addAssistantMessageToConversationForRun(params: {
             },
         });
 
-        await tx.aIConversation.update({
-            where: { id: params.conversationId },
-            data: { updatedAt: new Date() },
-        });
+        let conversationTitle: string | undefined;
+        const updatedAt = new Date();
+        if (params.fallbackConversationTitle) {
+            const titled = await tx.aIConversation.updateMany({
+                where: { id: params.conversationId, title: null },
+                data: {
+                    title: params.fallbackConversationTitle,
+                    updatedAt,
+                },
+            });
+            if (titled.count > 0) {
+                conversationTitle = params.fallbackConversationTitle;
+            } else {
+                await tx.aIConversation.update({
+                    where: { id: params.conversationId },
+                    data: { updatedAt },
+                });
+            }
+        } else {
+            await tx.aIConversation.update({
+                where: { id: params.conversationId },
+                data: { updatedAt },
+            });
+        }
 
         await emitEventWithinTransaction(
             tx,
@@ -289,18 +315,19 @@ export async function addAssistantMessageToConversationForRun(params: {
             { messageRole: "assistant" },
         );
 
-        return message;
+        return { message, conversationTitle };
     });
 
-    noteObservedRunActivity(params.runId, created.createdAt);
+    noteObservedRunActivity(params.runId, created.message.createdAt);
 
     return {
-        id: created.id,
-        role: created.role as AIMessage["role"],
-        content: created.content,
-        toolCalls: parseToolCalls(created.toolCalls),
-        toolResultId: created.toolResultId ?? undefined,
-        createdAt: created.createdAt.toISOString(),
+        id: created.message.id,
+        role: created.message.role as AIMessage["role"],
+        content: created.message.content,
+        toolCalls: parseToolCalls(created.message.toolCalls),
+        toolResultId: created.message.toolResultId ?? undefined,
+        createdAt: created.message.createdAt.toISOString(),
+        ...(created.conversationTitle ? { conversationTitle: created.conversationTitle } : {}),
     };
 }
 
@@ -444,16 +471,40 @@ export async function getConversationWithSummaryById(
     if (!existing) return null;
     // Never allow streaming into archived conversations.
     if (existing.archived) return null;
-    // Ownership guard when user scope is available.
-    // Legacy rows may have null userId; allow those for backward compatibility.
-    if (expectedUserId && existing.userId && existing.userId !== expectedUserId) return null;
-    if (expectedWorkspaceId && existing.workspaceId && existing.workspaceId !== expectedWorkspaceId) return null;
+
+    // Conversation IDs are untrusted request input. Adoption requires complete,
+    // exact actor ownership; null-owned legacy rows are not implicitly claimable.
+    if (!expectedUserId || !expectedWorkspaceId) return null;
+    if (existing.userId !== expectedUserId) return null;
+    if (existing.workspaceId !== expectedWorkspaceId) return null;
+
+    const actorScope = {
+        ownerId: expectedUserId,
+        workspaceId: expectedWorkspaceId,
+    };
+    let canonicalProjectId = existing.projectId;
+    let canonicalStudyId = existing.studyId;
+    try {
+        if (existing.studyId) {
+            const studyScope = await assertStudyAccess(
+                actorScope,
+                existing.studyId,
+                existing.projectId,
+            );
+            canonicalProjectId = studyScope.projectId;
+            canonicalStudyId = studyScope.studyId;
+        } else if (existing.projectId) {
+            await assertProjectAccess(actorScope, existing.projectId);
+        }
+    } catch {
+        return null;
+    }
 
     const result: AIConversationWithSummary = {
         id: existing.id,
         context: existing.context as ConversationContext,
-        projectId: existing.projectId || undefined,
-        studyId: existing.studyId || undefined,
+        projectId: canonicalProjectId || undefined,
+        studyId: canonicalStudyId || undefined,
         messages: existing.messages.map((m) => ({
             id: m.id,
             role: m.role as AIMessage["role"],
@@ -530,7 +581,13 @@ export async function autoSummarizeIfNeeded(
                     { id: "sys", role: "system", content: COMPACTION_SUMMARY_PROMPT, createdAt: new Date().toISOString() },
                     { id: "user", role: "user", content: userContent, createdAt: new Date().toISOString() },
                 ],
-                { model: "grok-4-1-fast", temperature: 0.2, maxTokens: 1500, projectId: conv.projectId ?? undefined }
+                {
+                    model: getBackgroundModel("fast"),
+                    reasoningEffort: "fast",
+                    temperature: 0.2,
+                    maxTokens: 1500,
+                    projectId: conv.projectId ?? undefined,
+                }
             );
 
             // Parse response

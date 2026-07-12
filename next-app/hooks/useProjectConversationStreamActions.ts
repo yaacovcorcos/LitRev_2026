@@ -25,6 +25,8 @@ import type {
     AIStreamChunk,
     ChoiceOption,
     CopilotPage,
+    DeliveryMode,
+    ReasoningEffort,
     ReasoningMode,
     RuntimeSendOverrides,
     RunRecoveryResponse,
@@ -60,7 +62,7 @@ import {
     type StreamTerminalReason,
 } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
-import { requestAgentRunCancellation } from "@/lib/ai/run-cancel-client";
+import { cancelAgentRun } from "@/lib/ai/run-cancel-client";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import {
     ABNORMAL_END_TOOL_FAILURE_SUMMARY,
@@ -76,6 +78,9 @@ import {
 } from "@/lib/ai/run-recovery-client";
 import type { PendingAttachment, ApproveArtifactsBatchResult } from "@/types/project-conversation-context";
 import type { useProjectConversationManager } from "@/hooks/useProjectConversationManager";
+import { getModelCapabilityRecord, type SelectableModelId } from "@/lib/ai/config";
+import type { GenerationPreferenceSnapshot } from "@/types/queued-followup";
+import { createGenerationPreferenceSnapshot } from "@/lib/ai/generation-preferences";
 
 /** Dependencies injected by the provider. */
 export type ProjectConversationStreamActionsDeps = {
@@ -96,6 +101,10 @@ export type ProjectConversationStreamActionsDeps = {
     pendingAttachment: PendingAttachment | null;
     setPendingAttachment: React.Dispatch<React.SetStateAction<PendingAttachment | null>>;
     reasoningMode: ReasoningMode;
+    selectedModel: SelectableModelId;
+    reasoningEffort: ReasoningEffort;
+    deliveryMode: DeliveryMode;
+    resetDeliveryMode: () => void;
     convo: ReturnType<typeof useProjectConversationManager>;
     onNavigate: (url: string) => void;
 };
@@ -119,12 +128,31 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         pendingAttachment,
         setPendingAttachment,
         reasoningMode,
+        selectedModel,
+        reasoningEffort,
+        deliveryMode,
+        resetDeliveryMode,
         convo,
         onNavigate,
     } = deps;
 
     const userCancelRequestedRef = useRef(false);
+    const sendReleaseWaitersRef = useRef(new Set<() => void>());
+    const pendingCancellationRunIdRef = useRef<string | null>(null);
+    const pendingCancellationPromiseRef = useRef<Promise<boolean> | null>(null);
     const progressiveAnswerStreamingEnabled = isProgressiveAnswerStreamingEnabled();
+
+    const releaseSendWaiters = useCallback(() => {
+        for (const resolve of sendReleaseWaitersRef.current) resolve();
+        sendReleaseWaitersRef.current.clear();
+    }, []);
+
+    const waitForActiveSendRelease = useCallback(() => {
+        if (!isLoadingRef.current) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+            sendReleaseWaitersRef.current.add(resolve);
+        });
+    }, [isLoadingRef]);
 
     const stripReservedAssistantMessages = useCallback((messages: ProjectConversationMessage[], assistantMessageId: string) => (
         messages.filter((message) => !(
@@ -137,17 +165,78 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         ))
     ), []);
 
-    const cancelStream = useCallback(() => {
+    const stopLocalStream = useCallback(() => {
         userCancelRequestedRef.current = true;
-        requestAgentRunCancellation(currentRunId);
         streamGenRef.current++;
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
             abortControllerRef.current = null;
         }
+        isLoadingRef.current = false;
         setIsLoading(false);
         setPendingChoices([]);
-    }, [abortControllerRef, currentRunId, setIsLoading, setPendingChoices, streamGenRef]);
+        releaseSendWaiters();
+    }, [abortControllerRef, isLoadingRef, releaseSendWaiters, setIsLoading, setPendingChoices, streamGenRef]);
+
+    const confirmRunCancellation = useCallback(async (runId: string | null): Promise<boolean> => {
+        if (!runId) return true;
+        try {
+            const result = await cancelAgentRun(runId);
+            if (result === "conflict") {
+                throw new Error("The server could not confirm cancellation for this run.");
+            }
+            return true;
+        } catch {
+            const message = "LitRev stopped the local stream but could not confirm the stop on the server. Reconnect before starting another run.";
+            const errorMeta: AIErrorEnvelope = {
+                kind: "provider_request",
+                code: "RUN_CANCELLATION_UNCONFIRMED",
+                retryable: true,
+                source: "runtime",
+                message,
+                runId,
+                activeRunId: runId,
+                recoveryRecommendation: "reconnect",
+            };
+            updateState((previous) => ({
+                ...previous,
+                messages: [
+                    ...previous.messages,
+                    {
+                        id: `cancel-unconfirmed-${Date.now()}`,
+                        sender: "ai",
+                        text: message,
+                        streamError: errorMeta,
+                        createdAt: new Date().toISOString(),
+                        context: { page: "overview" },
+                    },
+                ],
+            }));
+            return false;
+        }
+    }, [updateState]);
+
+    const beginRunCancellation = useCallback((runId: string | null): Promise<boolean> => {
+        if (!runId) return Promise.resolve(true);
+        if (pendingCancellationRunIdRef.current === runId && pendingCancellationPromiseRef.current) {
+            return pendingCancellationPromiseRef.current;
+        }
+        pendingCancellationRunIdRef.current = runId;
+        const pending = confirmRunCancellation(runId).finally(() => {
+            if (pendingCancellationRunIdRef.current === runId) {
+                pendingCancellationRunIdRef.current = null;
+                pendingCancellationPromiseRef.current = null;
+            }
+        });
+        pendingCancellationPromiseRef.current = pending;
+        return pending;
+    }, [confirmRunCancellation]);
+
+    const cancelStream = useCallback(() => {
+        const runId = currentRunId;
+        stopLocalStream();
+        void beginRunCancellation(runId);
+    }, [beginRunCancellation, currentRunId, stopLocalStream]);
 
     const buildProjectRecoverySeedState = useCallback((params: {
         messages: ProjectConversationMessage[];
@@ -484,6 +573,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         let effectiveConvId = convId;
 
         // Stream lifecycle guards
+        isLoadingRef.current = true;
         setIsLoading(true);
         setStreamPhase("streaming");
         streamGenRef.current++;
@@ -1130,8 +1220,10 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 },
             });
             if (streamGenRef.current === myGen) {
+                isLoadingRef.current = false;
                 setIsLoading(false);
                 setStreamPhase("idle");
+                releaseSendWaiters();
             }
             if (abortControllerRef.current === controller) {
                 abortControllerRef.current = null;
@@ -1198,10 +1290,12 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         appendProjectRecoveryError,
         convo,
         currentRunId,
+        isLoadingRef,
         onNavigate,
         progressiveAnswerStreamingEnabled,
         projectId,
         runProjectRecovery,
+        releaseSendWaiters,
         setArtifacts,
         setCurrentRunId,
         setIsLoading,
@@ -1224,6 +1318,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
             retryModelExpectation?: RetryModelExpectation,
             contextTargets?: ContextCaptureTarget[],
             runtimeOverrides?: RuntimeSendOverrides,
+            generationPreferences?: GenerationPreferenceSnapshot,
         ) => {
             const trimmed = text.trim();
             const explicitUserInputResolution = runtimeOverrides?.userInputResolution ?? null;
@@ -1233,12 +1328,46 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 console.error("Blocking send because the attached PDF could not be read for chat.");
                 return;
             }
+            const requestedModel = generationPreferences?.model ?? model ?? selectedModel;
+            const sameAsSelectedModel = requestedModel === selectedModel;
+            const generationSnapshot = createGenerationPreferenceSnapshot({
+                model: requestedModel,
+                reasoningEffort: generationPreferences?.reasoningEffort
+                    ?? (sameAsSelectedModel ? reasoningEffort : undefined),
+                deliveryMode: generationPreferences?.deliveryMode
+                    ?? (sameAsSelectedModel ? deliveryMode : "standard"),
+            });
+            const attachmentIsImage = attachment?.extraction.status === "ready"
+                && (
+                    attachment.extraction.mediaKind === "image"
+                    || attachment.mimeType.startsWith("image/")
+                );
+            if (
+                attachmentIsImage
+                && !getModelCapabilityRecord(generationSnapshot.model)?.capabilities.includes("vision")
+            ) {
+                console.error(`Blocking send because ${generationSnapshot.model} does not support image input.`);
+                return;
+            }
             const continueFromRunId = runtimeOverrides?.continueFromRunId ?? null;
             const preferContinueFromRunId = runtimeOverrides?.preferContinueFromRunId ?? null;
             const suppressUserMessageAppend = runtimeOverrides?.suppressUserMessageAppend === true;
+            const activeRunIdBeforeSend = isLoadingRef.current
+                ? currentRunId
+                : pendingCancellationRunIdRef.current;
+            if (isLoadingRef.current) {
+                if (explicitUserInputResolution) {
+                    await waitForActiveSendRelease();
+                    if (isLoadingRef.current) return;
+                } else {
+                    stopLocalStream();
+                    if (!await beginRunCancellation(activeRunIdBeforeSend)) return;
+                }
+            } else if (pendingCancellationPromiseRef.current) {
+                if (!await pendingCancellationPromiseRef.current) return;
+            }
             const replaceRunId = runtimeOverrides?.replaceRunId
-                ?? (isLoadingRef.current ? currentRunId : null);
-            if (isLoadingRef.current) cancelStream();
+                ?? activeRunIdBeforeSend;
             setPendingChoices([]);
             setPendingUserInput(null);
             const resolutionTimestamp = new Date().toISOString();
@@ -1286,6 +1415,8 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 }
             }
 
+            resetDeliveryMode();
+
             // Build attachment metadata and augmented message for AI
             let messageForAI = trimmed;
             let attachmentsMeta: ProjectConversationMessageAttachment[] | undefined;
@@ -1294,8 +1425,17 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 const sizeStr = attachment.size >= 1024 * 1024
                     ? `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`
                     : `${Math.round(attachment.size / 1024)} KB`;
-                const userText = trimmed || "I've attached a PDF. Please review it and summarize the key points.";
-                messageForAI = `<attached_document filename="${attachment.filename}" size="${sizeStr}">\n${attachment.extraction.text}\n</attached_document>\n\n${userText}`;
+                const isImage = attachment.extraction.status === "ready"
+                    && (
+                        attachment.extraction.mediaKind === "image"
+                        || attachment.mimeType.startsWith("image/")
+                    );
+                const userText = trimmed || (isImage
+                    ? "I've attached an image. Please review it and summarize the key points."
+                    : "I've attached a PDF. Please review it and summarize the key points.");
+                messageForAI = isImage
+                    ? userText
+                    : `<attached_document filename="${attachment.filename}" size="${sizeStr}">\n${attachment.extraction.text}\n</attached_document>\n\n${userText}`;
                 attachmentsMeta = [{
                     fileAssetId: attachment.fileAssetId,
                     filename: attachment.filename,
@@ -1303,7 +1443,6 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                     mimeType: attachment.mimeType,
                     isExisting: attachment.isExisting,
                 }];
-                setPendingAttachment(null);
             }
 
             if (contextTargets?.length) {
@@ -1317,7 +1456,11 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
             }
 
             // Add user message (display text only, not the augmented AI text)
-            const displayText = trimmed || (attachment ? "I've attached a PDF. Please review it and summarize the key points." : "");
+            const displayText = trimmed || (attachment
+                ? (attachment.extraction.status === "ready" && attachment.extraction.mediaKind === "image"
+                    ? "I've attached an image. Please review it and summarize the key points."
+                    : "I've attached a PDF. Please review it and summarize the key points.")
+                : "");
             const userMessage: ProjectConversationMessage = {
                 id: `m-${Date.now()}`,
                 sender: "user",
@@ -1337,27 +1480,13 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 convo.markConversationActivity(convId);
             }
 
-            if (retryModelExpectation) {
-                recordChatUnificationMetric({
-                    type: "retry_model_continuity",
-                    surface: "project",
-                    conversationId: convId ?? null,
-                    projectId,
-                    payload: {
-                        requestKey: retryModelExpectation.requestKey,
-                        expectedModel: retryModelExpectation.expectedModel,
-                        source: retryModelExpectation.source,
-                    },
-                });
-            }
-
             const reasoningRequest = resolveReasoningRequest({
                 preferredMode: reasoningMode,
-                modelId: model,
+                modelId: generationSnapshot.model,
             });
 
             // Run the stream
-            await runStream({
+            const streamResult = await runStream({
                 body: {
                     userMessage: messageForAI,
                     context: conversationContext,
@@ -1365,7 +1494,9 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                         conversationId: convId ?? undefined,
                         projectId,
                         studyId: resolvedStudyId,
-                        model,
+                        model: generationSnapshot.model,
+                        reasoningEffort: generationSnapshot.reasoningEffort,
+                        deliveryMode: generationSnapshot.deliveryMode,
                         reasoningMode: reasoningRequest.reasoningMode,
                         includeReasoning: reasoningRequest.includeReasoning,
                         reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
@@ -1387,13 +1518,26 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 convId,
                 replaceRunId,
             });
+            if (attachment && streamResult.success) {
+                setPendingAttachment((current) => (
+                    current?.fileAssetId === attachment.fileAssetId ? null : current
+                ));
+            }
         },
-        [updateState, projectId, cancelStream, convo, pendingAttachment, pendingUserInput, reasoningMode, runStream, setPendingChoices, setPendingAttachment, setPendingUserInput, isLoadingRef, currentRunId]
+        [updateState, projectId, beginRunCancellation, convo, pendingAttachment, pendingUserInput, reasoningMode, selectedModel, reasoningEffort, deliveryMode, resetDeliveryMode, runStream, setPendingChoices, setPendingAttachment, setPendingUserInput, isLoadingRef, currentRunId, stopLocalStream, waitForActiveSendRelease]
     );
 
     const executePlanAction = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
-        const replaceRunId = isLoadingRef.current ? currentRunId : null;
-        if (isLoadingRef.current) cancelStream();
+        const activeRunIdBeforePlan = isLoadingRef.current
+            ? currentRunId
+            : pendingCancellationRunIdRef.current;
+        if (isLoadingRef.current) {
+            stopLocalStream();
+            if (!await beginRunCancellation(activeRunIdBeforePlan)) return;
+        } else if (pendingCancellationPromiseRef.current) {
+            if (!await pendingCancellationPromiseRef.current) return;
+        }
+        const replaceRunId = activeRunIdBeforePlan;
         setPendingChoices([]);
 
         // Optimistic UI: set plan artifact status to "running"
@@ -1418,8 +1562,15 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         const convId = convo.currentConversationId;
         const planMessage = stateRef.current.messages.find((msg) => msg.artifact?.id === artifactId);
         const executionPage = planMessage?.context?.page ?? "overview";
+        const generationSnapshot = createGenerationPreferenceSnapshot({
+            model: selectedModel,
+            reasoningEffort,
+            deliveryMode,
+        });
+        resetDeliveryMode();
         const reasoningRequest = resolveReasoningRequest({
             preferredMode: reasoningMode,
+            modelId: generationSnapshot.model,
         });
 
         const result = await runStream({
@@ -1431,6 +1582,9 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 options: {
                     conversationId: convId ?? undefined,
                     projectId,
+                    model: generationSnapshot.model,
+                    reasoningEffort: generationSnapshot.reasoningEffort,
+                    deliveryMode: generationSnapshot.deliveryMode,
                     reasoningMode: reasoningRequest.reasoningMode,
                     includeReasoning: reasoningRequest.includeReasoning,
                     reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
@@ -1505,7 +1659,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 messages: [...prev.messages, feedback],
             }));
         }
-    }, [cancelStream, convo, currentRunId, projectId, reasoningMode, runStream, updateState, setArtifacts, setPendingChoices, isLoadingRef, stateRef]);
+    }, [beginRunCancellation, convo, currentRunId, projectId, reasoningMode, selectedModel, reasoningEffort, deliveryMode, resetDeliveryMode, runStream, updateState, setArtifacts, setPendingChoices, isLoadingRef, stateRef, stopLocalStream]);
 
     const reviewArtifactActionLocal = useCallback(async (
         artifactId: string,
@@ -1514,7 +1668,16 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         editedPayload?: Record<string, unknown>,
     ): Promise<boolean> => {
         // Call server action (passes editedPayload for edit-then-accept flow)
-        const result = await reviewArtifactAction(artifactId, status, note, editedPayload);
+        let result;
+        try {
+            result = await reviewArtifactAction(artifactId, status, note, editedPayload);
+        } catch {
+            appendProjectArtifactActionError({
+                message: "Artifact review could not reach the server. Nothing was applied.",
+                errorCode: "ARTIFACT_REVIEW_REQUEST_FAILED",
+            });
+            return false;
+        }
         if (!result.success || !result.artifact) {
             console.error("Failed to review artifact:", result.errorCode ?? result.error);
             appendProjectArtifactActionError({
@@ -1586,7 +1749,16 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
     }, [appendProjectArtifactActionError, projectId, updateState, setArtifacts]);
 
     const undoArtifactActionLocal = useCallback(async (artifactId: string): Promise<boolean> => {
-        const result = await undoArtifactAction(artifactId);
+        let result;
+        try {
+            result = await undoArtifactAction(artifactId);
+        } catch {
+            appendProjectArtifactActionError({
+                message: "Artifact undo could not reach the server. The applied change is unchanged.",
+                errorCode: "ARTIFACT_UNDO_REQUEST_FAILED",
+            });
+            return false;
+        }
         if (!result.success || !result.artifact) {
             console.error("Failed to undo artifact:", result.error);
             appendProjectArtifactActionError({
@@ -1629,15 +1801,11 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         if (result.artifact.projectId) {
             const domains = getChangedDomainsForAcceptedArtifact(result.artifact.type, result.artifact.payload);
             if (domains.length > 0) {
-                const protocolPatch = isProtocolLiveSyncV1Enabled()
-                    ? getProtocolPatchForAcceptedArtifact(result.artifact.type, result.artifact.payload)
-                    : null;
                 dispatchProjectDataChanged({
                     projectId: result.artifact.projectId,
                     domains,
                     reason: "server_mutation",
                     source: "artifact_undo",
-                    protocolPatch: protocolPatch ?? undefined,
                 });
             }
         }

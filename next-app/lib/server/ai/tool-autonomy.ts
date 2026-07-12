@@ -13,9 +13,13 @@ import { getEffectiveAllowedTools } from "@/lib/agent/router";
 import type { ToolResultWithArtifactState } from "@/lib/agent/compaction";
 import { prisma } from "@/lib/server/prisma";
 import { recordRunEvent } from "@/lib/server/agent/run-event-recorder";
-import { emitEventWithinTransaction } from "@/lib/server/agent/events";
+import { emitEventWithinTransaction, emitToolCallEventBatch } from "@/lib/server/agent/events";
 import { createArtifact, applyArtifact } from "@/lib/server/agent/artifacts";
-import { noteObservedRunActivity, markRunDurabilityDegraded } from "@/lib/server/agent/run";
+import {
+    isRunOwnershipError,
+    noteObservedRunActivity,
+    markRunDurabilityDegraded,
+} from "@/lib/server/agent/run";
 import { createToolResultCheckpointInTransaction, isCheckpointEligibleToolResult } from "@/lib/server/agent/run-checkpoints";
 import { getAutonomyConfig, getToolAutonomyLevel } from "@/lib/server/agent/autonomy";
 import { startToolSpan, NOOP_SPAN } from "./tracing";
@@ -24,8 +28,14 @@ import { mapToolToArtifactType, mapToolToArtifactTitle } from "./tool-helpers";
 import { createAutonomyBlockedErrorEnvelope } from "@/lib/ai/error-envelope";
 import type { AIService, ToolRuntimeContext } from "./ai-service";
 import { logServerError } from "@/lib/server/logging";
-import { isIdempotencyReplayResult } from "./tool-middleware";
+import {
+    createToolExecutionFingerprint,
+    isIdempotencyReplayResult,
+    type ToolExecutionRequest,
+} from "./tool-middleware";
 import { createToolUnavailableInRequestResult } from "./tool-availability-policy";
+import { getToolExecutionPolicy } from "./tool-execution-policy";
+import { throwIfAborted } from "@/lib/abort";
 
 export type DelegatedAutonomyBlockedReason = "disabled_by_autonomy" | "approval_required";
 export type AutonomyLevelOneBehavior = "suggest" | "block";
@@ -92,8 +102,13 @@ function createAutonomyBlockedResult(
 }
 
 function buildAutonomySuggestion(toolCall: ToolCall): ToolResult {
+    const blocked = createAutonomyBlockedResult(
+        toolCall.id,
+        toolCall.name,
+        "approval_required",
+    );
     return {
-        callId: toolCall.id,
+        ...blocked,
         result: `[Suggestion] I would call "${toolCall.name}" with: ${JSON.stringify(toolCall.arguments)}. Approve this action to proceed.`,
     };
 }
@@ -122,6 +137,65 @@ function buildArtifactMetadata(params: {
 
 function formatError(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+export async function preRecordToolCallBatchForAutonomy(params: {
+    runId: string;
+    toolCalls: ToolCall[];
+    projectId?: string;
+    userId?: string;
+    agentMode?: AgentMode;
+    allowedToolNames?: string[];
+    cachedAutonomyConfig?: Awaited<ReturnType<typeof getAutonomyConfig>> | {
+        preset: string;
+        toolOverrides: Record<string, unknown>;
+    };
+}): Promise<ReadonlyMap<string, number>> {
+    const scope = params.projectId ? "project" as const : "global" as const;
+    const allowed = params.agentMode
+        ? (params.allowedToolNames ?? getEffectiveAllowedTools(params.agentMode))
+        : undefined;
+    const eligibleCalls = params.toolCalls.filter((toolCall) => (
+        isToolAllowedInScope(toolCall.name, scope)
+        && (!params.agentMode || !allowed?.length || allowed.includes(toolCall.name))
+    ));
+    if (eligibleCalls.length === 0) return new Map();
+
+    const callIds = new Set<string>();
+    for (const toolCall of eligibleCalls) {
+        if (!toolCall.id || callIds.has(toolCall.id)) {
+            throw new Error(`Provider returned a missing or duplicate tool-call id: ${toolCall.id || "<empty>"}`);
+        }
+        callIds.add(toolCall.id);
+    }
+
+    const autonomyConfig = normalizeAutonomyConfig(
+        params.cachedAutonomyConfig
+        ?? await getAutonomyConfig(params.userId, params.projectId),
+    );
+    const levels = new Map<string, number>();
+    await emitToolCallEventBatch(params.runId, eligibleCalls.map((toolCall) => {
+        const configuredLevel = getToolAutonomyLevel(toolCall.name, {
+            preset: autonomyConfig.preset,
+            toolOverrides: autonomyConfig.toolOverrides,
+        });
+        const level = resolveAutonomyLevel(
+            toolCall.name,
+            configuredLevel,
+            getTool(toolCall.name)?.autonomy,
+        );
+        levels.set(toolCall.id, level);
+        return {
+            payload: {
+                id: toolCall.id,
+                name: toolCall.name,
+                arguments: toolCall.arguments,
+                autonomyLevel: level,
+            },
+            extras: { toolName: toolCall.name },
+        };
+    }));
+    return levels;
 }
 
 async function persistToolResultBoundary(params: {
@@ -167,6 +241,9 @@ async function persistToolResultBoundary(params: {
         });
         noteObservedRunActivity(params.runId, event.createdAt);
     } catch (error) {
+        if (isRunOwnershipError(error)) {
+            throw error;
+        }
         await markRunDurabilityDegraded(
             params.runId,
             "tool_result_checkpoint_persistence_failed",
@@ -259,20 +336,25 @@ export async function executeToolWithAutonomyCore(
         toolOverrides: (autonomyConfig.toolOverrides ?? {}) as Record<string, unknown>,
     });
     const level = resolveAutonomyLevel(toolCall.name, configuredLevel, tool?.autonomy);
-
-    await recordRunEvent({
-        runId,
-        type: "tool_call",
-        payload: {
-            id: toolCall.id,
-            name: toolCall.name,
-            arguments: toolCall.arguments,
-            autonomyLevel: level,
-        },
-        extras: { toolName: toolCall.name },
-        failureMode: "strict",
-        logContext: `tool_call:${toolCall.name}`,
-    });
+    const preRecordedLevel = runtimeContext?.preRecordedAutonomyLevels?.get(toolCall.id);
+    if (preRecordedLevel !== undefined && preRecordedLevel !== level) {
+        throw new Error(`Tool-call autonomy changed after batch admission for ${toolCall.id}.`);
+    }
+    if (preRecordedLevel === undefined) {
+        await recordRunEvent({
+            runId,
+            type: "tool_call",
+            payload: {
+                id: toolCall.id,
+                name: toolCall.name,
+                arguments: toolCall.arguments,
+                autonomyLevel: level,
+            },
+            extras: { toolName: toolCall.name },
+            failureMode: "strict",
+            logContext: `tool_call:${toolCall.name}`,
+        });
+    }
 
     if (level === 0) {
         const result = createAutonomyBlockedResult(toolCall.id, toolCall.name, "disabled_by_autonomy");
@@ -304,9 +386,33 @@ export async function executeToolWithAutonomyCore(
         return result;
     }
 
+    // Level 2 is review-first. Only read-only work and tools whose successful
+    // output is converted into a persisted proposal artifact may execute. A
+    // model-supplied argument is never proof that the authenticated user
+    // approved a direct mutation.
+    const artifactType = mapToolToArtifactType(toolCall.name);
+    const executionPolicy = getToolExecutionPolicy(toolCall.name);
+    if (
+        level === 2
+        && !artifactType
+        && executionPolicy.effect !== "read_only"
+    ) {
+        const result = createAutonomyBlockedResult(toolCall.id, toolCall.name, "approval_required");
+        await recordRunEvent({
+            runId,
+            type: "tool_result",
+            payload: result,
+            extras: { toolName: toolCall.name },
+            failureMode: "degrade",
+            degradationReason: "tool_result_persistence_failed",
+            logContext: `tool_result:${toolCall.name}`,
+        });
+        return result;
+    }
+
     const toolSpan = startToolSpan(traceSpan ?? NOOP_SPAN, toolCall.name, toolCall.arguments);
     const startTime = Date.now();
-    const result = await service.executeToolWithMiddleware({
+    const toolRequest: ToolExecutionRequest = {
         name: toolCall.name,
         args: toolCall.arguments,
         callId: toolCall.id,
@@ -324,65 +430,125 @@ export async function executeToolWithAutonomyCore(
             signal: runtimeContext?.signal,
             autonomyLevel: level,
             allowedToolNames: runtimeContext?.allowedToolNames,
+            model: runtimeContext?.model,
+            reasoningEffort: runtimeContext?.reasoningEffort,
+            deliveryMode: runtimeContext?.deliveryMode,
         },
-    });
-    const durationMs = Date.now() - startTime;
-    toolSpan.update({ output: { success: !result.error, durationMs } }).end();
-
-    await persistToolResultBoundary({
-        runId,
-        conversationId,
-        toolName: toolCall.name,
-        toolResult: result,
-        durationMs,
-    });
-
-    if (
-        result.error
-        || result.requiresUserInput
-        || result.blockedByAutonomy
-        || isIdempotencyReplayResult(result)
-    ) {
-        return result as ToolResultWithArtifactState;
-    }
-
-    const artifactType = mapToolToArtifactType(toolCall.name);
-    if (!artifactType || !result.result || !projectId) {
-        return result as ToolResultWithArtifactState;
-    }
-
-    const artifact = await createArtifact({
-        runId: artifactRunId ?? runId,
-        projectId,
-        conversationId,
-        userId,
-        type: artifactType,
-        title: mapToolToArtifactTitle(toolCall.name, toolCall.arguments),
-        payload: result.result,
-    });
-
-    let artifactStatus: "proposed" | "auto_applied" = "proposed";
-    let emitToClient = true;
-    if (level >= 3) {
-        await applyArtifact(artifact.id, "auto_applied");
-        artifactStatus = "auto_applied";
-        emitToClient = level !== 4;
-    }
-
-    const artifactMeta = buildArtifactMetadata({
-        artifact,
-        status: artifactStatus,
-        emitToClient,
-    });
-
-    return {
-        ...(result as ToolResultWithArtifactState),
-        artifactId: artifactMeta.artifactId,
-        artifactType: artifactMeta.artifactType as ToolResultWithArtifactState["artifactType"],
-        artifactTitle: artifactMeta.artifactTitle,
-        artifactStatus: artifactMeta.artifactStatus as ToolResultWithArtifactState["artifactStatus"],
-        artifacts: [...(result.artifacts ?? []), artifactMeta],
     };
+    const operationScope = toolRequest.context?.rootRunId
+        ?? toolRequest.context?.parentRunId
+        ?? toolRequest.context?.runId
+        ?? runId;
+    const artifactOperationKey = `tool-artifact:${operationScope}:${createToolExecutionFingerprint(toolRequest)}`;
+    let logicalFinalizationEntered = false;
+    let boundaryPersisted = false;
+
+    const finalizeLogicalResult = async (rawResult: ToolResult): Promise<ToolResultWithArtifactState> => {
+        throwIfAborted(toolRequest.context?.signal);
+        logicalFinalizationEntered = true;
+        let finalizedResult = rawResult as ToolResultWithArtifactState;
+
+        if (
+            !rawResult.error
+            && !rawResult.requiresUserInput
+            && !rawResult.blockedByAutonomy
+            && !isIdempotencyReplayResult(rawResult)
+        ) {
+            if (artifactType && rawResult.result && projectId) {
+                throwIfAborted(toolRequest.context?.signal);
+                const artifact = await createArtifact({
+                    runId: artifactRunId ?? runId,
+                    projectId,
+                    conversationId,
+                    userId,
+                    type: artifactType,
+                    title: mapToolToArtifactTitle(toolCall.name, toolCall.arguments),
+                    payload: rawResult.result,
+                    applyId: artifactOperationKey,
+                });
+
+                let artifactStatus: "proposed" | "auto_applied" = "proposed";
+                let emitToClient = true;
+                if (level >= 3) {
+                    throwIfAborted(toolRequest.context?.signal);
+                    await applyArtifact(artifact.id, "auto_applied");
+                    artifactStatus = "auto_applied";
+                    emitToClient = level !== 4;
+                }
+
+                const artifactMeta = buildArtifactMetadata({
+                    artifact,
+                    status: artifactStatus,
+                    emitToClient,
+                });
+                finalizedResult = {
+                    ...(rawResult as ToolResultWithArtifactState),
+                    artifactId: artifactMeta.artifactId,
+                    artifactType: artifactMeta.artifactType as ToolResultWithArtifactState["artifactType"],
+                    artifactTitle: artifactMeta.artifactTitle,
+                    artifactStatus: artifactMeta.artifactStatus as ToolResultWithArtifactState["artifactStatus"],
+                    artifacts: [...(rawResult.artifacts ?? []), artifactMeta],
+                };
+            }
+        }
+
+        throwIfAborted(toolRequest.context?.signal);
+        await persistToolResultBoundary({
+            runId,
+            conversationId,
+            toolName: toolCall.name,
+            toolResult: finalizedResult,
+            durationMs: Date.now() - startTime,
+        });
+        boundaryPersisted = true;
+        return finalizedResult;
+    };
+
+    let spanSuccess = false;
+    let spanError: string | undefined;
+    try {
+        let result = await service.executeToolWithMiddleware(
+            toolRequest,
+            async (rawResult) => finalizeLogicalResult(rawResult),
+        ) as ToolResultWithArtifactState;
+
+        // Test doubles and middleware short-circuits do not invoke the executor
+        // finalizer. First-run results still need the same logical boundary; durable
+        // replays already contain the finalized artifact metadata.
+        if (!logicalFinalizationEntered && !isIdempotencyReplayResult(result)) {
+            result = await finalizeLogicalResult(result);
+        }
+        if (!boundaryPersisted) {
+            throwIfAborted(toolRequest.context?.signal);
+            await persistToolResultBoundary({
+                runId,
+                conversationId,
+                toolName: toolCall.name,
+                toolResult: result,
+                durationMs: Date.now() - startTime,
+            });
+            boundaryPersisted = true;
+        }
+
+        throwIfAborted(toolRequest.context?.signal);
+        spanSuccess = !result.error;
+        return result;
+    } catch (error) {
+        spanError = formatError(error);
+        throw error;
+    } finally {
+        try {
+            toolSpan.update({
+                output: {
+                    success: spanSuccess,
+                    durationMs: Date.now() - startTime,
+                    ...(spanError ? { error: spanError } : {}),
+                },
+            }).end();
+        } catch {
+            // Observability must never mask the tool outcome or cancellation.
+        }
+    }
 }
 
 /**

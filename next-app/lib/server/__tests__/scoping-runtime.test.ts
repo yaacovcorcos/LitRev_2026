@@ -39,11 +39,24 @@ const mocks = vi.hoisted(() => {
     markRunFinalizationState: vi.fn(),
     markRunFinalizationFailed: vi.fn(),
     markRunAbnormalEndClassification: vi.fn(),
+    recordRunGenerationReceipt: vi.fn(async () => {}),
     isRunOwnershipError: vi.fn(() => false),
     resolveAuthenticatedIdentity: vi.fn(),
     getAutonomyConfig: vi.fn(),
     protocolFindFirst: vi.fn(),
     executeToolWithAutonomy: vi.fn(),
+    preRecordToolCallBatchForAutonomy: vi.fn(async () => new Map()),
+    createAutoAppliedArtifact: vi.fn(),
+    artifactUpdate: vi.fn(),
+    finalizeScopingResponse: vi.fn(
+      ({ fullContent }: { fullContent: string }): {
+        content: string;
+        report: unknown | null;
+      } => ({
+        content: fullContent,
+        report: null,
+      }),
+    ),
     addAssistantMessageToConversationForRun: vi.fn(async () => ({
       id: "msg-1",
       role: "assistant",
@@ -63,16 +76,21 @@ vi.mock("@/lib/server/ai/providers", () => ({
   getAnthropicProvider: () => ({ isConfigured: () => false }),
   getXAIProvider: () => ({ isConfigured: () => false }),
   getGoogleProvider: () => ({ isConfigured: () => false }),
+  getGatewayProvider: () => ({ isConfigured: () => false }),
 }));
 
 vi.mock("@/lib/server/ai/rate-limiter", () => ({
   validateRateLimits: vi.fn(async () => {}),
   recordUsage: vi.fn(async () => {}),
+  reserveProviderUsageAttempt: vi.fn(async () => ({ id: "usage-reservation-1", reservedTokens: 1, status: "active" })),
+  trySettleUsageReservation: vi.fn(async () => true),
+  tryMarkUsageReservationReconcilable: vi.fn(async () => true),
 }));
 
 vi.mock("@/lib/server/ai/memory", () => ({
   getOrCreateConversation: vi.fn(),
-  addAssistantMessageToConversationForRun: mocks.addAssistantMessageToConversationForRun,
+  addAssistantMessageToConversationForRun:
+    mocks.addAssistantMessageToConversationForRun,
   addMessageToConversation: mocks.addMessageToConversation,
   getConversationWithSummary: mocks.getConversationWithSummary,
   getConversationWithSummaryById: mocks.getConversationWithSummaryById,
@@ -87,13 +105,35 @@ vi.mock("@/lib/server/memory", () => ({
 
 vi.mock("@/lib/ai/config", () => ({
   AI_CONFIG: { defaultProvider: "openai", defaultModel: "gpt-5.2" },
+  getModelCapabilityRecord: vi.fn(() => ({
+    id: "gpt-5.2",
+    providerModelId: "gpt-5.2",
+    provider: "openai",
+    providerDialect: "openai",
+    contextWindow: 8_000,
+    maxOutputTokens: 2_048,
+    capabilities: ["chat", "tools"],
+    reasoningSupport: "explicit",
+    reasoningVisibilitySupport: "none",
+    reasoningEfforts: ["fast", "low", "medium", "high", "max"],
+    defaultReasoningEffort: "medium",
+    temperatureSupport: "full",
+    deliveryModes: ["standard"],
+    selectable: true,
+  })),
   getProviderForModel: vi.fn(() => "openai"),
+  getProviderModelId: vi.fn((modelId: string) => modelId),
+  getDefaultReasoningEffort: vi.fn(() => "medium"),
   getContextBudget: vi.fn(() => 8000),
 }));
 
 vi.mock("@/lib/agent/compaction", () => ({
-  buildModelVisibleToolResultForTool: vi.fn((_toolName: string, toolResult: unknown) => toolResult),
-  compactToolResult: vi.fn((_toolName: string, toolResult: unknown) => JSON.stringify(toolResult)),
+  buildModelVisibleToolResultForTool: vi.fn(
+    (_toolName: string, toolResult: unknown) => toolResult,
+  ),
+  compactToolResult: vi.fn((_toolName: string, toolResult: unknown) =>
+    JSON.stringify(toolResult),
+  ),
   compactLoopMessages: vi.fn((messages) => ({ messages, removed: 0 })),
   buildCompactedHistory: vi.fn((messages) => messages),
   estimateMessagesTokensWithSafetyMargin: vi.fn(() => 0),
@@ -114,11 +154,13 @@ vi.mock("@/lib/server/agent/run", () => ({
   markRunFinalizationState: mocks.markRunFinalizationState,
   markRunFinalizationFailed: mocks.markRunFinalizationFailed,
   markRunAbnormalEndClassification: mocks.markRunAbnormalEndClassification,
+  recordRunGenerationReceipt: mocks.recordRunGenerationReceipt,
   isRunOwnershipError: mocks.isRunOwnershipError,
 }));
 
 vi.mock("@/lib/server/agent/run-cancellation", () => ({
-  registerActiveRunExecutionCancellation: mocks.registerActiveRunExecutionCancellation,
+  registerActiveRunExecutionCancellation:
+    mocks.registerActiveRunExecutionCancellation,
   startDurableRunCancellationMonitor: mocks.startDurableRunCancellationMonitor,
 }));
 
@@ -128,6 +170,7 @@ vi.mock("@/lib/server/agent/run-event-recorder", () => ({
 
 vi.mock("@/lib/server/agent/artifacts", () => ({
   createArtifact: vi.fn(),
+  createAutoAppliedArtifact: mocks.createAutoAppliedArtifact,
 }));
 
 vi.mock("@/lib/server/agent/autonomy", () => ({
@@ -214,7 +257,7 @@ vi.mock("@/lib/server/prisma", () => ({
     },
     study: { findUnique: vi.fn(async () => null) },
     project: { findUnique: vi.fn(async () => null) },
-    artifact: { update: vi.fn(async () => null) },
+    artifact: { update: mocks.artifactUpdate },
   },
 }));
 
@@ -227,7 +270,8 @@ vi.mock("@/lib/server/chat-runtime/conversation-run-lock", () => ({
 }));
 
 vi.mock("@/lib/server/chat-runtime/persist-recovery-events", () => ({
-  persistRecoveryAuthoritativeRuntimeEvent: mocks.persistRecoveryAuthoritativeRuntimeEvent,
+  persistRecoveryAuthoritativeRuntimeEvent:
+    mocks.persistRecoveryAuthoritativeRuntimeEvent,
 }));
 
 vi.mock("@/lib/server/chat-unification-metrics", () => ({
@@ -240,7 +284,9 @@ vi.mock("@/lib/server/ai/error-classification", () => ({
     retryable: false,
     reason: "unknown",
   })),
-  toAIErrorEnvelope: vi.fn((_error: unknown, envelope: Record<string, unknown>) => envelope),
+  toAIErrorEnvelope: vi.fn(
+    (_error: unknown, envelope: Record<string, unknown>) => envelope,
+  ),
 }));
 
 vi.mock("@/lib/server/utils/retry", () => ({
@@ -267,7 +313,13 @@ vi.mock("@/lib/server/auth/identity", () => ({
 }));
 
 vi.mock("@/lib/server/ledger-utils", () => ({
-  computeLedgerCounts: vi.fn(async () => ({ total: 0, included: 0, excluded: 0, maybe: 0, unscreened: 0 })),
+  computeLedgerCounts: vi.fn(async () => ({
+    total: 0,
+    included: 0,
+    excluded: 0,
+    maybe: 0,
+    unscreened: 0,
+  })),
   computeStudyLedger: vi.fn(async () => ({
     counts: { total: 0, included: 0, excluded: 0, maybe: 0, unscreened: 0 },
     list: [],
@@ -277,14 +329,32 @@ vi.mock("@/lib/server/ledger-utils", () => ({
 }));
 
 vi.mock("@/lib/server/ai/tool-helpers", () => ({
-  dropShadowedInvalidToolCalls: vi.fn((toolCalls: unknown[]) => ({ toolCalls, dropped: [] })),
+  dropShadowedInvalidToolCalls: vi.fn((toolCalls: unknown[]) => ({
+    toolCalls,
+    dropped: [],
+  })),
   getToolCallRepeatKey: vi.fn(async () => "repeat-key"),
   mapToolToProgressMessage: vi.fn(() => "Working..."),
   isStudyLedgerSnapshot: vi.fn(() => false),
-  getLedgerCounts: vi.fn(() => ({ total: 0, included: 0, excluded: 0, maybe: 0, unscreened: 0 })),
-  emptyLedgerCounts: vi.fn(() => ({ total: 0, included: 0, excluded: 0, maybe: 0, unscreened: 0 })),
+  getLedgerCounts: vi.fn(() => ({
+    total: 0,
+    included: 0,
+    excluded: 0,
+    maybe: 0,
+    unscreened: 0,
+  })),
+  emptyLedgerCounts: vi.fn(() => ({
+    total: 0,
+    included: 0,
+    excluded: 0,
+    maybe: 0,
+    unscreened: 0,
+  })),
   buildScopingHandoffToolCall: vi.fn(),
-  getLazyContextPointerCapabilities: vi.fn(() => ({ canReadProtocol: false, canReadLedger: false })),
+  getLazyContextPointerCapabilities: vi.fn(() => ({
+    canReadProtocol: false,
+    canReadLedger: false,
+  })),
   getContextualToolDefinitions: vi.fn(() => [
     { name: "search_pubmed", description: "", parameters: {} },
     { name: "ask_user", description: "", parameters: {} },
@@ -293,16 +363,19 @@ vi.mock("@/lib/server/ai/tool-helpers", () => ({
   shouldShowScopingSearchPackPreview: vi.fn(() => false),
   shouldUseScopingBatchPlan: vi.fn(() => false),
   buildScopingSearchPackPlan: vi.fn(),
-  finalizeScopingResponse: vi.fn(({ fullContent }: { fullContent: string }) => ({ content: fullContent, report: null })),
+  finalizeScopingResponse: mocks.finalizeScopingResponse,
 }));
 
 vi.mock("@/lib/server/ai/tool-autonomy", () => ({
   executeToolWithAutonomy: mocks.executeToolWithAutonomy,
+  preRecordToolCallBatchForAutonomy: mocks.preRecordToolCallBatchForAutonomy,
 }));
 
 const { AIService } = await import("@/lib/server/ai/ai-service");
 
-async function collectChunks(stream: AsyncIterable<unknown>): Promise<unknown[]> {
+async function collectChunks(
+  stream: AsyncIterable<unknown>,
+): Promise<unknown[]> {
   const chunks: unknown[] = [];
   for await (const chunk of stream) {
     chunks.push(chunk);
@@ -313,7 +386,24 @@ async function collectChunks(stream: AsyncIterable<unknown>): Promise<unknown[]>
 describe("AIService scoping runtime", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.ensureConversationRunAvailability.mockResolvedValue({ cancelledStaleRunCount: 0 });
+    // Per-test stream/tool implementations must not leak queued one-shot
+    // behavior into later runtime scenarios.
+    mocks.provider.streamChat.mockReset();
+    mocks.executeToolWithAutonomy.mockReset();
+    mocks.preRecordToolCallBatchForAutonomy.mockReset();
+    mocks.preRecordToolCallBatchForAutonomy.mockResolvedValue(new Map());
+    mocks.finalizeScopingResponse.mockReset();
+    mocks.finalizeScopingResponse.mockImplementation(
+      ({ fullContent }: { fullContent: string }) => ({
+        content: fullContent,
+        report: null,
+      }),
+    );
+    mocks.createAutoAppliedArtifact.mockReset();
+    mocks.artifactUpdate.mockReset();
+    mocks.ensureConversationRunAvailability.mockResolvedValue({
+      cancelledStaleRunCount: 0,
+    });
     mocks.getConversationWithSummary.mockResolvedValue({
       id: "conv-1",
       projectId: "project-1",
@@ -328,14 +418,34 @@ describe("AIService scoping runtime", () => {
       messages: [],
       summaryData: null,
     });
-    mocks.resolveAuthenticatedIdentity.mockReturnValue({ userId: "user-1", workspaceId: "ws-1" });
+    mocks.resolveAuthenticatedIdentity.mockReturnValue({
+      userId: "user-1",
+      workspaceId: "ws-1",
+    });
     mocks.startRun.mockResolvedValue({ id: "run-1" });
     mocks.endRun.mockResolvedValue({ id: "run-1", status: "completed" });
     mocks.markRunFinalizationState.mockResolvedValue(1);
     mocks.markRunFinalizationFailed.mockResolvedValue(1);
     mocks.markRunAbnormalEndClassification.mockResolvedValue(1);
-    mocks.getAutonomyConfig.mockResolvedValue({ preset: "assisted", toolOverrides: {} });
+    mocks.getAutonomyConfig.mockResolvedValue({
+      preset: "assisted",
+      toolOverrides: {},
+    });
     mocks.protocolFindFirst.mockResolvedValue(null);
+    mocks.createAutoAppliedArtifact.mockResolvedValue({
+      id: "artifact-scoping-1",
+      runId: "run-1",
+      projectId: "project-1",
+      conversationId: "conv-1",
+      userId: "user-1",
+      type: "scoping_report",
+      status: "auto_applied",
+      title: "Scoping: Omega-3 and cognition",
+      payload: {},
+      version: 1,
+      applyId: "scoping-report:run-1",
+      appliedAt: new Date("2026-07-12T08:00:00.000Z"),
+    });
   });
 
   it("suppresses ask_user after evidence arrives in the same scoping run", async () => {
@@ -346,7 +456,7 @@ describe("AIService scoping runtime", () => {
           toolCall: {
             id: "tc-search",
             name: "search_pubmed",
-            arguments: { query: "\"omega-3\" cognition young adults" },
+            arguments: { query: '"omega-3" cognition young adults' },
           },
         };
         yield {
@@ -368,7 +478,11 @@ describe("AIService scoping runtime", () => {
         };
       })
       .mockImplementationOnce(async function* () {
-        yield { type: "content", content: "Here is the broad evidence landscape and the strongest default direction." };
+        yield {
+          type: "content",
+          content:
+            "Here is the broad evidence landscape and the strongest default direction.",
+        };
         yield {
           type: "done",
           usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
@@ -401,7 +515,8 @@ describe("AIService scoping runtime", () => {
       });
 
     const service = new AIService();
-    const chunks = await collectChunks(service.streamChatWithArtifacts(
+    const chunks = await collectChunks(
+      service.streamChatWithArtifacts(
       "What's out there on omega-3 supplementation for cognition in young adults?",
       "project",
       {
@@ -409,18 +524,37 @@ describe("AIService scoping runtime", () => {
         userId: "user-1",
         agentMode: "scoping",
         model: "gpt-5.2",
-      }
-    ));
-    expect(chunks.some((chunk) => (chunk as { type?: string }).type === "user_input_required")).toBe(false);
-    expect(chunks.some((chunk) => (chunk as { type?: string }).type === "content")).toBe(true);
-    expect(chunks.some((chunk) => (chunk as { type?: string; runStatus?: string }).type === "run_end" && (chunk as { runStatus?: string }).runStatus === "failed")).toBe(true);
-    expect(mocks.markRunAbnormalEndClassification).toHaveBeenCalledWith("run-1", "no_forward_durable_progress", {
+        },
+      ),
+    );
+    expect(
+      chunks.some(
+        (chunk) => (chunk as { type?: string }).type === "user_input_required",
+      ),
+    ).toBe(false);
+    expect(
+      chunks.some((chunk) => (chunk as { type?: string }).type === "content"),
+    ).toBe(true);
+    expect(
+      chunks.some(
+        (chunk) =>
+          (chunk as { type?: string; runStatus?: string }).type === "run_end" &&
+          (chunk as { runStatus?: string }).runStatus === "failed",
+      ),
+    ).toBe(true);
+    expect(mocks.markRunAbnormalEndClassification).toHaveBeenCalledWith(
+      "run-1",
+      "no_forward_durable_progress",
+      {
       requireActive: true,
-    });
-    expect(mocks.persistRecoveryAuthoritativeRuntimeEvent).not.toHaveBeenCalledWith(
+      },
+    );
+    expect(
+      mocks.persistRecoveryAuthoritativeRuntimeEvent,
+    ).not.toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({ type: "user_input_required" }),
-      })
+      }),
     );
   });
 
@@ -432,7 +566,7 @@ describe("AIService scoping runtime", () => {
           toolCall: {
             id: "tc-search",
             name: "search_pubmed",
-            arguments: { query: "\"omega-3\" cognition young adults" },
+            arguments: { query: '"omega-3" cognition young adults' },
           },
         };
         yield {
@@ -455,7 +589,11 @@ describe("AIService scoping runtime", () => {
         };
       })
       .mockImplementationOnce(async function* () {
-        yield { type: "content", content: "I stayed broad first and synthesized the strongest direction." };
+        yield {
+          type: "content",
+          content:
+            "I stayed broad first and synthesized the strongest direction.",
+        };
         yield {
           type: "done",
           usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
@@ -489,7 +627,8 @@ describe("AIService scoping runtime", () => {
       });
 
     const service = new AIService();
-    const chunks = await collectChunks(service.streamChatWithArtifacts(
+    const chunks = await collectChunks(
+      service.streamChatWithArtifacts(
       "What's out there on omega-3 supplementation for cognition in young adults?",
       "project",
       {
@@ -497,10 +636,17 @@ describe("AIService scoping runtime", () => {
         userId: "user-1",
         agentMode: "scoping",
         model: "gpt-5.2",
-      }
-    ));
-    expect(chunks.some((chunk) => (chunk as { type?: string }).type === "user_input_required")).toBe(false);
-    expect(chunks.some((chunk) => (chunk as { type?: string }).type === "content")).toBe(true);
+        },
+      ),
+    );
+    expect(
+      chunks.some(
+        (chunk) => (chunk as { type?: string }).type === "user_input_required",
+      ),
+    ).toBe(false);
+    expect(
+      chunks.some((chunk) => (chunk as { type?: string }).type === "content"),
+    ).toBe(true);
   });
 
   it("records no_forward_durable_progress when clarification fallback ends in a truthful stop", async () => {
@@ -510,7 +656,7 @@ describe("AIService scoping runtime", () => {
         toolCall: {
           id: "tc-search",
           name: "search_pubmed",
-          arguments: { query: "\"omega-3\" cognition young adults" },
+          arguments: { query: '"omega-3" cognition young adults' },
         },
       };
       yield {
@@ -519,7 +665,8 @@ describe("AIService scoping runtime", () => {
           id: "tc-ask",
           name: "ask_user",
           arguments: {
-            question: "Describe exactly how much uncertainty is acceptable before I proceed.",
+            question:
+              "Describe exactly how much uncertainty is acceptable before I proceed.",
             questionType: "free_text",
           },
         },
@@ -548,14 +695,16 @@ describe("AIService scoping runtime", () => {
           requiresUserInput: true,
           userInputRequest: {
             callId: "ask-2",
-            question: "Describe exactly how much uncertainty is acceptable before I proceed.",
+            question:
+              "Describe exactly how much uncertainty is acceptable before I proceed.",
             questionType: "free_text",
           },
         };
       });
 
     const service = new AIService();
-    const chunks = await collectChunks(service.streamChatWithArtifacts(
+    const chunks = await collectChunks(
+      service.streamChatWithArtifacts(
       "What's out there on omega-3 supplementation for cognition in young adults?",
       "project",
       {
@@ -563,9 +712,89 @@ describe("AIService scoping runtime", () => {
         userId: "user-1",
         agentMode: "scoping",
         model: "gpt-5.2",
-      }
-    ));
-    expect(chunks.some((chunk) => (chunk as { type?: string }).type === "user_input_required")).toBe(false);
-    expect(chunks.some((chunk) => (chunk as { type?: string }).type === "content")).toBe(true);
+        },
+      ),
+    );
+    expect(
+      chunks.some(
+        (chunk) => (chunk as { type?: string }).type === "user_input_required",
+      ),
+    ).toBe(false);
+    expect(
+      chunks.some((chunk) => (chunk as { type?: string }).type === "content"),
+    ).toBe(true);
+  });
+
+  it("persists a scoping report through the atomic auto-applied artifact path", async () => {
+    const report = {
+      topic: "Omega-3 and cognition",
+      searchesRun: [],
+      landscape: {
+        majorThemes: ["supplementation"],
+        evidenceGaps: ["young adults"],
+        methodologicalPatterns: ["randomized trials"],
+        evidenceDensity: "moderate" as const,
+      },
+      recommendedQuestions: [],
+      nextStep: "Choose the strongest question.",
+    };
+    mocks.finalizeScopingResponse.mockReturnValueOnce({
+      content: "Scoping synthesis",
+      report,
+    });
+    mocks.createAutoAppliedArtifact.mockResolvedValueOnce({
+      id: "artifact-scoping-1",
+      runId: "run-1",
+      projectId: "project-1",
+      conversationId: "conv-1",
+      userId: "user-1",
+      type: "scoping_report",
+      status: "auto_applied",
+      title: "Scoping: Omega-3 and cognition",
+      payload: report,
+      version: 1,
+      applyId: "scoping-report:run-1",
+      appliedAt: new Date("2026-07-12T08:00:00.000Z"),
+    });
+    mocks.provider.streamChat.mockImplementationOnce(async function* () {
+      yield { type: "content", content: "Scoping synthesis" };
+      yield {
+        type: "done",
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        actualModel: "gpt-5.2",
+      };
+    });
+
+    const chunks = await collectChunks(
+      new AIService().streamChatWithArtifacts(
+        "What is known about omega-3 and cognition?",
+        "project",
+        {
+          projectId: "project-1",
+          userId: "user-1",
+          agentMode: "scoping",
+          model: "gpt-5.2",
+        },
+      ),
+    );
+
+    expect(mocks.createAutoAppliedArtifact).toHaveBeenCalledWith({
+      runId: "run-1",
+      projectId: "project-1",
+      conversationId: "conv-1",
+      userId: "user-1",
+      type: "scoping_report",
+      title: "Scoping: Omega-3 and cognition",
+      payload: report,
+      applyId: "scoping-report:run-1",
+    });
+    expect(mocks.artifactUpdate).not.toHaveBeenCalled();
+    expect(chunks).toContainEqual(expect.objectContaining({
+      type: "artifact",
+      artifactId: "artifact-scoping-1",
+      artifactType: "scoping_report",
+      artifactStatus: "auto_applied",
+      artifactPayload: report,
+    }));
   });
 });

@@ -12,12 +12,55 @@ import { getPdfExtractionModelConfig } from "./pdf-extraction-config";
 import type { StudyDetails, StudyType } from "@/types/ledger";
 import { extractHeaderWithGrobid, type GrobidHeaderExtraction } from "./grobid";
 import { fetchFileAssetBytes, type FileAssetStorageRecord } from "./file-storage";
+import {
+    createAbortError,
+    createDeadlineAbortController,
+    isAbortLikeError,
+    throwIfAborted,
+} from "@/lib/abort";
 
 // Constants
 const MAX_PDF_SIZE_MB = 50;
 const MAX_PDF_SIZE_BYTES = MAX_PDF_SIZE_MB * 1024 * 1024;
 const MAX_TEXT_CHARS = 40000; // ~10k tokens
 const AI_TIMEOUT_MS = 30000;
+
+type PdfExtractionRuntimeOptions = {
+    signal?: AbortSignal;
+};
+
+function awaitWithAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+    if (signal.aborted) {
+        return Promise.reject(createAbortError());
+    }
+
+    return new Promise<T>((resolve, reject) => {
+        let settled = false;
+        const cleanup = () => signal.removeEventListener("abort", onAbort);
+        const onAbort = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(createAbortError());
+        };
+
+        signal.addEventListener("abort", onAbort, { once: true });
+        operation.then(
+            (value) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(value);
+            },
+            (error) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                reject(error);
+            },
+        );
+    });
+}
 
 // Types
 export type ConfidenceLevel = "high" | "medium" | "low";
@@ -230,7 +273,8 @@ function parseAIJson(content: string): Record<string, unknown> | null {
 export async function quickExtractWithAI(
     text: string,
     regexResults: RegexExtractionResult,
-    projectId: string
+    projectId: string,
+    options?: PdfExtractionRuntimeOptions,
 ): Promise<{
     title?: string;
     authors?: string;
@@ -257,18 +301,21 @@ export async function quickExtractWithAI(
         },
     ];
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+    const deadline = createDeadlineAbortController(AI_TIMEOUT_MS, [options?.signal]);
 
     try {
-        const response = await aiService.chat(messages, {
-            model: quickExtractModel,
-            temperature: 0.2,
-            maxTokens: 2000,
-            projectId,
-        });
-
-        clearTimeout(timeoutId);
+        throwIfAborted(deadline.signal);
+        const response = await awaitWithAbort(
+            aiService.chat(messages, {
+                model: quickExtractModel,
+                reasoningEffort: "fast",
+                temperature: 0.2,
+                maxTokens: 2000,
+                projectId,
+                signal: deadline.signal,
+            }),
+            deadline.signal,
+        );
 
         const parsed = parseAIJson(response.content);
         if (!parsed) return { details: {}, confidence: {} };
@@ -305,14 +352,18 @@ export async function quickExtractWithAI(
             confidence: {},
         };
     } catch (err) {
-        clearTimeout(timeoutId);
-        if (err instanceof Error && err.name === "AbortError") {
+        if (options?.signal?.aborted) {
+            throw createAbortError();
+        }
+        if (deadline.timedOut() && isAbortLikeError(err)) {
             throw new ExtractionError("AI_FAILED", "AI extraction timed out");
         }
         throw new ExtractionError(
             "AI_FAILED",
             `AI extraction failed: ${err instanceof Error ? err.message : "Unknown error"}`
         );
+    } finally {
+        deadline.dispose();
     }
 }
 
@@ -323,7 +374,8 @@ export async function quickExtractWithAI(
 export async function deepAnalyzeWithAI(
     text: string,
     existingDetails: Partial<StudyDetails> & { title?: string; authors?: string },
-    projectId: string
+    projectId: string,
+    options?: PdfExtractionRuntimeOptions,
 ): Promise<DeepAnalysisResult> {
     const aiService = getAIService();
     const userPrompt = buildDeepAnalysisPrompt(text, {
@@ -349,18 +401,21 @@ export async function deepAnalyzeWithAI(
         },
     ];
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+    const deadline = createDeadlineAbortController(AI_TIMEOUT_MS, [options?.signal]);
 
     try {
-        const response = await aiService.chat(messages, {
-            model: deepAnalysisModel,
-            temperature: 0.3,
-            maxTokens: 2000,
-            projectId,
-        });
-
-        clearTimeout(timeoutId);
+        throwIfAborted(deadline.signal);
+        const response = await awaitWithAbort(
+            aiService.chat(messages, {
+                model: deepAnalysisModel,
+                reasoningEffort: "fast",
+                temperature: 0.3,
+                maxTokens: 2000,
+                projectId,
+                signal: deadline.signal,
+            }),
+            deadline.signal,
+        );
 
         const parsed = parseAIJson(response.content);
         if (!parsed) return { success: false, details: {}, error: "Failed to parse AI response" };
@@ -409,8 +464,10 @@ export async function deepAnalyzeWithAI(
 
         return { success: true, details, quality };
     } catch (err) {
-        clearTimeout(timeoutId);
-        if (err instanceof Error && err.name === "AbortError") {
+        if (options?.signal?.aborted) {
+            throw createAbortError();
+        }
+        if (deadline.timedOut() && isAbortLikeError(err)) {
             return { success: false, details: {}, error: "Deep analysis timed out", errorCode: "AI_FAILED" };
         }
         return {
@@ -419,6 +476,8 @@ export async function deepAnalyzeWithAI(
             error: `Deep analysis failed: ${err instanceof Error ? err.message : "Unknown error"}`,
             errorCode: "AI_FAILED",
         };
+    } finally {
+        deadline.dispose();
     }
 }
 
@@ -427,10 +486,13 @@ export async function deepAnalyzeWithAI(
  */
 export async function extractStudyFromPdf(
     file: FileAssetStorageRecord,
-    projectId: string
+    projectId: string,
+    options?: PdfExtractionRuntimeOptions,
 ): Promise<ExtractionResult> {
     try {
+        throwIfAborted(options?.signal);
         const pdfBuffer = await fetchPdfFromFileAsset(file, projectId);
+        throwIfAborted(options?.signal);
         const grobidPromise = extractHeaderWithGrobid(pdfBuffer).catch((error) => {
             logServerWarn("pdf-extraction", "grobid header extraction failed", {
                 fileAssetId: file.id,
@@ -442,7 +504,11 @@ export async function extractStudyFromPdf(
         let textParseError: ExtractionError | null = null;
         try {
             text = await extractTextFromPdf(pdfBuffer);
+            throwIfAborted(options?.signal);
         } catch (error) {
+            if (options?.signal?.aborted || isAbortLikeError(error)) {
+                throw error;
+            }
             textParseError = error instanceof ExtractionError
                 ? error
                 : new ExtractionError(
@@ -452,6 +518,7 @@ export async function extractStudyFromPdf(
         }
 
         const grobidResult = await grobidPromise;
+        throwIfAborted(options?.signal);
         const hasGrobidData = hasGrobidMetadata(grobidResult);
 
         if ((!text || text.length < 100) && !hasGrobidData) {
@@ -481,8 +548,11 @@ export async function extractStudyFromPdf(
 
         if (text && text.length >= 100) {
             try {
-                aiResult = await quickExtractWithAI(text, regexResults, projectId);
+                aiResult = await quickExtractWithAI(text, regexResults, projectId, options);
             } catch (error) {
+                if (options?.signal?.aborted || isAbortLikeError(error)) {
+                    throw error;
+                }
                 aiFailure = error instanceof ExtractionError
                     ? error
                     : new ExtractionError(
@@ -548,6 +618,9 @@ export async function extractStudyFromPdf(
             missingFields,
         };
     } catch (err) {
+        if (options?.signal?.aborted || isAbortLikeError(err)) {
+            throw err;
+        }
         if (err instanceof ExtractionError) {
             return {
                 success: false,
@@ -574,11 +647,15 @@ export async function extractStudyFromPdf(
 export async function deepAnalyzeStudyFromPdf(
     file: FileAssetStorageRecord,
     existingStudy: { title: string; authors: string; details?: Partial<StudyDetails> },
-    projectId: string
+    projectId: string,
+    options?: PdfExtractionRuntimeOptions,
 ): Promise<DeepAnalysisResult> {
     try {
+        throwIfAborted(options?.signal);
         const pdfBuffer = await fetchPdfFromFileAsset(file, projectId);
+        throwIfAborted(options?.signal);
         const text = await extractTextFromPdf(pdfBuffer);
+        throwIfAborted(options?.signal);
 
         if (!text || text.length < 100) {
             return {
@@ -594,8 +671,11 @@ export async function deepAnalyzeStudyFromPdf(
             authors: existingStudy.authors,
             abstract: existingStudy.details?.abstract,
             journal: existingStudy.details?.journal,
-        }, projectId);
+        }, projectId, options);
     } catch (err) {
+        if (options?.signal?.aborted || isAbortLikeError(err)) {
+            throw err;
+        }
         if (err instanceof ExtractionError) {
             return {
                 success: false,

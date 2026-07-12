@@ -50,7 +50,7 @@ describe("ChatComposerCore model control", () => {
                 isLoading={false}
                 sendMessage={sendMessage}
                 cancelStream={vi.fn()}
-                selectedModel="grok-4-1-fast"
+                selectedModel="grok-4.5"
                 onModelChange={vi.fn()}
                 showVoice={false}
             />,
@@ -64,7 +64,7 @@ describe("ChatComposerCore model control", () => {
             "Test message",
             "overview",
             undefined,
-            "grok-4-1-fast",
+            "grok-4.5",
             "general",
             undefined,
             undefined,
@@ -73,7 +73,7 @@ describe("ChatComposerCore model control", () => {
     });
 
     it("does not revive deprecated localStorage model persistence when uncontrolled", () => {
-        window.localStorage.setItem("litrev_ai_model", "grok-4-1-fast");
+        window.localStorage.setItem("litrev_ai_model", "grok-4.1-fast");
         const sendMessage = vi.fn();
 
         render(
@@ -95,12 +95,40 @@ describe("ChatComposerCore model control", () => {
             "Test message",
             "overview",
             undefined,
-            "gpt-5.2",
+            "gpt-5.6-luna",
             "general",
             undefined,
             undefined,
             undefined,
         );
+    });
+
+    it("exposes controlled reasoning effort and faster delivery independently", async () => {
+        const onReasoningEffortChange = vi.fn();
+        const onDeliveryModeChange = vi.fn();
+        render(
+            <ChatComposerCore
+                page="overview"
+                inputPlaceholder="Ask"
+                isLoading={false}
+                sendMessage={vi.fn()}
+                cancelStream={vi.fn()}
+                selectedModel="gpt-5.6-luna"
+                onModelChange={vi.fn()}
+                reasoningEffort="medium"
+                onReasoningEffortChange={onReasoningEffortChange}
+                deliveryMode="standard"
+                onDeliveryModeChange={onDeliveryModeChange}
+                showVoice={false}
+            />,
+        );
+
+        fireEvent.pointerDown(screen.getByRole("button", { name: "Reasoning effort: Medium" }));
+        fireEvent.click(await screen.findByText("High"));
+        expect(onReasoningEffortChange).toHaveBeenCalledWith("high");
+
+        fireEvent.click(screen.getByRole("switch", { name: /faster delivery: off/i }));
+        expect(onDeliveryModeChange).toHaveBeenCalledWith("priority");
     });
 
     it("shows unreadable attachment status and blocks send while the failed PDF is attached", () => {
@@ -140,6 +168,73 @@ describe("ChatComposerCore model control", () => {
         expect(screen.getByText(/could not read usable text from it/i)).toBeTruthy();
     });
 
+    it("keeps an incompatible image attached and blocks non-vision models before send", () => {
+        const sendMessage = vi.fn();
+
+        render(
+            <ChatComposerCore
+                page="overview"
+                inputPlaceholder="Ask"
+                isLoading={false}
+                sendMessage={sendMessage}
+                cancelStream={vi.fn()}
+                selectedModel="deepseek-v4-flash"
+                onModelChange={vi.fn()}
+                showVoice={false}
+                pendingAttachment={{
+                    fileAssetId: "image-1",
+                    filename: "figure.png",
+                    size: 2048,
+                    mimeType: "image/png",
+                    isExisting: false,
+                    extraction: {
+                        status: "ready",
+                        mediaKind: "image",
+                        text: "",
+                    },
+                }}
+                clearAttachment={vi.fn()}
+            />,
+        );
+
+        const input = screen.getByLabelText("Copilot prompt");
+        fireEvent.change(input, { target: { value: "Interpret this figure" } });
+        fireEvent.keyDown(input, { key: "Enter" });
+
+        expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+        expect(sendMessage).not.toHaveBeenCalled();
+        expect(screen.getByText(/cannot read images/i)).toBeTruthy();
+        expect(screen.getByText("figure.png")).toBeTruthy();
+    });
+
+    it("blocks unknown model readiness and exposes retry", () => {
+        const sendMessage = vi.fn();
+        const onRetryModelAvailability = vi.fn();
+
+        render(
+            <ChatComposerCore
+                page="overview"
+                inputPlaceholder="Ask"
+                isLoading={false}
+                sendMessage={sendMessage}
+                cancelStream={vi.fn()}
+                selectedModel="gpt-5.6-luna"
+                onModelChange={vi.fn()}
+                modelAvailability={{ "gpt-5.6-luna": true }}
+                modelAvailabilityStatus="error"
+                onRetryModelAvailability={onRetryModelAvailability}
+                showVoice={false}
+            />,
+        );
+
+        fireEvent.change(screen.getByLabelText("Copilot prompt"), { target: { value: "Test" } });
+        fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+        expect(onRetryModelAvailability).toHaveBeenCalledTimes(1);
+        expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+        expect(sendMessage).not.toHaveBeenCalled();
+    });
+
     it("keeps ask-user overlay hidden by default to avoid duplicate rendering", () => {
         render(
             <ChatComposerCore
@@ -168,7 +263,7 @@ describe("ChatComposerCore model control", () => {
                 isLoading={false}
                 sendMessage={vi.fn()}
                 cancelStream={vi.fn()}
-                selectedModel="gpt-5.2"
+                selectedModel="gpt-5.6-luna"
                 onModelChange={vi.fn()}
                 showVoice={false}
                 hideModelControl

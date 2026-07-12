@@ -199,6 +199,87 @@ describe("tool-autonomy", () => {
     );
   });
 
+  it("blocks direct mutations at review-first level 2", async () => {
+    mocks.getTool.mockReturnValue({
+      definition: { name: "add_to_ledger", description: "d", parameters: {} },
+      autonomy: { defaultLevel: 3, allowedRange: [2, 3] },
+    });
+    mocks.getToolAutonomyLevel.mockReturnValue(2);
+    const executeToolWithMiddleware = vi.fn();
+
+    const result = await executeToolWithAutonomyCore({
+      service: { executeToolWithMiddleware } as never,
+      toolCall: {
+        id: "tc-review-first",
+        name: "add_to_ledger",
+        arguments: { results: [{ title: "Study", authors: "Author" }] },
+      },
+      runId: "run-1",
+      projectId: "project-1",
+      conversationId: "conversation-1",
+      userId: "user-1",
+      agentMode: "search",
+    });
+
+    expect(result.blockedByAutonomy).toBe(true);
+    expect(result.blockedReason).toBe("approval_required");
+    expect(executeToolWithMiddleware).not.toHaveBeenCalled();
+  });
+
+  it("still executes read-only tools at level 2", async () => {
+    mocks.getTool.mockReturnValue({
+      definition: { name: "search_pubmed", description: "d", parameters: {} },
+      autonomy: { defaultLevel: 2, allowedRange: [1, 4] },
+    });
+    mocks.getToolAutonomyLevel.mockReturnValue(2);
+    const executeToolWithMiddleware = vi.fn().mockResolvedValue({
+      callId: "tc-search",
+      result: { results: [] },
+    });
+
+    const result = await executeToolWithAutonomyCore({
+      service: { executeToolWithMiddleware } as never,
+      toolCall: { id: "tc-search", name: "search_pubmed", arguments: { query: "diabetes" } },
+      runId: "run-1",
+      projectId: "project-1",
+      conversationId: "conversation-1",
+      userId: "user-1",
+      agentMode: "search",
+    });
+
+    expect(executeToolWithMiddleware).toHaveBeenCalledTimes(1);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("executes non-mutating PDF previews at review-first level 2", async () => {
+    mocks.getTool.mockReturnValue({
+      definition: { name: "preview_study_pdf_update", description: "d", parameters: {} },
+      autonomy: { defaultLevel: 2, allowedRange: [2, 4] },
+    });
+    mocks.getToolAutonomyLevel.mockReturnValue(2);
+    const executeToolWithMiddleware = vi.fn().mockResolvedValue({
+      callId: "tc-preview",
+      result: { studyId: "study-1", changes: [] },
+    });
+
+    const result = await executeToolWithAutonomyCore({
+      service: { executeToolWithMiddleware } as never,
+      toolCall: {
+        id: "tc-preview",
+        name: "preview_study_pdf_update",
+        arguments: { studyId: "study-1" },
+      },
+      runId: "run-1",
+      projectId: "project-1",
+      conversationId: "conversation-1",
+      userId: "user-1",
+      agentMode: "screening",
+    });
+
+    expect(executeToolWithMiddleware).toHaveBeenCalledTimes(1);
+    expect(result.error).toBeUndefined();
+  });
+
   it("auto-applies direct-safe study updates at fixed level 3", async () => {
     mocks.getTool.mockReturnValue({
       definition: { name: "update_study_direct", description: "d", parameters: {} },
@@ -250,6 +331,58 @@ describe("tool-autonomy", () => {
         artifactStatus: "auto_applied",
       }),
     ]);
+  });
+
+  it("finalizes artifact effects before the middleware can complete its durable receipt", async () => {
+    const order: string[] = [];
+    mocks.getTool.mockReturnValue({
+      definition: { name: "update_study_direct", description: "d", parameters: {} },
+      autonomy: { defaultLevel: 3, allowedRange: [3, 3], hardCap: 3 },
+    });
+    mocks.getToolAutonomyLevel.mockReturnValue(3);
+    mocks.createArtifact.mockImplementation(async () => {
+      order.push("artifact-created");
+      return {
+        id: "artifact-study-update",
+        type: "study_update",
+        title: "Study metadata update",
+        payload: { changes: [] },
+        version: 1,
+      };
+    });
+    mocks.applyArtifact.mockImplementation(async () => {
+      order.push("artifact-applied");
+    });
+    const service = {
+      executeToolWithMiddleware: vi.fn(async (
+        _request: unknown,
+        finalize: (result: { callId: string; result: unknown }) => Promise<unknown>,
+      ) => {
+        const finalized = await finalize({
+          callId: "tc-order",
+          result: { studyId: "study-1", patch: {}, changes: [] },
+        });
+        order.push("receipt-completed");
+        return finalized;
+      }),
+    };
+
+    const result = await executeToolWithAutonomyCore({
+      service: service as never,
+      toolCall: { id: "tc-order", name: "update_study_direct", arguments: { rationale: "test" } },
+      runId: "run-1",
+      projectId: "project-1",
+      conversationId: "conversation-1",
+      userId: "user-1",
+      studyId: "study-1",
+      agentMode: "screening",
+    });
+
+    expect(order).toEqual(["artifact-created", "artifact-applied", "receipt-completed"]);
+    expect(result.artifactStatus).toBe("auto_applied");
+    expect(mocks.createArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      applyId: expect.stringMatching(/^tool-artifact:/),
+    }));
   });
 
   it("does not create duplicate artifacts for idempotency replayed tool results", async () => {
@@ -339,5 +472,47 @@ describe("tool-autonomy", () => {
 
     expect(mocks.createArtifact).toHaveBeenCalledTimes(1);
     expect(mocks.applyArtifact).toHaveBeenCalledWith("artifact-study-update", "auto_applied");
+    expect(mocks.span.end).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start artifact mutation phases after the owning tool signal is cancelled", async () => {
+    const controller = new AbortController();
+    mocks.getTool.mockReturnValue({
+      definition: { name: "update_study_direct", description: "d", parameters: {} },
+      autonomy: { defaultLevel: 3, allowedRange: [3, 3], hardCap: 3 },
+    });
+    mocks.getToolAutonomyLevel.mockReturnValue(3);
+    const service = {
+      executeToolWithMiddleware: vi.fn(async (
+        _request: unknown,
+        finalize: (result: { callId: string; result: unknown }) => Promise<unknown>,
+      ) => {
+        controller.abort();
+        return finalize({
+          callId: "tc-cancelled-finalization",
+          result: { studyId: "study-1", patch: {}, changes: [] },
+        });
+      }),
+    };
+
+    await expect(executeToolWithAutonomyCore({
+      service: service as never,
+      toolCall: {
+        id: "tc-cancelled-finalization",
+        name: "update_study_direct",
+        arguments: { rationale: "test" },
+      },
+      runId: "run-1",
+      projectId: "project-1",
+      conversationId: "conversation-1",
+      userId: "user-1",
+      studyId: "study-1",
+      agentMode: "screening",
+      runtimeContext: { signal: controller.signal },
+    })).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(mocks.createArtifact).not.toHaveBeenCalled();
+    expect(mocks.applyArtifact).not.toHaveBeenCalled();
+    expect(mocks.span.end).toHaveBeenCalledTimes(1);
   });
 });

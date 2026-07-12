@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { routeToAgent, AGENT_MODE_CONFIG, detectScopingEntryIntent } from "../router";
+import {
+    routeToAgent,
+    AGENT_MODE_CONFIG,
+    detectScopingEntryIntent,
+    getContextualAllowedTools,
+} from "../router";
 
 describe("routeToAgent", () => {
     const originalScopingFlag = process.env.NEXT_PUBLIC_ENABLE_SCOPING_MODE;
@@ -155,6 +160,11 @@ describe("AGENT_MODE_CONFIG", () => {
             expect(config.memoryScope).toBeDefined();
             expect(config.description).toBeDefined();
         }
+    });
+
+    it("does not advertise removed project creation in general mode", () => {
+        expect(getContextualAllowedTools("general", "project")).not.toContain("create_project");
+        expect(getContextualAllowedTools("general", "global")).not.toContain("create_project");
     });
 });
 

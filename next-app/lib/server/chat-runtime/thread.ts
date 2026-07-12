@@ -1,4 +1,5 @@
 import type { RuntimeStreamEvent } from "@/lib/server/chat-runtime/events";
+import type { DeliveryMode, ReasoningEffort } from "@/types/ai";
 
 export type RuntimeEventSink = (event: RuntimeStreamEvent) => void | Promise<void>;
 
@@ -71,6 +72,9 @@ export class RuntimeThreadContext {
     runStatus?: string;
     actualModel?: string;
     actualModelSource?: "provider" | "requested" | "unknown";
+    actualProvider?: string;
+    actualReasoningEffort?: ReasoningEffort;
+    actualDeliveryMode?: DeliveryMode;
     stopReason?: string;
     iterationCount?: number;
     toolCallCount?: number;
@@ -83,6 +87,9 @@ export class RuntimeThreadContext {
       runStatus: params?.runStatus,
       actualModel: params?.actualModel,
       actualModelSource: params?.actualModelSource,
+      actualProvider: params?.actualProvider,
+      actualReasoningEffort: params?.actualReasoningEffort,
+      actualDeliveryMode: params?.actualDeliveryMode,
       stopReason: params?.stopReason,
       iterationCount: params?.iterationCount,
       toolCallCount: params?.toolCallCount,

@@ -1,5 +1,5 @@
 import type { ReasoningMode } from "@/types/ai";
-import { getReasoningSupportTier } from "@/lib/ai/config";
+import { getReasoningVisibilitySupport } from "@/lib/ai/config";
 
 export const DEFAULT_REASONING_MODE: ReasoningMode = "summary";
 export const MAX_REASONING_CHARS = 8000;
@@ -33,13 +33,13 @@ export function getReasoningBudgetTokens(mode: ReasoningMode): number | undefine
 
 /**
  * Runtime clamp only: keep stored user preference intact, but force requests
- * to "off" when the selected model has no reasoning support.
+ * to the provider's visible-reasoning contract. Compute effort is separate.
  */
 export function resolveRequestReasoningMode(preferredMode: ReasoningMode, modelId: string): ReasoningMode {
-  if (getReasoningSupportTier(modelId) !== "none") {
-    return preferredMode;
-  }
-  return preferredMode === "full" ? "summary" : preferredMode;
+  const visibilitySupport = getReasoningVisibilitySupport(modelId);
+  if (visibilitySupport === "none") return "off";
+  if (visibilitySupport === "summary" && preferredMode === "full") return "summary";
+  return preferredMode;
 }
 
 export function resolveReasoningMode(input?: ReasoningMode, includeReasoning?: boolean): ReasoningMode {

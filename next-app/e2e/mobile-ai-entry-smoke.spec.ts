@@ -1,15 +1,15 @@
 import { expect, test } from "@playwright/test";
+import { buildFoundationSeedKey, quickLoginWithSeed } from "./helpers/foundation";
 
-test("mobile ai entry smoke: route is reachable or redirects to login with usable controls", async ({ page }) => {
-  await page.goto("/ai");
-  await page.waitForLoadState("domcontentloaded");
+test("mobile ai entry smoke: an authenticated user reaches the real chat composer", async ({ page }, testInfo) => {
+  await quickLoginWithSeed(page, {
+    callbackUrl: "/ai",
+    seedKey: buildFoundationSeedKey(testInfo),
+  });
 
-  if (page.url().includes("/login")) {
-    await expect(page.getByLabel("Email address")).toBeVisible();
-    await expect(page.getByRole("button", { name: /send magic link/i })).toBeVisible();
-    return;
-  }
-
+  await expect(page).toHaveURL(/\/ai(?:\?|$)/);
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/);
   await expect(page.getByRole("region", { name: /chat interface/i })).toBeVisible();
   await expect(page.getByLabel("Copilot prompt")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
 });

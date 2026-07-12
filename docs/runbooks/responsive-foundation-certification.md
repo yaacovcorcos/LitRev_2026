@@ -96,7 +96,7 @@ npm run test:smoke:mobile
 ```
 
 GitHub automation contract:
-- `Mobile Foundation / mobile-foundation` runs `test:e2e:foundation` on pushes to `main` and on pull requests that touch:
+- `Browser Foundation / browser-foundation` runs `test:e2e:foundation` on pushes to `main` and on pull requests that touch:
   - `next-app/app/**`
   - `next-app/components/**`
   - `next-app/styles/**`
@@ -105,9 +105,15 @@ GitHub automation contract:
   - `next-app/package.json`
   - `next-app/package-lock.json`
   - `next-app/lib/mobile/**`
-  - `next-app/lib/ai/reliability-telemetry.ts`
+  - `next-app/lib/ai/**`
+  - `next-app/lib/server/agent/**`
+  - `next-app/lib/server/ai/**`
+  - `next-app/contexts/**`
+  - `next-app/hooks/**`
+  - `next-app/types/**`
   - `next-app/app/PerformanceVitalsReporter.tsx`
   - `.github/workflows/**`
+- the lane uploads `browser-foundation-playwright-report` for failure inspection
 - `test:smoke:mobile` is currently a local-only adjunct lane; if a dedicated automated broader-smoke workflow is added later, update this runbook, `docs/runbooks/testing-ci-strategy.md`, and `docs/plans/plan-testing-execution.md` in the same task
 - docs-only mobile plan/runbook changes do not trigger the foundation workflow by default
 
@@ -119,6 +125,7 @@ Foundation Playwright setup now uses seeded dev fixture routes so auth, home, sa
 
 Certification rule:
 - `test:e2e:foundation` is allowed to run with `--workers=2` because the fixture contract is seed-aware per worker/test.
+- responsive route scenarios remain mobile-project-owned; shared agent/offline scenarios run on both configured Chromium projects in the same foundation command.
 - Broader `test:smoke:mobile` coverage remains conservative until non-foundation mobile flows prove the same isolation guarantees.
 
 Required responsive behavior coverage:
@@ -135,7 +142,8 @@ Required responsive behavior coverage:
   - usable on phone
   - usable on compact
 - `/ai`:
-  - existing mobile entry smoke still passes
+  - authenticated entry reaches the chat composer rather than treating a login redirect as success
+  - deterministic output, tool activity, clarification, cancellation/recovery, offline, and artifact-action scenarios pass on mobile and desktop Chromium
 
 ## Viewport interpretation
 - `phone`

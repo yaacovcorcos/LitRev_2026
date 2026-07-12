@@ -1,10 +1,8 @@
 import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
-import { ensureProtocol } from "@/lib/server/protocols";
-import { syncProtocolToMemory } from "@/lib/server/memory/protocol-sync";
 import { findBestFuzzyListMatch } from "@/lib/agent/fuzzy-match";
-import { logServerError } from "@/lib/server/logging";
+import type { ProtocolData } from "@/types/protocol";
 
 const inputSchema = z.object({
     action: z.enum(["add", "remove"]),
@@ -13,17 +11,21 @@ const inputSchema = z.object({
 });
 
 const outputSchema = z.object({
-    success: z.boolean(),
-    action: z.enum(["add", "remove"]),
-    type: z.enum(["inclusion", "exclusion"]),
-    criteria: z.array(z.string()),
+    inclusion: z.array(z.string()),
+    exclusion: z.array(z.string()),
+    rationale: z.string(),
+    mutation: z.object({
+        action: z.enum(["add", "remove"]),
+        type: z.enum(["inclusion", "exclusion"]),
+        criterion: z.string().min(1),
+    }),
 });
 
 export const updateCriteriaTool: AITool = {
     definition: {
         name: "update_criteria",
         description:
-            "Add or remove an inclusion or exclusion criterion from the review protocol. Use this when the user makes a definitive decision about criteria — not for tentative suggestions. After updating, the change is automatically synced to project memory.",
+            "Prepare a reviewable proposal to add or remove an inclusion or exclusion criterion. This tool never writes the protocol directly; the authenticated user must apply the resulting criteria card.",
         parameters: {
             type: "object",
             properties: {
@@ -68,9 +70,17 @@ export const updateCriteriaTool: AITool = {
         const action = args.action as "add" | "remove";
         const type = args.type as "inclusion" | "exclusion";
         const criterion = args.criterion as string;
+        let mutationCriterion = criterion.trim();
 
         try {
-            const data = await ensureProtocol(projectId);
+            const protocol = await prisma.protocol.findUnique({
+                where: { projectId },
+                select: { data: true },
+            });
+            if (!protocol) {
+                return { callId: "", result: null, error: "No protocol exists for this project" };
+            }
+            const data = structuredClone(protocol.data) as unknown as ProtocolData;
             const list = data.eligibility[type];
 
             if (action === "add") {
@@ -81,7 +91,8 @@ export const updateCriteriaTool: AITool = {
                 if (exists) {
                     return {
                         callId: "",
-                        result: { success: true, action, type, criteria: list },
+                        result: null,
+                        error: `The ${type} criterion already exists; no protocol change is needed.`,
                     };
                 }
                 list.push(criterion.trim());
@@ -104,27 +115,17 @@ export const updateCriteriaTool: AITool = {
                         error: `Criterion not found in ${type} list: "${criterion}"`,
                     };
                 }
+                mutationCriterion = list[idx];
                 list.splice(idx, 1);
             }
-
-            // Persist
-            await prisma.protocol.update({
-                where: { projectId },
-                data: { data: data as unknown as object },
-            });
-
-            // Sync to memory (fire-and-forget)
-            syncProtocolToMemory(projectId, data).catch((err) =>
-                logServerError("update_criteria", "memory sync failed", { projectId }, err)
-            );
 
             return {
                 callId: "",
                 result: {
-                    success: true,
-                    action,
-                    type,
-                    criteria: data.eligibility[type],
+                    inclusion: data.eligibility.inclusion,
+                    exclusion: data.eligibility.exclusion,
+                    rationale: `${action === "add" ? "Add" : "Remove"} ${type} criterion: ${criterion.trim()}`,
+                    mutation: { action, type, criterion: mutationCriterion },
                 },
             };
         } catch (error) {

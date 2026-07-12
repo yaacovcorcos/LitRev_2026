@@ -46,16 +46,18 @@ This plan does not own:
   - `npm run test:governance` (still backed by `governance:ci-required`, including raw `npm run lint`)
   - `npm run test:governance:informational` as non-blocking reporting
   - `npm run check:chat-stream-architecture`
-  - `npm run check:agent-quality`
+  - `npm run check:agent-quality` (executes the deterministic runtime-scenario matrix, then checks catalog/fixture/burn-in contracts)
   - `npm run test:vitest`
   - production build
 - Heavier or orthogonal lanes already exist outside the required `check` path:
-  - `.github/workflows/mobile-smoke.yml` runs the mobile foundation Playwright suite on `main` and on PRs that touch relevant UI/e2e paths
+  - `.github/workflows/browser-foundation.yml` runs the Chromium browser foundation on `main` and on pull requests that touch responsive or agent-runtime UI paths; failures retain an HTML report
   - `.github/workflows/perf-nightly.yml` runs scheduled and `main`-branch performance certification with uploaded nightly artifacts
-- `next-app/playwright.config.ts` currently defines a single `mobile-chromium` project and a repo-local dev-server boot contract that targets `/login`.
+- `next-app/playwright.config.ts` defines explicit `desktop-chromium` and `mobile-chromium` projects. Filename filters keep desktop-only and mobile-only scenarios on their intended viewport while shared agent/offline specs run on both.
+- The Playwright-owned Next dev server uses webpack mode so isolated Git worktrees with a shared `node_modules` symlink remain runnable, loads the normal Next env files for local fixtures, and targets `/login` for readiness.
+- The browser foundation combines responsive route certification with authenticated `/ai` proof for successful output, tool receipts, structured `ask_user` resume, cancellation, durable recovery replay, offline failure recovery, and real study-update accept/undo actions. Provider output is intercepted deterministically; the artifact scenario can mutate only a loopback PostgreSQL database.
 - Changed-scope execution already exists in two narrow forms:
   - path filtering for the mobile foundation workflow
-  - `next-app/scripts/check-runtime-test-impact.mjs` for governed runtime test-impact enforcement
+  - `next-app/scripts/check-runtime-test-impact.mjs` for governed runtime test-impact enforcement; locally it unions committed branch diff, staged changes, unstaged changes, and untracked files so pre-commit work cannot evade the policy
 - `docs/reviews/repo-health.md` currently records raw `npm run lint` at `0` errors and `0` warnings on `main`, and raw lint now runs inside the protected `check` contract through `governance:ci-required`.
 - LitRev now has a coherent shared testing execution reference plus canonical lane aliases; the remaining execution gap is the absence of a truthful `test:unit` / `test:integration` split and any future proof that a repo-root wrapper is still worth adding.
 - The default placement model remains domain-local `__tests__` directories, and the first small normalization pass is to finish that pattern inside feature folders that already mix sibling `.test.*` files with a nearby `__tests__` directory.
@@ -131,7 +133,7 @@ Status: Done
 
 Shipped:
 - Workflow path filtering for the mobile foundation lane
-- Changed-file runtime test-impact enforcement for governed runtime domains
+- Changed-file runtime test-impact enforcement for governed runtime domains, including the core agent service, provider implementations, tool middleware, agent action, and AI stream route in addition to the original runtime/tool directories
 - Existing smoke-like scripts in selected domains such as citation and mobile entry
 - `docs/runbooks/testing-ci-strategy.md` now defines:
   - where changed-scope execution is currently allowed
@@ -157,13 +159,16 @@ Missing:
 - Nothing material for the current promotion/reporting scope
 
 ### Phase 5 — Advanced Expansion After Execution Clarity
-Status: Deferred
+Status: In progress
 
 Shipped:
-- Nothing beyond the current mobile-only Playwright project and existing performance certification flow
+- Explicit desktop and mobile Chromium Playwright projects with route-specific discovery
+- A shared browser foundation command and CI lane with an uploaded HTML report
+- Deterministic authenticated `/ai` scenarios for stream output, tool activity, clarification resume, cancellation/recovery, offline handling, and real artifact accept/undo actions
+- Existing performance certification remains separate
 
 Missing:
-- Any broader browser-matrix expansion beyond what current product risk justifies
+- Any engine expansion beyond Chromium; add WebKit or Firefox only when product risk and maintenance evidence justify it
 - Any wider changed-scope automation beyond expensive, stable lanes
 - Additional install/startup/perf smoke layers that do not yet have a clear first owner or maintenance budget
 
@@ -172,7 +177,8 @@ Missing:
 - [ ] Introduce `test:unit` and `test:integration` only after the repo has a truthful, maintainable boundary for that split rather than a cosmetic label.
 
 ## Recently Completed
-- [x] Promoted `check:agent-quality` into the protected `check` lane as the deterministic agent eval, runtime-signal fixture, and U1.6 burn-in contract gate, with local reproduction documented in the shared testing and GitHub flow runbooks.
+- [x] Expanded browser foundation from mobile-only discovery to explicit desktop/mobile Chromium projects, replaced login-redirect AI passes with authenticated proof, and added deterministic UI scenarios for agent output, tools, clarification, cancellation/recovery, offline handling, and artifact accept/undo.
+- [x] Promoted `check:agent-quality` into the protected `check` lane as an executable deterministic runtime-scenario gate plus catalog, runtime-signal fixture, and U1.6 burn-in contract validation, with local reproduction documented in the shared testing and GitHub flow runbooks.
 - [x] Normalized the draft route's local test layout by moving the remaining sibling `.test.*` files into `app/project/[id]/draft/__tests__/`, establishing the preferred "finish the nearby `__tests__` pattern before inventing a second local style" rule for future cleanup.
 - [x] Introduced canonical shared lane aliases in `next-app/package.json` for typecheck, Vitest, governance, E2E foundation/local, smoke, chat-stream architecture, and PR-ready validation while keeping the historical command names backward compatible.
 - [x] Closed the repo-root wrapper decision for now: keep the package-level aliases and shared testing runbook as the single ergonomic front door until evidence shows they are not enough.

@@ -3,12 +3,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   agentRunCreate: vi.fn(),
   agentRunFindUnique: vi.fn(),
+  agentRunFindFirst: vi.fn(),
   agentRunFindMany: vi.fn(),
   agentRunUpdate: vi.fn(),
   agentRunUpdateMany: vi.fn(),
   transaction: vi.fn(),
   aiMessageCount: vi.fn(),
+  after: vi.fn(),
+  extractMemoriesFromConversation: vi.fn(),
   transitionRunPhaseInTransaction: vi.fn(),
+  queryRaw: vi.fn(),
+}));
+
+vi.mock("next/server", () => ({
+  after: mocks.after,
 }));
 
 vi.mock("@/lib/server/prisma", () => ({
@@ -17,6 +25,7 @@ vi.mock("@/lib/server/prisma", () => ({
     agentRun: {
       create: mocks.agentRunCreate,
       findUnique: mocks.agentRunFindUnique,
+      findFirst: mocks.agentRunFindFirst,
       findMany: mocks.agentRunFindMany,
       update: mocks.agentRunUpdate,
       updateMany: mocks.agentRunUpdateMany,
@@ -28,7 +37,7 @@ vi.mock("@/lib/server/prisma", () => ({
 }));
 
 vi.mock("@/lib/server/memory/conversation-extractor", () => ({
-  extractMemoriesFromConversation: vi.fn(),
+  extractMemoriesFromConversation: mocks.extractMemoriesFromConversation,
 }));
 
 vi.mock("@/lib/server/agent/run-phase", () => ({
@@ -46,22 +55,53 @@ const {
   markRunDurabilityDegraded,
   markRunFinalizationFailed,
   markRunFinalizationState,
+  recordRunGenerationReceipt,
   settleClarificationDismissedRun,
 } = await import("@/lib/server/agent/run");
+
+beforeEach(() => {
+  mocks.after.mockImplementation(() => undefined);
+});
 
 describe("startRun lineage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.agentRunCreate.mockResolvedValue({ id: "run-new" });
-    mocks.agentRunUpdate.mockResolvedValue({ id: "run-new", conversationId: null, projectId: null, userId: null });
+    mocks.agentRunUpdate.mockResolvedValue({
+      id: "run-new",
+      conversationId: null,
+      projectId: null,
+      userId: null,
+    });
     mocks.agentRunUpdateMany.mockResolvedValue({ count: 1 });
-    mocks.transaction.mockImplementation(async (callback: (tx: { agentRun: { findUnique: typeof mocks.agentRunFindUnique; updateMany: typeof mocks.agentRunUpdateMany } }) => Promise<unknown>) => callback({
+    mocks.agentRunFindFirst.mockResolvedValue(null);
+    mocks.queryRaw.mockResolvedValue([{ locked: 1 }]);
+    mocks.transaction.mockImplementation(
+      async (
+        callback: (tx: {
+          agentRun: {
+            create: typeof mocks.agentRunCreate;
+            findUnique: typeof mocks.agentRunFindUnique;
+            findFirst: typeof mocks.agentRunFindFirst;
+            updateMany: typeof mocks.agentRunUpdateMany;
+          };
+          $queryRaw: typeof mocks.queryRaw;
+        }) => Promise<unknown>,
+      ) =>
+        callback({
       agentRun: {
+            create: mocks.agentRunCreate,
         findUnique: mocks.agentRunFindUnique,
+            findFirst: mocks.agentRunFindFirst,
         updateMany: mocks.agentRunUpdateMany,
       },
-    }));
-    mocks.transitionRunPhaseInTransaction.mockResolvedValue({ changed: true, phaseEnteredAt: new Date("2026-03-14T12:00:00.000Z") });
+          $queryRaw: mocks.queryRaw,
+        }),
+    );
+    mocks.transitionRunPhaseInTransaction.mockResolvedValue({
+      changed: true,
+      phaseEnteredAt: new Date("2026-03-14T12:00:00.000Z"),
+    });
   });
 
   it("creates a root run without lineage when no parent is provided", async () => {
@@ -71,15 +111,23 @@ describe("startRun lineage", () => {
       userId: "u1",
       trigger: "user_message",
       agentMode: "general",
-      model: "gpt-5.2",
+      model: "gpt-5.6-luna",
+      provider: "openai",
+      reasoningEffort: "medium",
+      deliveryMode: "priority",
     });
 
     expect(mocks.agentRunFindUnique).not.toHaveBeenCalled();
+    expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
     expect(mocks.agentRunCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           parentRunId: undefined,
           rootRunId: undefined,
+          model: "gpt-5.6-luna",
+          provider: "openai",
+          reasoningEffort: "medium",
+          deliveryMode: "priority",
           runPhase: "plan",
           phaseEnteredAt: expect.any(Date),
           lastActivityAt: expect.any(Date),
@@ -95,6 +143,8 @@ describe("startRun lineage", () => {
     mocks.agentRunFindUnique.mockResolvedValue({
       id: "run-parent",
       projectId: "p1",
+      conversationId: "c1",
+      userId: "u1",
       rootRunId: "run-root",
     });
 
@@ -110,7 +160,13 @@ describe("startRun lineage", () => {
 
     expect(mocks.agentRunFindUnique).toHaveBeenCalledWith({
       where: { id: "run-parent" },
-      select: { id: true, projectId: true, rootRunId: true },
+      select: {
+        id: true,
+        projectId: true,
+        conversationId: true,
+        userId: true,
+        rootRunId: true,
+      },
     });
     expect(mocks.agentRunCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -126,6 +182,8 @@ describe("startRun lineage", () => {
     mocks.agentRunFindUnique.mockResolvedValue({
       id: "run-parent",
       projectId: "p1",
+      conversationId: null,
+      userId: null,
       rootRunId: null,
     });
 
@@ -165,6 +223,25 @@ describe("startRun lineage", () => {
         }),
       }),
     );
+  });
+
+  it("rejects a second user-message run at the atomic admission boundary", async () => {
+    mocks.agentRunFindFirst.mockResolvedValue({
+      id: "run-active",
+      lastActivityAt: new Date("2026-03-20T10:00:00.000Z"),
+    });
+
+    await expect(
+      startRun({
+        projectId: "p1",
+        conversationId: "c1",
+        userId: "u1",
+        trigger: "user_message",
+        agentMode: "general",
+      }),
+    ).rejects.toMatchObject({ errorCode: "ACTIVE_RUN_EXISTS" });
+
+    expect(mocks.agentRunCreate).not.toHaveBeenCalled();
   });
 
   it("throws when parent run does not exist", async () => {
@@ -211,16 +288,38 @@ describe("run freshness lifecycle", () => {
       runPhase: "act",
       completedAt: null,
       finalizationState: "not_started",
+      memoryExtractionStatus: "pending",
     });
     mocks.aiMessageCount.mockResolvedValue(0);
     mocks.agentRunUpdateMany.mockResolvedValue({ count: 1 });
-    mocks.transaction.mockImplementation(async (callback: (tx: { agentRun: { findUnique: typeof mocks.agentRunFindUnique; updateMany: typeof mocks.agentRunUpdateMany } }) => Promise<unknown>) => callback({
+    mocks.agentRunFindFirst.mockResolvedValue(null);
+    mocks.queryRaw.mockResolvedValue([{ locked: 1 }]);
+    mocks.transaction.mockImplementation(
+      async (
+        callback: (tx: {
+          agentRun: {
+            create: typeof mocks.agentRunCreate;
+            findUnique: typeof mocks.agentRunFindUnique;
+            findFirst: typeof mocks.agentRunFindFirst;
+            updateMany: typeof mocks.agentRunUpdateMany;
+          };
+          $queryRaw: typeof mocks.queryRaw;
+        }) => Promise<unknown>,
+      ) =>
+        callback({
       agentRun: {
+            create: mocks.agentRunCreate,
         findUnique: mocks.agentRunFindUnique,
+            findFirst: mocks.agentRunFindFirst,
         updateMany: mocks.agentRunUpdateMany,
       },
-    }));
-    mocks.transitionRunPhaseInTransaction.mockResolvedValue({ changed: true, phaseEnteredAt: new Date("2026-03-14T12:00:00.000Z") });
+          $queryRaw: mocks.queryRaw,
+        }),
+    );
+    mocks.transitionRunPhaseInTransaction.mockResolvedValue({
+      changed: true,
+      phaseEnteredAt: new Date("2026-03-14T12:00:00.000Z"),
+    });
   });
 
   it("updates lastActivityAt when ending a run", async () => {
@@ -238,10 +337,75 @@ describe("run freshness lifecycle", () => {
         lastActivityAt: expect.any(Date),
         lastDurableProgressAt: expect.any(Date),
         finalizationState: "completed",
+        memoryExtractionStatus: "pending",
+        memoryExtractionAttempts: 0,
+        memoryExtractionLeaseToken: null,
+        memoryExtractionLeaseExpiresAt: null,
+        memoryExtractionCompletedAt: null,
+        memoryExtractionLastError: null,
         abnormalEndClassification: null,
         costTokensIn: 10,
         costTokensOut: 20,
       }),
+    });
+  });
+
+  it("commits the pending extraction marker before registering nonblocking work", async () => {
+    let registeredTask: (() => Promise<void>) | undefined;
+    mocks.after.mockImplementation((task: () => Promise<void>) => {
+      registeredTask = task;
+    });
+    mocks.extractMemoriesFromConversation.mockImplementation(
+      () => new Promise(() => undefined),
+    );
+
+    await expect(endRun("run-1", "completed", 10, 20)).resolves.toMatchObject({
+      id: "run-1",
+    });
+
+    expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ memoryExtractionStatus: "pending" }),
+    }));
+    expect(registeredTask).toEqual(expect.any(Function));
+    expect(mocks.extractMemoriesFromConversation).not.toHaveBeenCalled();
+  });
+
+  it("retains durable pending state when after registration is unavailable", async () => {
+    mocks.after.mockImplementationOnce(() => {
+      throw new Error("after is unavailable outside a request");
+    });
+
+    await expect(endRun("run-1", "completed")).resolves.toMatchObject({ id: "run-1" });
+
+    expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: "completed",
+        memoryExtractionStatus: "pending",
+      }),
+    }));
+    expect(mocks.extractMemoriesFromConversation).not.toHaveBeenCalled();
+  });
+
+  it("records provider receipts only while the run still owns execution", async () => {
+    await recordRunGenerationReceipt("run-1", {
+      actualModel: "gpt-5.6-luna",
+      actualProvider: "openai",
+      actualReasoningEffort: "medium",
+      actualDeliveryMode: "standard",
+    });
+
+    expect(mocks.agentRunUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: "run-1",
+        status: "running",
+        completedAt: null,
+      },
+      data: {
+        actualModel: "gpt-5.6-luna",
+        actualProvider: "openai",
+        actualReasoningEffort: "medium",
+        actualDeliveryMode: "standard",
+      },
     });
   });
 
@@ -256,7 +420,9 @@ describe("run freshness lifecycle", () => {
         finalizationState: "completed",
       });
 
-    await expect(endRun("run-1", "completed")).rejects.toBeInstanceOf(RunOwnershipError);
+    await expect(endRun("run-1", "completed")).rejects.toBeInstanceOf(
+      RunOwnershipError,
+    );
   });
 
   it("marks finalization state and abnormal-end classification through centralized helpers", async () => {
@@ -339,7 +505,9 @@ describe("run freshness lifecycle", () => {
     });
 
     await expect(
-      markRunAbnormalEndClassification("run-1", "unknown", { requireActive: true }),
+      markRunAbnormalEndClassification("run-1", "unknown", {
+        requireActive: true,
+      }),
     ).rejects.toBeInstanceOf(RunOwnershipError);
   });
 
@@ -353,7 +521,9 @@ describe("run freshness lifecycle", () => {
     });
 
     await expect(
-      markRunDurabilityDegraded("run-1", "tool_result_persistence_failed", { requireActive: true }),
+      markRunDurabilityDegraded("run-1", "tool_result_persistence_failed", {
+        requireActive: true,
+      }),
     ).rejects.toBeInstanceOf(RunOwnershipError);
   });
 
@@ -373,6 +543,41 @@ describe("run freshness lifecycle", () => {
 
     controller.stop();
     vi.useRealTimers();
+  });
+
+  it("stops heartbeating when the run is no longer active", async () => {
+    const ticks: Array<() => void | Promise<void>> = [];
+    const timer = { unref: vi.fn() } as unknown as ReturnType<
+      typeof setInterval
+    >;
+    const schedule = vi.fn((callback: () => void | Promise<void>) => {
+      ticks.push(callback);
+      return timer;
+    });
+    const cancel = vi.fn();
+    const touch = vi.fn().mockResolvedValue(0);
+    const now = vi
+      .fn()
+      .mockReturnValueOnce(new Date("2026-03-14T12:00:00.000Z"))
+      .mockReturnValue(new Date("2026-03-14T12:00:15.000Z"));
+
+    const controller = startRunHeartbeat("run-terminal", {
+      intervalMs: RUN_HEARTBEAT_INTERVAL_MS,
+      touch,
+      now,
+      schedule: schedule as unknown as typeof setInterval,
+      cancel,
+    });
+
+    await ticks[0]?.();
+    await ticks[0]?.();
+
+    expect(touch).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledWith(timer);
+
+    controller.stop();
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 });
 

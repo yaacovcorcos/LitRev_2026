@@ -49,7 +49,7 @@ Use the canonical shared aliases in `next-app/package.json` when referring to cr
 - `npm run test:governance:informational`
   - canonical non-blocking governance reporting lane (`governance:ci-informational`)
 - `npm run test:e2e:foundation`
-  - canonical high-signal browser foundation lane
+  - canonical high-signal desktop/mobile Chromium foundation lane for responsive routes and deterministic agent UI behavior
 - `npm run test:e2e:local`
   - canonical broader local Playwright lane
 - `npm run test:smoke:mobile`
@@ -59,7 +59,7 @@ Use the canonical shared aliases in `next-app/package.json` when referring to cr
 - `npm run check:chat-stream-architecture`
   - canonical local reproduction for the shared architecture guard in `check`
 - `npm run check:agent-quality`
-  - canonical deterministic agent eval, runtime-signal fixture, and burn-in contract gate in `check`
+  - canonical executable deterministic runtime-scenario, catalog/fixture, and burn-in contract gate in `check`; every matrix row must produce one passing `[scenario-id]` assertion in Vitest's result
 - `npm run check:pr`
   - canonical local reproduction for the shared non-database portion of the protected `check` workflow
 
@@ -153,14 +153,14 @@ For docs-only plan or runbook changes:
 - Evidence:
   - `governance-audit.json` uploaded from CI
 
-### Mobile Foundation / mobile-foundation
+### Browser Foundation / browser-foundation
 
 - Local reproduction:
   - `cd next-app && npm run test:e2e:foundation`
 - Automation:
-  - `.github/workflows/mobile-smoke.yml`
+  - `.github/workflows/browser-foundation.yml`
   - runs on `main`
-  - runs on pull requests that touch the mobile-sensitive path filter in that workflow
+  - runs on pull requests that touch responsive, browser-test, shared chat, or agent-runtime paths in that workflow
 - Blocking posture:
   - separate CI lane, not the protected `check` gate
 - First owner:
@@ -168,7 +168,12 @@ For docs-only plan or runbook changes:
 - Failure inspection:
   - GitHub job log and annotations first
   - local rerun for deeper Playwright diagnosis
-  - current CI does not upload a dedicated Playwright artifact; if a broader browser lane is added later, artifact expectations must ship in the same task
+  - inspect the uploaded `browser-foundation-playwright-report` HTML artifact for traces and scenario context
+- Contract:
+  - mobile route-foundation specs stay on `mobile-chromium`
+  - shared agent-runtime and offline specs run on `desktop-chromium` and `mobile-chromium`
+  - `/ai` entry authenticates through the seeded quick-login contract; reaching `/login` is a failure, not a passing fallback
+  - provider streams are intercepted for deterministic UI proof, while study-update accept/undo uses a seeded loopback database and the real server actions
 
 ### Broader Mobile Smoke
 
@@ -224,7 +229,7 @@ For docs-only plan or runbook changes:
 - required governance inventory, including raw `npm run lint`
 - informational governance reporting visibility
 - chat stream architecture guard
-- deterministic agent quality gate over eval scenarios, stream fixtures, and burn-in thresholds
+- deterministic agent quality gate that executes the runtime-scenario matrix before checking catalog coverage, stream fixtures, and burn-in thresholds
 - full `npm run test:vitest`
 - production `next build`
 
@@ -254,8 +259,9 @@ For docs-only plan or runbook changes:
 
 - Full execution remains the default for correctness-critical lanes.
 - Changed-scope execution is currently allowed only in narrow, explicit places:
-  - workflow path filtering for the mobile foundation lane
-  - governed runtime test-impact enforcement through `check-runtime-test-impact`
+  - workflow path filtering for the browser foundation lane
+  - governed runtime test-impact enforcement through `check-runtime-test-impact`; local evaluation includes committed branch diff, index, worktree, and untracked files
+- Runtime test-impact enforcement covers the core agent service, provider implementations, tool middleware, agent action, and AI stream route in addition to the original runtime/tool domains. Central test-family mappings and one-file waivers count only when the mapped test is also part of the detected change set.
 - Changed-scope execution is not allowed for:
   - `CI / check`
   - raw `npm run lint`
@@ -277,7 +283,7 @@ The shared smoke inventory is intentionally small.
 Today it contains only:
 
 - `test:e2e:foundation`
-  - narrow browser route-certification for home, auth, project shell, protocol, and `/ai` entry smoke
+  - mobile route-certification for home, auth, project shell, and protocol plus authenticated agent output/tool/clarification/cancellation/recovery/offline/artifact proof on desktop and mobile Chromium
 - `test:smoke:mobile`
   - broader local-only mobile-sensitive smoke beyond the narrow foundation routes
 - `test:smoke:citation`

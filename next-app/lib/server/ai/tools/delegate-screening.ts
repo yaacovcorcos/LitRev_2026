@@ -77,6 +77,9 @@ export const delegateScreeningTool: AITool = {
             autonomyConfig: context?.autonomyConfig,
             systemContexts: context?.systemContexts,
             signal: context?.signal,
+            model: context?.model ?? context?.systemContexts?.selectedModel,
+            reasoningEffort: context?.reasoningEffort,
+            deliveryMode: context?.deliveryMode,
         });
 
         return {

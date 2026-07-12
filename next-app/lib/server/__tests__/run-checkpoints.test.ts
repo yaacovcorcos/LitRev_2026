@@ -169,4 +169,71 @@ describe("run checkpoints", () => {
       },
     });
   });
+
+  it("accepts a checkpoint whose seed matches the live auto-applied scoping report", async () => {
+    const payload = {
+      topic: "Omega-3 and cognition",
+      searchesRun: [],
+      landscape: {
+        majorThemes: [],
+        evidenceGaps: [],
+        methodologicalPatterns: [],
+        evidenceDensity: "moderate",
+      },
+      recommendedQuestions: [],
+      nextStep: "Choose a question.",
+    };
+    mocks.runCheckpointFindMany.mockResolvedValue([
+      {
+        id: "checkpoint-scoping",
+        runId: "run-scoping",
+        conversationId: "conv-scoping",
+        kind: "artifact_ready",
+        status: "ready",
+        nextStep: "reason_from_artifact_state",
+        seedVersion: 1,
+        seed: {
+          sourceRunId: "run-scoping",
+          sourceEventSequence: 7,
+          artifactId: "artifact-scoping",
+          artifactType: "scoping_report",
+          artifactStatus: "auto_applied",
+          artifactTitle: "Scoping: Omega-3 and cognition",
+          artifactVersion: 1,
+          artifactPayload: payload,
+        },
+        sourceEventSequence: 7,
+        sourceArtifactId: "artifact-scoping",
+        invalidatedReason: null,
+      },
+    ]);
+    mocks.runEventFindFirst.mockResolvedValue({
+      sequence: 7,
+      artifactId: "artifact-scoping",
+    });
+    mocks.artifactFindFirst.mockResolvedValue({
+      id: "artifact-scoping",
+      type: "scoping_report",
+      status: "auto_applied",
+      title: "Scoping: Omega-3 and cognition",
+      payload,
+      version: 1,
+    });
+
+    const result = await resolveLatestValidRunCheckpoint({
+      runId: "run-scoping",
+      conversationId: "conv-scoping",
+    });
+
+    expect(result).toMatchObject({
+      checkpointId: "checkpoint-scoping",
+      kind: "artifact_ready",
+      sourceRunId: "run-scoping",
+      sourceEventSequence: 7,
+      artifactId: "artifact-scoping",
+      artifactStatus: "auto_applied",
+      artifactPayload: payload,
+    });
+    expect(mocks.runCheckpointUpdateMany).not.toHaveBeenCalled();
+  });
 });

@@ -4,8 +4,10 @@ import { isOperationalTelemetryE2EMode } from "@/lib/telemetry/e2e-mode";
 import {
   RELIABILITY_METRIC_VERSION,
   type ReliabilityDimensions,
+  type ReliabilityMetricDraft,
   type ReliabilityMetricEvent,
   type ReliabilityMetricInput,
+  type ReliabilityMetricPayloadByType,
 } from "@/types/reliability-telemetry";
 
 const STORAGE_KEY = `litrev:reliability-metrics:v${RELIABILITY_METRIC_VERSION}`;
@@ -13,8 +15,7 @@ const STORAGE_LIMIT = 2000;
 const METRIC_EVENT = "litrev:reliability-metric";
 const TELEMETRY_ENDPOINT = "/api/telemetry/reliability";
 
-function readFlag(name: string): boolean | null {
-  const raw = process.env[name];
+function readFlag(raw: string | undefined): boolean | null {
   if (raw == null) return null;
   const normalized = raw.trim().toLowerCase();
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
@@ -37,9 +38,9 @@ export function getReliabilityDimensions(): ReliabilityDimensions {
     viewport,
     network,
     flags: {
-      scrollOwnershipA1: readFlag("NEXT_PUBLIC_SCROLL_OWNERSHIP_A1"),
-      streamReliabilityA2: readFlag("NEXT_PUBLIC_STREAM_RELIABILITY_A2"),
-      mobileScrollLockV2: readFlag("NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2"),
+      scrollOwnershipA1: readFlag(process.env.NEXT_PUBLIC_SCROLL_OWNERSHIP_A1),
+      streamReliabilityA2: readFlag(process.env.NEXT_PUBLIC_STREAM_RELIABILITY_A2),
+      mobileScrollLockV2: readFlag(process.env.NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2),
     },
   };
 }
@@ -50,17 +51,23 @@ function canShipReliabilityMetrics(): boolean {
 }
 
 function toMetricInput(event: ReliabilityMetricEvent): ReliabilityMetricInput {
+  if (event.type === "reliability.v1.shell.dead_scroll_detected") {
+    const { timestamp, ...metric } = event;
+    return {
+      ...metric,
+      conversationId: metric.conversationId ?? null,
+      runId: metric.runId ?? null,
+      clientTimestamp: timestamp,
+    };
+  }
+
+  const { timestamp, ...metric } = event;
   return {
-    eventId: event.eventId,
-    version: event.version,
-    type: event.type,
-    surface: event.surface,
-    projectId: event.projectId ?? null,
-    conversationId: event.conversationId ?? null,
-    runId: event.runId ?? null,
-    clientTimestamp: event.timestamp,
-    dimensions: event.dimensions,
-    payload: event.payload,
+    ...metric,
+    projectId: metric.projectId ?? null,
+    conversationId: metric.conversationId ?? null,
+    runId: metric.runId ?? null,
+    clientTimestamp: timestamp,
   };
 }
 
@@ -84,7 +91,7 @@ function generateMetricEventId(): string {
 }
 
 export function recordReliabilityMetric(
-  event: Omit<ReliabilityMetricEvent, "eventId" | "version" | "timestamp" | "dimensions">,
+  event: ReliabilityMetricDraft,
 ): void {
   if (typeof window === "undefined") return;
 
@@ -97,6 +104,18 @@ export function recordReliabilityMetric(
   };
 
   telemetryStore.record(normalized);
+}
+
+export function recordDeadScrollIncident(
+  projectId: string,
+  payload: ReliabilityMetricPayloadByType["reliability.v1.shell.dead_scroll_detected"],
+): void {
+  recordReliabilityMetric({
+    type: "reliability.v1.shell.dead_scroll_detected",
+    surface: "shell",
+    projectId,
+    payload,
+  });
 }
 
 export function getReliabilityMetricEvents(): ReliabilityMetricEvent[] {

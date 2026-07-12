@@ -121,12 +121,6 @@
       "testPath": "lib/server/__tests__/bulk-screening-tiers.test.ts"
     },
     {
-      "path": "lib/server/ai/tools/create-project.ts",
-      "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
-      "coverage": "integration",
-      "testPath": "lib/server/__tests__/create-project-tool.test.ts"
-    },
-    {
       "path": "lib/server/ai/tools/delegate-protocol.ts",
       "reason": "Accepted centralized tool coverage remains in place for this runtime file.",
       "coverage": "integration",

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { AITool, ToolExecutionContext } from "./base";
 import { prisma } from "@/lib/server/prisma";
 import { deepAnalyzeStudyFromPdf, extractStudyFromPdf } from "@/lib/server/pdf-extraction";
+import { isAbortLikeError, throwIfAborted } from "@/lib/abort";
 
 const inputSchema = z.object({
     studyId: z.string().optional(),
@@ -94,6 +95,7 @@ export const previewStudyPdfUpdateTool: AITool = {
         }
 
         try {
+            throwIfAborted(context?.signal);
             const study = await prisma.study.findFirst({
                 where: { id: studyId, projectId },
                 select: { id: true, title: true, authors: true, year: true, details: true },
@@ -127,9 +129,12 @@ export const previewStudyPdfUpdateTool: AITool = {
                 ? await deepAnalyzeStudyFromPdf(
                     file,
                     { title: study.title, authors: study.authors, details },
-                    projectId
+                    projectId,
+                    { signal: context?.signal },
                 )
-                : await extractStudyFromPdf(file, projectId);
+                : await extractStudyFromPdf(file, projectId, { signal: context?.signal });
+
+            throwIfAborted(context?.signal);
 
             if (!result.success) {
                 return { callId: "", result: null, error: result.error || "PDF preview failed" };
@@ -204,6 +209,9 @@ export const previewStudyPdfUpdateTool: AITool = {
                 },
             };
         } catch (error) {
+            if (context?.signal?.aborted || isAbortLikeError(error)) {
+                throw error;
+            }
             return {
                 callId: "",
                 result: null,

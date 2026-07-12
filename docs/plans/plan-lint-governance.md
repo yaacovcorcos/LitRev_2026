@@ -55,7 +55,7 @@ This plan does not own product behavior or `PRD.md`.
   - server/runtime logging policy: `npm run lint:governance:logging`
   - this verifier currently governs `lib/server/**`, `app/actions/**`, and `app/api/**` only
   - it is now part of the required governance inventory through `npm run governance:ci-required`
-- Runtime test-governance now uses one shared authority under `next-app/eslint/` for governed domains and waiver interpretation, with strict one-file waivers only.
+- Runtime test-governance now uses one shared authority under `next-app/eslint/` for governed domains, centralized test-family mappings, and waiver interpretation. It governs the core agent service, provider implementations, tool middleware, agent action, and AI stream route in addition to `lib/agent/**`, `lib/server/agent/**`, and AI tools. The changed-file check unions committed, staged, unstaged, and untracked local work; a one-file waiver names the test that must change instead of exempting the runtime file from test impact.
 - The remaining non-Phase-3 governance roadmap is now intentionally compressed into two phases:
   - `Phase 4 — Policy Maturity`
   - `Phase 5 — Enforcement Rollout`
@@ -167,7 +167,7 @@ Shipped:
   - `npm run check:runtime-test-impact`
 - Dedicated cleanup pass across the finalized async-governed UI/runtime surface
 - Explicit exception review for dynamic imports and deliberate infrastructure chains
-- Narrowed runtime test-governance domains with one shared authority for lint rules and the changed-file script
+- Evidence-scoped runtime test-governance domains with one shared authority for lint rules and the changed-file script, including critical agent service/provider/action/route boundaries
 - Strict one-file waiver policy for accepted non-colocated runtime coverage
 - Selective strictness decision matrix for additional Factory-inspired frontend restrictions
 

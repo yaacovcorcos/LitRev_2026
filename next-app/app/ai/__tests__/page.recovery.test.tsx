@@ -22,6 +22,39 @@ const {
 } = getAiViewMocks();
 
 describe("/ai page recovery truth and continuation", () => {
+  it("shows a truthful local stop when cancellation wins before run_start arrives", async () => {
+    mockProcessAIStream.mockImplementation(async ({ signal }: { signal: AbortSignal }) => {
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) {
+          resolve();
+          return;
+        }
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      return {
+        runStatus: null,
+        stopReason: null,
+        terminalReason: "cancelled_by_user",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: null,
+        actualModelSource: "unknown",
+      };
+    });
+
+    renderAiView();
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+    await waitFor(() => expect(mockProcessAIStream).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "stop generation" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Stopped by you. Completed work is preserved.")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    });
+    expect(mockFetch.mock.calls.some(([request]) => String(request).includes("/cancel"))).toBe(false);
+  });
+
   it("settles explicit user stop into truthful retryable timeline state", async () => {
     let resolveStream: (() => void) | null = null;
     mockProcessAIStream.mockImplementation(async ({ onChunk }: {

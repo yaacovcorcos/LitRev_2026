@@ -119,6 +119,7 @@ describe("tool prerequisites", () => {
     });
 
     it("short-circuits execution through middleware with a structured blocked result", async () => {
+        const controller = new AbortController();
         const executor = vi.fn(async (request: ToolExecutionRequest) => ({
             callId: request.callId,
             result: "should-not-run",
@@ -129,13 +130,14 @@ describe("tool prerequisites", () => {
                 name: "extract_pdf",
                 args: { deep: true },
                 callId: "c1",
-                context: { projectId: "project-1" },
+                context: { projectId: "project-1", signal: controller.signal },
             },
             [createToolPrerequisiteMiddleware()],
             executor,
         );
 
         expect(executor).not.toHaveBeenCalled();
+        expect(controller.signal.aborted).toBe(false);
         expect(result).toMatchObject({
             callId: "c1",
             result: null,

@@ -73,6 +73,20 @@ describe("withAction", () => {
     });
   });
 
+  it("returns a safe actionable message for undo conflicts", async () => {
+    const result = await withAction(async () => {
+      throw new ArtifactError(
+        "ARTIFACT_UNDO_CONFLICT",
+        "Protocol field inclusionCriteria changed after apply: secret value",
+      );
+    });
+    expect(result).toEqual({
+      success: false,
+      error: "This content changed after the artifact was applied, so undo was not performed.",
+      errorCode: "ARTIFACT_UNDO_CONFLICT",
+    });
+  });
+
   it("returns failure with fallback message for unknown errors", async () => {
     const result = await withAction(async () => {
       throw new Error("ECONNREFUSED 127.0.0.1:5432");

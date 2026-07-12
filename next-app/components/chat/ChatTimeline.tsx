@@ -24,6 +24,7 @@ import type {
     PlanPayload,
     StudyProposalPayload,
     StudyUpdatePayload,
+    StudyDeletionPayload,
     ScreeningBatchPayload,
     CriteriaCardPayload,
     ProtocolSuggestionPayload,
@@ -37,6 +38,7 @@ import { ArtifactWrapper } from "@/components/artifacts/ArtifactWrapper";
 import { PlanCard } from "@/components/artifacts/PlanCard";
 import { StudyCard } from "@/components/artifacts/StudyCard";
 import { StudyUpdateCard } from "@/components/artifacts/StudyUpdateCard";
+import { StudyDeletionCard } from "@/components/artifacts/StudyDeletionCard";
 import { ScreeningBatch } from "@/components/artifacts/ScreeningBatch";
 import { ProtocolEditCard } from "@/components/artifacts/ProtocolEditCard";
 import { CriteriaCard } from "@/components/artifacts/CriteriaCard";
@@ -101,6 +103,7 @@ class ArtifactErrorBoundary extends Component<{ children: ReactNode }, { hasErro
 const ARTIFACT_JUMP_MAP: Record<string, { tab: string; label: string }> = {
     study_proposal: { tab: "ledger", label: "View in Ledger" },
     study_update: { tab: "ledger", label: "View in Ledger" },
+    study_deletion: { tab: "ledger", label: "View in Ledger" },
     screening_batch: { tab: "ledger", label: "View in Ledger" },
     criteria_card: { tab: "protocol", label: "View in Protocol" },
     protocol_suggestion: { tab: "protocol", label: "View in Protocol" },
@@ -298,6 +301,13 @@ function getArtifactConfirmationContent(
                         title: "Exclude study?",
                         message: `This will mark "${item.title}" as excluded.`,
                         confirmLabel: "Exclude",
+                        variant: "danger",
+                    };
+                case "delete":
+                    return {
+                        title: "Delete study?",
+                        message: `This will remove "${item.title}" from the active ledger. You can undo it from this card afterward.`,
+                        confirmLabel: "Delete study",
                         variant: "danger",
                     };
                 case "reject":
@@ -1153,6 +1163,30 @@ function ChatTimelineInner({
                             status={item.status}
                             onAccept={() => {
                                 const descriptor = getActionDescriptor("apply");
+                                if (descriptor) handleReview(descriptor, "accepted");
+                            }}
+                            onReject={() => {
+                                const descriptor = getActionDescriptor("reject");
+                                if (descriptor) handleReview(descriptor, "rejected");
+                            }}
+                            canAct={canReview}
+                        />
+                    </ArtifactWrapper>
+                );
+            }
+
+            case "study_deletion": {
+                const deletionPayload = item.payload as StudyDeletionPayload;
+                return (
+                    <ArtifactWrapper
+                        {...wrapperProps}
+                        summaryText={`Study deletion: "${deletionPayload?.title ?? "study"}"`}
+                    >
+                        <StudyDeletionCard
+                            payload={deletionPayload}
+                            status={item.status}
+                            onAccept={() => {
+                                const descriptor = getActionDescriptor("delete");
                                 if (descriptor) handleReview(descriptor, "accepted");
                             }}
                             onReject={() => {

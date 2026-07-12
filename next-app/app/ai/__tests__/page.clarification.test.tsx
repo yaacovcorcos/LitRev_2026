@@ -3,7 +3,6 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
-  flushZeroTimeout,
   getAiViewMocks,
   installAiViewTestLifecycle,
   readFetchRequestBody,
@@ -13,12 +12,30 @@ import {
 installAiViewTestLifecycle();
 
 const {
+  mockCreateConversation,
   mockFetch,
   mockProcessAIStream,
 } = getAiViewMocks();
 
 describe("/ai page clarification handling", () => {
+  it("renders a retryable error when conversation creation fails instead of leaking an unhandled rejection", async () => {
+    mockCreateConversation.mockRejectedValueOnce(new Error("conversation database unavailable"));
+    renderAiView();
+
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    fireEvent.click(retry);
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
+  });
+
   it("resumes ask_user answers through the structured clarification path instead of a plain user turn", async () => {
+    let releasePausedStream!: () => void;
+    const pausedStreamCanFinish = new Promise<void>((resolve) => {
+      releasePausedStream = resolve;
+    });
     mockProcessAIStream
       .mockImplementationOnce(async ({ onChunk }: {
         onChunk: (chunk: unknown) => void | Promise<void>;
@@ -34,6 +51,7 @@ describe("/ai page clarification handling", () => {
             recommendedAnswer: "Broaden the search first.",
           },
         });
+        await pausedStreamCanFinish;
         return {
           runStatus: "paused",
           stopReason: "paused_for_input",
@@ -62,20 +80,35 @@ describe("/ai page clarification handling", () => {
       expect(screen.getByText("Which direction should I take?")).toBeTruthy();
     });
 
-    await flushZeroTimeout();
-
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "answer user input" }));
       await Promise.resolve();
     });
 
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls.filter(([input]) => input === "/api/ai/stream")).toHaveLength(1);
+
+    await act(async () => {
+      releasePausedStream();
+      await pausedStreamCanFinish;
     });
 
-    const parsedBody = readFetchRequestBody(1);
+    await waitFor(() => {
+      expect(mockFetch.mock.calls.filter(([input]) => input === "/api/ai/stream")).toHaveLength(2);
+    });
+
+    expect(mockFetch.mock.calls.some(([input]) => (
+      typeof input === "string" && input.includes("/cancel")
+    ))).toBe(false);
+
+    const secondStreamCallIndex = mockFetch.mock.calls.findIndex(
+      ([input], index) => input === "/api/ai/stream" && index > 0,
+    );
+    const parsedBody = readFetchRequestBody(secondStreamCallIndex);
     expect(parsedBody.userMessage).toBe("");
     expect(parsedBody.options).toMatchObject({
+      model: "gpt-5.6-luna",
+      reasoningEffort: "medium",
+      deliveryMode: "standard",
       continueFromRunId: "run-ask",
       replaceRunId: "run-ask",
       persistUserMessage: false,

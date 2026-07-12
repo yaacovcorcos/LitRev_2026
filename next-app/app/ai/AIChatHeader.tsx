@@ -2,13 +2,24 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReasoningMode } from "@/types/ai";
+import { useEffect, useRef, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import type { DeliveryMode, ReasoningEffort, ReasoningMode } from "@/types/ai";
 import {
   USER_SELECTABLE_MODELS,
-  type ReasoningSupportTier,
+  type ReasoningVisibilitySupport,
   type SelectableModelId,
 } from "@/lib/ai/config";
+import { REASONING_MODE_OPTIONS } from "@/lib/ai/reasoning-visibility";
+import type {
+  ModelAvailabilityMap,
+  ModelAvailabilityStatus,
+} from "@/hooks/useModelAvailability";
+import {
+  ChatDeliveryModeControl,
+  ChatModelSelector,
+  ChatReasoningEffortSelector,
+} from "@/components/chat/ChatModelSettings";
 import styles from "./ai-view.module.css";
 
 const AIChatReasoningModeDropdown = dynamic(() =>
@@ -35,13 +46,20 @@ type AIChatHeaderProps = {
   projects: ProjectOption[];
   returnProject?: ReturnProject | null;
   selectedModel: SelectableModelId;
+  modelAvailability?: ModelAvailabilityMap;
+  modelAvailabilityStatus?: ModelAvailabilityStatus;
+  onRetryModelAvailability?: () => void;
+  reasoningEffort: ReasoningEffort;
+  deliveryMode: DeliveryMode;
   showReasoningControls: boolean;
   reasoningMode: ReasoningMode;
-  reasoningSupport: ReasoningSupportTier;
+  reasoningVisibilitySupport: ReasoningVisibilitySupport;
   onHistoryToggle: () => void;
   onNewChat: () => void;
   onSelectProject: (projectId: string | null) => void;
   onModelChange: (modelId: SelectableModelId) => void;
+  onReasoningEffortChange: (effort: ReasoningEffort) => void;
+  onDeliveryModeChange: (mode: DeliveryMode) => void;
   onReasoningModeChange: (mode: ReasoningMode) => void;
 };
 
@@ -54,20 +72,26 @@ export function AIChatHeader({
   projects,
   returnProject,
   selectedModel,
+  modelAvailability,
+  modelAvailabilityStatus,
+  onRetryModelAvailability,
+  reasoningEffort,
+  deliveryMode,
   showReasoningControls,
   reasoningMode,
-  reasoningSupport,
+  reasoningVisibilitySupport,
   onHistoryToggle,
   onNewChat,
   onSelectProject,
   onModelChange,
+  onReasoningEffortChange,
+  onDeliveryModeChange,
   onReasoningModeChange,
 }: AIChatHeaderProps) {
   const [isProjectDropdownOpen, setProjectDropdownOpen] = useState(false);
   const [isMobileOptionsOpen, setMobileOptionsOpen] = useState(false);
   const [isMobileMoreOpen, setMobileMoreOpen] = useState(false);
   const projectDropdownRef = useRef<HTMLDivElement | null>(null);
-  const mobileOptionsRef = useRef<HTMLDivElement | null>(null);
   const mobileMoreRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -82,26 +106,23 @@ export function AIChatHeader({
   }, [isProjectDropdownOpen]);
 
   useEffect(() => {
-    if (!isMobileOptionsOpen && !isMobileMoreOpen) return;
+    if (!isMobileMoreOpen) return;
     const handleClick = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (mobileOptionsRef.current && !mobileOptionsRef.current.contains(target)) {
-        setMobileOptionsOpen(false);
-      }
       if (mobileMoreRef.current && !mobileMoreRef.current.contains(target)) {
         setMobileMoreOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [isMobileMoreOpen, isMobileOptionsOpen]);
+  }, [isMobileMoreOpen]);
 
   const hasMobileMoreActions = Boolean(returnProject);
-  const projectIcon = useMemo(() => (selectedProjectId ? "folder" : "public"), [selectedProjectId]);
-  const selectedModelInfo = useMemo(
-    () => USER_SELECTABLE_MODELS.find((model) => model.id === selectedModel),
-    [selectedModel]
-  );
+  const projectIcon = selectedProjectId ? "folder" : "public";
+  const selectedModelInfo = USER_SELECTABLE_MODELS.find((model) => model.id === selectedModel);
+  const reasoningModeOptions = reasoningVisibilitySupport === "summary"
+    ? REASONING_MODE_OPTIONS.filter((option) => option.value !== "full")
+    : REASONING_MODE_OPTIONS;
 
   if (isPhoneViewport) {
     return (
@@ -117,72 +138,147 @@ export function AIChatHeader({
           <span className="material-icons-round">menu</span>
         </button>
 
-        <div className={styles.mobileOptionsAnchor} ref={mobileOptionsRef}>
-          <button
-            type="button"
-            className={styles.mobileTitlePill}
-            aria-label="Open AI options"
-            aria-expanded={isMobileOptionsOpen}
-            onClick={() => {
-              setMobileOptionsOpen((prev) => !prev);
-              setMobileMoreOpen(false);
-            }}
-          >
-            <span>LitRev AI</span>
-            <span className="material-icons-round" aria-hidden="true">expand_more</span>
-          </button>
+        <Dialog.Root
+          open={isMobileOptionsOpen}
+          onOpenChange={(open) => {
+            setMobileOptionsOpen(open);
+            if (open) setMobileMoreOpen(false);
+          }}
+        >
+          <div className={styles.mobileOptionsAnchor}>
+            <Dialog.Trigger asChild>
+              <button
+                type="button"
+                className={styles.mobileTitlePill}
+                aria-label="Open AI options"
+              >
+                <span>LitRev AI</span>
+                <span className="material-icons-round" aria-hidden="true">expand_more</span>
+              </button>
+            </Dialog.Trigger>
+          </div>
 
-          {isMobileOptionsOpen ? (
-            <div className={styles.mobileOptionsSheet}>
-              <div className={styles.mobileSheetGroup}>
-                <span className={styles.mobileSheetLabel}>Scope</span>
-                <button
-                  type="button"
-                  className={`${styles.mobileSheetOption} ${!selectedProjectId ? styles.mobileSheetOptionActive : ""}`}
-                  onClick={() => {
-                    onSelectProject(null);
-                    setMobileOptionsOpen(false);
-                  }}
-                >
-                  <span className="material-icons-round" aria-hidden="true">public</span>
-                  <span>Global</span>
-                </button>
-                {projects.map((project) => (
-                  <button
-                    key={project.id}
-                    type="button"
-                    className={`${styles.mobileSheetOption} ${selectedProjectId === project.id ? styles.mobileSheetOptionActive : ""}`}
-                    onClick={() => {
-                      onSelectProject(project.id);
-                      setMobileOptionsOpen(false);
-                    }}
-                  >
-                    <span className="material-icons-round" aria-hidden="true">folder</span>
-                    <span>{project.name}</span>
+          <Dialog.Portal>
+            <Dialog.Overlay className={styles.mobileOptionsOverlay} />
+            <Dialog.Content className={styles.mobileOptionsDialog}>
+              <div className={styles.mobileSheetHeader}>
+                <div>
+                  <Dialog.Title className={styles.mobileSheetTitle}>AI options</Dialog.Title>
+                  <Dialog.Description className={styles.mobileSheetDescription}>
+                    {showReasoningControls
+                      ? "Choose scope, model, reasoning effort, reasoning visibility and delivery speed."
+                      : "Choose scope, model, reasoning effort and delivery speed."}
+                  </Dialog.Description>
+                </div>
+                <Dialog.Close asChild>
+                  <button type="button" className={styles.mobileSheetClose} aria-label="Close AI options">
+                    <span className="material-icons-round" aria-hidden="true">close</span>
                   </button>
-                ))}
+                </Dialog.Close>
               </div>
 
-              <div className={styles.mobileSheetGroup}>
-                <span className={styles.mobileSheetLabel}>Model</span>
-                {USER_SELECTABLE_MODELS.map((model) => (
-                  <button
-                    key={model.id}
-                    type="button"
-                    className={`${styles.mobileSheetOption} ${selectedModel === model.id ? styles.mobileSheetOptionActive : ""}`}
-                    onClick={() => {
-                      onModelChange(model.id);
-                      setMobileOptionsOpen(false);
-                    }}
-                  >
-                    <span className="material-icons-round" aria-hidden="true">{model.icon}</span>
-                    <span>{model.name}</span>
-                  </button>
-                ))}
+              <div className={styles.mobileSheetScroll}>
+                <div className={styles.mobileSheetGroup}>
+                  <span className={styles.mobileSheetLabel}>Scope</span>
+                  <div role="radiogroup" aria-label="Research scope">
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={!selectedProjectId}
+                      className={`${styles.mobileSheetOption} ${!selectedProjectId ? styles.mobileSheetOptionActive : ""}`}
+                      onClick={() => {
+                        onSelectProject(null);
+                        setMobileOptionsOpen(false);
+                      }}
+                    >
+                      <span className="material-icons-round" aria-hidden="true">public</span>
+                      <span>Global</span>
+                    </button>
+                    {projects.map((project) => (
+                      <button
+                        key={project.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={selectedProjectId === project.id}
+                        className={`${styles.mobileSheetOption} ${selectedProjectId === project.id ? styles.mobileSheetOptionActive : ""}`}
+                        onClick={() => {
+                          onSelectProject(project.id);
+                          setMobileOptionsOpen(false);
+                        }}
+                      >
+                        <span className="material-icons-round" aria-hidden="true">folder</span>
+                        <span>{project.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className={styles.mobileSheetGroup}>
+                  <span className={styles.mobileSheetLabel}>Model</span>
+                  <ChatModelSelector
+                    selectedModel={selectedModel}
+                    onModelChange={onModelChange}
+                    availability={modelAvailability}
+                    availabilityStatus={modelAvailabilityStatus}
+                    onRetryAvailability={onRetryModelAvailability}
+                    presentation="inline"
+                  />
+                </div>
+
+                <div className={styles.mobileSheetGroup}>
+                  <span className={styles.mobileSheetLabel}>Reasoning effort</span>
+                  <ChatReasoningEffortSelector
+                    selectedModel={selectedModel}
+                    reasoningEffort={reasoningEffort}
+                    onReasoningEffortChange={onReasoningEffortChange}
+                    presentation="inline"
+                  />
+                </div>
+
+                {showReasoningControls ? (
+                  <div className={styles.mobileSheetGroup}>
+                    <span className={styles.mobileSheetLabel}>Reasoning visibility</span>
+                    <div role="radiogroup" aria-label="Reasoning visibility">
+                      {reasoningModeOptions.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={reasoningMode === option.value}
+                          className={`${styles.mobileReasoningOption} ${reasoningMode === option.value ? styles.mobileSheetOptionActive : ""}`}
+                          onClick={() => onReasoningModeChange(option.value)}
+                        >
+                          <span className={styles.mobileReasoningCopy}>
+                            <span>{option.label}</span>
+                            <span>{option.description}</span>
+                          </span>
+                          {reasoningMode === option.value ? (
+                            <span className="material-icons-round" aria-hidden="true">check</span>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className={styles.mobileSheetGroup}>
+                  <span className={styles.mobileSheetLabel}>Delivery</span>
+                  <ChatDeliveryModeControl
+                    selectedModel={selectedModel}
+                    deliveryMode={deliveryMode}
+                    onDeliveryModeChange={onDeliveryModeChange}
+                    presentation="inline"
+                  />
+                  {selectedModelInfo?.deliveryModes.includes("priority") ? null : (
+                    <p className={styles.mobileDeliveryUnavailable}>
+                      Faster delivery is not available for this model.
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          ) : null}
-        </div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
 
         <div className={styles.mobileHeaderActions}>
           <button
@@ -295,7 +391,7 @@ export function AIChatHeader({
           <AIChatReasoningModeDropdown
             reasoningMode={reasoningMode}
             onReasoningModeChange={onReasoningModeChange}
-            reasoningSupport={reasoningSupport}
+            reasoningVisibilitySupport={reasoningVisibilitySupport}
           >
             <button
               type="button"

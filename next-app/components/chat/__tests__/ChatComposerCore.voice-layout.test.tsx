@@ -75,7 +75,7 @@ describe("ChatComposerCore composer refresh", () => {
 
         expect(screen.getByRole("button", { name: /voice input/i })).toBeTruthy();
         expect(screen.queryByRole("button", { name: /attach file/i })).toBeNull();
-        expect(screen.getByText(/gpt-5.2/i)).toBeTruthy();
+        expect(screen.getByText(/gpt-5.6 luna/i)).toBeTruthy();
         expect(transcriptionAttribution).toEqual({
             page: "overview",
             projectId: "proj_1",
@@ -207,7 +207,7 @@ describe("ChatComposerCore composer refresh", () => {
             "Existing draft new transcript",
             "overview",
             undefined,
-            "gpt-5.2",
+            "gpt-5.6-luna",
             "drafting",
             undefined,
             undefined,
@@ -246,7 +246,7 @@ describe("ChatComposerCore composer refresh", () => {
             "Existing draft",
             "overview",
             undefined,
-            "gpt-5.2",
+            "gpt-5.6-luna",
             "drafting",
             undefined,
             undefined,

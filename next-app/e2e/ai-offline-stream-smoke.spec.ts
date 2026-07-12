@@ -1,21 +1,48 @@
 import { expect, test } from "@playwright/test";
+import {
+  fulfillAIStream,
+  openAuthenticatedAi,
+  sendAgentPrompt,
+  seedGlobalConversation,
+} from "./helpers/agent-runtime";
 
-test("ai offline stream smoke: route remains responsive when offline is toggled", async ({ page, context }) => {
-  await page.goto("/ai");
-  await page.waitForLoadState("domcontentloaded");
+test("ai offline stream smoke: a real authenticated chat exits loading and offers recovery", async ({ page, context }, testInfo) => {
+  const pageErrors: Error[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error));
 
-  if (page.url().includes("/login")) {
-    await expect(page.getByLabel("Email address")).toBeVisible();
-    await expect(page.getByRole("button", { name: /send magic link/i })).toBeVisible();
-    return;
-  }
-
-  await expect(page.getByRole("region", { name: /chat interface/i })).toBeVisible();
+  const seedKey = await openAuthenticatedAi(page, testInfo);
+  const conversationId = await seedGlobalConversation(seedKey);
+  await page.goto(`/ai?conversation=${encodeURIComponent(conversationId)}`, { waitUntil: "load" });
+  // The conversation query is validated by the app router after the document
+  // load. Wait for that navigation to quiesce before arming the one-shot
+  // stream route, otherwise a late router commit can replace the test page.
+  await page.waitForLoadState("networkidle");
   await expect(page.getByLabel("Copilot prompt")).toBeVisible();
 
-  await context.setOffline(true);
-  await page.getByLabel("Copilot prompt").fill("Test offline send");
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("region", { name: /chat interface/i })).toBeVisible();
-  await context.setOffline(false);
+  await page.route("**/api/ai/stream", async (route) => {
+    await fulfillAIStream(route, [
+      { type: "run_start", runId: "run-offline-primer" },
+      { type: "content", content: "The offline recovery check is ready." },
+      { type: "run_end", runStatus: "completed", stopReason: "completed" },
+    ]);
+  }, { times: 1 });
+
+  await sendAgentPrompt(page, "Prepare the offline recovery check");
+  await expect(page.getByRole("article", { name: "Assistant" })).toContainText(
+    "The offline recovery check is ready.",
+  );
+
+  try {
+    await context.setOffline(true);
+    await sendAgentPrompt(page, "Send while offline");
+
+    const chat = page.getByRole("region", { name: /chat interface/i });
+    await expect(chat.getByRole("alert")).toBeVisible();
+    await expect(chat.getByRole("button", { name: "Retry" })).toBeVisible();
+    await expect(page.getByLabel("Stop generating")).toHaveCount(0);
+    await expect(page.getByRole("region", { name: /chat interface/i })).toBeVisible();
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await context.setOffline(false);
+  }
 });

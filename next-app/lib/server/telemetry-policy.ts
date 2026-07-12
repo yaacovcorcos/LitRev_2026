@@ -1,7 +1,6 @@
 import "server-only";
 
 import type {
-  ReliabilityMetricPayloadByType,
   ReliabilityFlowName,
   ReliabilityMetricInput,
   ReliabilityRouteTemplate,
@@ -117,8 +116,7 @@ export function assertAnonymousReliabilityMetricAllowed(
   }
 
   if (input.type === "reliability.v1.route.ready") {
-    const { routeTemplate } =
-      input.payload as ReliabilityMetricPayloadByType["reliability.v1.route.ready"];
+    const { routeTemplate } = input.payload;
     if (
       AUTH_ROUTE_READY_SURFACES.has(input.surface) &&
       AUTH_ROUTE_TEMPLATES.has(routeTemplate)
@@ -135,8 +133,7 @@ export function assertAnonymousReliabilityMetricAllowed(
   }
 
   if (input.type === "reliability.v1.route.flow_completed") {
-    const { flow, routeTemplate } =
-      input.payload as ReliabilityMetricPayloadByType["reliability.v1.route.flow_completed"];
+    const { flow, routeTemplate } = input.payload;
     if (
       input.surface === "auth" &&
       AUTH_ROUTE_TEMPLATES.has(routeTemplate) &&

@@ -93,6 +93,10 @@ export async function quickLoginWithSeed(
     url.search === callbackTarget.search,
   );
   await page.waitForLoadState("domcontentloaded");
+  // Cold parallel Next.js compilation can keep the same-document navigation
+  // active after DOMContentLoaded. Returning before `load` lets the next click
+  // or mocked stream race that navigation and be discarded with its document.
+  await page.waitForLoadState("load");
 }
 
 export async function quickLogin(page: Page, callbackUrl = "/"): Promise<void> {

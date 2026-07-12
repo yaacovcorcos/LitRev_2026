@@ -6,6 +6,9 @@ export type ArtifactErrorCode =
   | "ARTIFACT_INVALID_STATE"
   | "ARTIFACT_INVALID_PAYLOAD"
   | "ARTIFACT_APPLY_FAILED"
+  | "ARTIFACT_UNDO_UNSUPPORTED"
+  | "ARTIFACT_UNDO_FAILED"
+  | "ARTIFACT_UNDO_CONFLICT"
   | "ARTIFACT_CONTEXT_MISSING";
 
 export class ArtifactError extends Error {

@@ -15,7 +15,8 @@ export type ArtifactResolutionKind =
   | "exclude"
   | "keep"
   | "remember"
-  | "archive";
+  | "archive"
+  | "delete";
 
 export type ArtifactSecondaryKind = "discuss" | "edit";
 
@@ -94,7 +95,8 @@ export function supportsArtifactInlineUndo(
   artifactType: ArtifactType,
   status: ArtifactStatus,
 ): boolean {
-  return artifactType === "study_update" && (status === "accepted" || status === "auto_applied");
+  return (artifactType === "study_update" || artifactType === "study_deletion")
+    && (status === "accepted" || status === "auto_applied");
 }
 
 export function getArtifactInlineActionModel(
@@ -130,6 +132,15 @@ export function getArtifactInlineActionModel(
         actions: [
           reviewAction("apply", "apply", false),
           reviewAction("reject", "reject", true),
+        ],
+        settled: { label: null },
+      };
+    case "study_deletion":
+      return {
+        isReviewable,
+        actions: [
+          reviewAction("reject", "reject", false),
+          reviewAction("delete", "delete", true),
         ],
         settled: { label: null },
       };

@@ -19,6 +19,8 @@ import type {
   ChoiceOption,
   ConversationContext,
   CopilotPage,
+  DeliveryMode,
+  ReasoningEffort,
   ReasoningMode,
   RuntimeSendOverrides,
   UserInputRequest,
@@ -56,7 +58,7 @@ import {
   type StreamTerminalReason,
 } from "@/lib/ai/stream-lifecycle";
 import { recordReliabilityMetric } from "@/lib/ai/reliability-telemetry";
-import { cancelAgentRun, requestAgentRunCancellation } from "@/lib/ai/run-cancel-client";
+import { cancelAgentRun } from "@/lib/ai/run-cancel-client";
 import type { RetryModelExpectation } from "@/types/chat-unification";
 import {
   createRecoveryErrorEnvelope,
@@ -82,17 +84,27 @@ import {
   readAiEntryRestoreState,
 } from "@/lib/ai/ai-entry-restore";
 import { useQueuedFollowUpController } from "@/hooks/useQueuedFollowUpController";
-import { useResetMutableRefWhen } from "@/hooks/useResetMutableRefWhen";
+import { useModelAvailability } from "@/hooks/useModelAvailability";
 import {
   DEFAULT_SELECTABLE_MODEL_ID,
-  USER_SELECTABLE_MODELS,
-  getReasoningSupportTier,
-  type ReasoningSupportTier,
+  getProviderModelId,
+  getReasoningVisibilitySupport,
+  SELECTABLE_MODEL_IDS,
+  type ReasoningVisibilitySupport,
   type SelectableModelId,
 } from "@/lib/ai/config";
 import { isProgressiveAnswerStreamingEnabled } from "@/lib/feature-flags";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { QueuedFollowUp } from "@/types/queued-followup";
+import type { GenerationPreferenceSnapshot } from "@/types/queued-followup";
+import {
+  createGenerationPreferenceSnapshot,
+  readStoredReasoningEffort,
+  readStoredSelectableModel,
+  resolveDeliveryMode,
+  resolveReasoningEffort,
+  writeStoredReasoningEffort,
+} from "@/lib/ai/generation-preferences";
 import { buildAiRouteHref, readAiRouteState, type AiRouteState } from "@/lib/ai/ai-route-state";
 import { type ChatConversation, groupConversationsByDate } from "./groupConversationsByDate";
 import {
@@ -168,6 +180,18 @@ const makeId = (prefix: string) =>
 
 const AI_HISTORY_COLLAPSED_KEY = "litrev_ai_history_collapsed";
 
+type FailedConversationBootstrapSend = {
+  rawText: string;
+  currentPage: CopilotPage;
+  section?: string;
+  model?: string;
+  agentMode?: AgentMode;
+  studyId?: string;
+  retryModelExpectation?: RetryModelExpectation;
+  contextTargets?: unknown;
+  runtimeOverrides?: string | RuntimeSendOverrides;
+};
+
 function AIViewContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -211,8 +235,17 @@ function AIViewContent() {
   const [queuedFollowUp, setQueuedFollowUp] = useState<QueuedFollowUp | null>(null);
   const [reasoningMode, setReasoningMode] = useState<ReasoningMode>(() => getReasoningModePreference());
   const [selectedModel, setSelectedModelState] = useState<SelectableModelId>(DEFAULT_SELECTABLE_MODEL_ID);
+  const [reasoningEffort, setReasoningEffortState] = useState<ReasoningEffort>(() => (
+    resolveReasoningEffort(DEFAULT_SELECTABLE_MODEL_ID)
+  ));
+  const [deliveryMode, setDeliveryModeState] = useState<DeliveryMode>("standard");
+  const modelAvailabilityState = useModelAvailability();
+  const modelAvailability = modelAvailabilityState?.availability;
+  const modelAvailabilityStatus = modelAvailabilityState?.status;
+  const retryModelAvailability = modelAvailabilityState?.retry;
 
   const [timelineByConversation, setTimelineByConversation] = useState<Record<string, TimelineItem[]>>({});
+  const [conversationBootstrapError, setConversationBootstrapError] = useState<Extract<TimelineItem, { type: "error" }> | null>(null);
   const [isConversationLoading, setIsConversationLoading] = useState(false);
   // LRU order: tracks up to 5 recently accessed conversation IDs so we evict old timelines
   const timelineLruRef = useRef<string[]>([]);
@@ -223,6 +256,10 @@ function AIViewContent() {
   const streamGenRef = useRef(0);
   const currentRunIdRef = useRef<string | null>(null);
   const sendLockRef = useRef(false);
+  const sendLockWaitersRef = useRef<Set<() => void>>(new Set());
+  const pendingCancellationRunIdRef = useRef<string | null>(null);
+  const pendingCancellationPromiseRef = useRef<Promise<boolean> | null>(null);
+  const failedConversationBootstrapRef = useRef<FailedConversationBootstrapSend | null>(null);
   const activeConversationIdRef = useRef<string | null>(null);
   const routePerfStartRef = useRef<number | null>(
     typeof performance !== "undefined" ? performance.now() : null
@@ -238,15 +275,28 @@ function AIViewContent() {
   const matchesPhoneViewport = useMediaQuery(MOBILE_VIEWPORT_MEDIA_QUERY);
   const isPhoneViewport = isHydrated && matchesPhoneViewport;
 
-  const reasoningSupport: ReasoningSupportTier = useMemo(
-    () => getReasoningSupportTier(selectedModel),
+  const releaseSendLock = useCallback(() => {
+    sendLockRef.current = false;
+    const waiters = Array.from(sendLockWaitersRef.current);
+    sendLockWaitersRef.current.clear();
+    for (const resolve of waiters) resolve();
+  }, []);
+
+  const waitForSendLockRelease = useCallback(() => {
+    if (!sendLockRef.current) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      sendLockWaitersRef.current.add(resolve);
+    });
+  }, []);
+
+  const reasoningVisibilitySupport: ReasoningVisibilitySupport = useMemo(
+    () => getReasoningVisibilitySupport(selectedModel),
     [selectedModel]
   );
 
-  const showReasoningControls = reasoningSupport !== "none";
+  const showReasoningControls = reasoningVisibilitySupport !== "none";
   timelineByConversationRef.current = timelineByConversation;
   activeConversationIdRef.current = activeConversationId;
-  useResetMutableRefWhen(sendLockRef, !isTyping, false);
 
   useEffect(() => {
     if (!isHydrated || typeof window === "undefined") return;
@@ -261,19 +311,46 @@ function AIViewContent() {
 
   const setSelectedModel = useCallback((modelId: SelectableModelId) => {
     setSelectedModelState(modelId);
+    setReasoningEffortState(
+      typeof window === "undefined"
+        ? resolveReasoningEffort(modelId)
+        : readStoredReasoningEffort(window.localStorage, modelId),
+    );
+    setDeliveryModeState("standard");
     if (typeof window !== "undefined") {
       window.localStorage.setItem("litrev_ai_model", modelId);
     }
   }, []);
 
+  const setReasoningEffort = useCallback((effort: ReasoningEffort) => {
+    const resolved = resolveReasoningEffort(selectedModel, effort);
+    setReasoningEffortState(resolved);
+    if (typeof window !== "undefined") {
+      writeStoredReasoningEffort(window.localStorage, selectedModel, resolved);
+    }
+  }, [selectedModel]);
+
+  const setDeliveryMode = useCallback((mode: DeliveryMode) => {
+    setDeliveryModeState(resolveDeliveryMode(selectedModel, mode));
+  }, [selectedModel]);
+
+  useEffect(() => {
+    if (modelAvailabilityStatus && modelAvailabilityStatus !== "ready") return;
+    if (!modelAvailability || modelAvailability[selectedModel] !== false) return;
+    const fallbackModel = modelAvailability[DEFAULT_SELECTABLE_MODEL_ID]
+      ? DEFAULT_SELECTABLE_MODEL_ID
+      : SELECTABLE_MODEL_IDS.find((modelId) => modelAvailability[modelId] === true);
+    if (fallbackModel) setSelectedModel(fallbackModel);
+  }, [modelAvailability, modelAvailabilityStatus, selectedModel, setSelectedModel]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem("litrev_ai_model");
-    const valid = USER_SELECTABLE_MODELS.some((m) => m.id === stored);
-    if (valid) {
-      setSelectedModel(stored as SelectableModelId);
-    }
-  }, [setSelectedModel]);
+    const storedModel = readStoredSelectableModel(window.localStorage, "litrev_ai_model");
+    const storedEffort = readStoredReasoningEffort(window.localStorage, storedModel);
+    setSelectedModelState((current) => current === storedModel ? current : storedModel);
+    setReasoningEffortState((current) => current === storedEffort ? current : storedEffort);
+    setDeliveryModeState("standard");
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -607,8 +684,12 @@ function AIViewContent() {
     [conversations, isHistoryCollapsed]
   );
   const activeTimeline = useMemo(
-    () => (activeConversationId ? (timelineByConversation[activeConversationId] ?? []) : []),
-    [activeConversationId, timelineByConversation],
+    () => (activeConversationId
+      ? (timelineByConversation[activeConversationId] ?? [])
+      : conversationBootstrapError
+        ? [conversationBootstrapError]
+        : []),
+    [activeConversationId, conversationBootstrapError, timelineByConversation],
   );
   const { activeProgress, suppressedProgressId } = useMemo(
     () => selectActiveProgress(normalizeTimelineProgressItems(activeTimeline)),
@@ -870,12 +951,37 @@ function AIViewContent() {
       abortControllerRef.current = null;
     }
     setIsTyping(false);
+    releaseSendLock();
     setPendingChoices([]);
     setPendingUserInput(null);
 
+    if (!runId) {
+      if (shouldAnnounce && conversationId) {
+        updateConversationTimeline(conversationId, (items) => markTimelineStoppedByUser(items, {
+          createdAt: new Date().toISOString(),
+          runId: null,
+        }));
+      }
+      return Promise.resolve(true);
+    }
+
     if (!shouldAnnounce || !conversationId) {
-      requestAgentRunCancellation(runId);
-      return;
+      pendingCancellationRunIdRef.current = runId;
+      const pending = (async (): Promise<boolean> => {
+        try {
+          const result = await cancelAgentRun(runId);
+          return result !== "conflict";
+        } catch {
+          return false;
+        } finally {
+          if (pendingCancellationRunIdRef.current === runId) {
+            pendingCancellationRunIdRef.current = null;
+            pendingCancellationPromiseRef.current = null;
+          }
+        }
+      })();
+      pendingCancellationPromiseRef.current = pending;
+      return pending;
     }
 
     const stoppedAt = new Date().toISOString();
@@ -884,15 +990,14 @@ function AIViewContent() {
       runId,
     }));
 
-    if (!runId) return;
-
-    void (async () => {
+    pendingCancellationRunIdRef.current = runId;
+    const pending = (async (): Promise<boolean> => {
       try {
         const result = await cancelAgentRun(runId);
         if (result === "cancelled" || result === "not_found") {
           if (currentRunIdRef.current === runId) currentRunIdRef.current = null;
           clearRecoverableAiEntry();
-          return;
+          return true;
         }
 
         updateConversationTimeline(conversationId, (items) => items.filter((item) => !(
@@ -910,7 +1015,7 @@ function AIViewContent() {
               runId,
             }));
           }
-          return;
+          return true;
         }
 
         throw new Error("Run cancellation could not be confirmed.");
@@ -937,9 +1042,17 @@ function AIViewContent() {
             createdAt: new Date().toISOString(),
           },
         ]);
+        return false;
+      } finally {
+        if (pendingCancellationRunIdRef.current === runId) {
+          pendingCancellationRunIdRef.current = null;
+          pendingCancellationPromiseRef.current = null;
+        }
       }
     })();
-  }, [clearRecoverableAiEntry, recoverConversationRun, updateConversationTimeline]);
+    pendingCancellationPromiseRef.current = pending;
+    return pending;
+  }, [clearRecoverableAiEntry, recoverConversationRun, releaseSendLock, updateConversationTimeline]);
 
   const ensureConversation = useCallback(async (context: ConversationContext): Promise<string> => {
     if (activeConversationId) return activeConversationId;
@@ -1426,6 +1539,7 @@ function AIViewContent() {
     retryModelExpectation?: RetryModelExpectation,
     _contextTargets?: unknown,
     runtimeOverrides?: string | RuntimeSendOverrides,
+    generationPreferences?: GenerationPreferenceSnapshot,
   ) => {
     const msgText = rawText.trim();
     const replaceRunIdOverride = typeof runtimeOverrides === "string"
@@ -1442,24 +1556,103 @@ function AIViewContent() {
     const explicitUserInputResolution = typeof runtimeOverrides === "object"
       ? (runtimeOverrides?.userInputResolution ?? null)
       : null;
-    if ((!msgText && !explicitUserInputResolution) || sendLockRef.current) return;
+    if (!msgText && !explicitUserInputResolution) return;
+    setConversationBootstrapError(null);
+    if (sendLockRef.current) {
+      // The decision card can be rendered from the final stream chunk before
+      // the paused send has finished unwinding. Preserve the authenticated
+      // decision and resume it after the current send releases ownership.
+      if (!explicitUserInputResolution) return;
+      await waitForSendLockRelease();
+      if (sendLockRef.current) return;
+    }
+    const activeRunIdBeforeCancellation = currentRunIdRef.current;
+    let pendingCancellationRunId = pendingCancellationRunIdRef.current;
+    sendLockRef.current = true;
     const sendStartedAtMs = Date.now();
     let sendSucceeded = false;
     emitMobileActionTap("ai_send_message", 44);
-    if (isTyping) cancelStream({ announce: false });
-    sendLockRef.current = true;
+    // A structured answer resumes the paused source run. The render that
+    // exposed the decision card can still carry a stale isTyping=true after
+    // the old stream releases the send lock; cancelling here would race the
+    // authenticated continuation against cancellation of that same run.
+    if (isTyping && !explicitUserInputResolution) {
+      cancelStream({ announce: false });
+      sendLockRef.current = true;
+      pendingCancellationRunId = pendingCancellationRunIdRef.current ?? activeRunIdBeforeCancellation;
+    }
+    if (pendingCancellationPromiseRef.current) {
+      const cancellationConfirmed = await pendingCancellationPromiseRef.current;
+      if (!cancellationConfirmed) {
+        releaseSendLock();
+        return false;
+      }
+    }
     setPendingChoices([]);
     setPendingUserInput(null);
 
     const context: ConversationContext = selectedProjectId ? "project" : "global";
     const effectiveAgentMode = agentMode ?? (msgText ? routeToAgent(msgText, "overview") : "general");
-    const effectiveModel = model ?? selectedModel;
+    const requestedModel = generationPreferences?.model ?? model ?? selectedModel;
+    const sameAsSelectedModel = requestedModel === selectedModel;
+    const generationSnapshot = createGenerationPreferenceSnapshot({
+      model: requestedModel,
+      reasoningEffort: generationPreferences?.reasoningEffort
+        ?? (sameAsSelectedModel ? reasoningEffort : undefined),
+      deliveryMode: generationPreferences?.deliveryMode
+        ?? (sameAsSelectedModel ? deliveryMode : "standard"),
+    });
+    setDeliveryModeState("standard");
+    const effectiveModel = generationSnapshot.model;
     const reasoningRequest = resolveReasoningRequest({
       preferredMode: reasoningMode,
       modelId: effectiveModel,
     });
 
-    let convId = await ensureConversation(context);
+    let convId: string;
+    try {
+      convId = await ensureConversation(context);
+    } catch (error) {
+      const errorState = buildClientErrorState(error);
+      failedConversationBootstrapRef.current = {
+        rawText,
+        currentPage,
+        section,
+        model,
+        agentMode,
+        studyId: _studyId,
+        retryModelExpectation,
+        contextTargets: _contextTargets,
+        runtimeOverrides,
+      };
+      setConversationBootstrapError({
+        type: "error",
+        id: makeId("conversation-bootstrap-error"),
+        message: errorState.message,
+        retryable: true,
+        errorMeta: {
+          ...errorState.errorMeta,
+          retryable: true,
+          recoveryRecommendation: "retry",
+        },
+        createdAt: new Date().toISOString(),
+      });
+      const terminalReason = terminalReasonFromThrownError(error);
+      recordReliabilityMetric({
+        type: "reliability.v1.stream.terminal",
+        surface: "ai",
+        projectId: selectedProjectId,
+        payload: {
+          requestKey: generateChatUnificationRequestKey(),
+          phase: "send",
+          reason: terminalReason,
+          runStatus: null,
+        },
+      });
+      releaseSendLock();
+      return false;
+    }
+    failedConversationBootstrapRef.current = null;
     if (retryModelExpectation) {
       recordChatUnificationMetric({
         type: "retry_model_continuity",
@@ -1468,12 +1661,11 @@ function AIViewContent() {
         projectId: selectedProjectId,
         payload: {
           requestKey: retryModelExpectation.requestKey,
-          expectedModel: retryModelExpectation.expectedModel,
+          expectedModel: getProviderModelId(effectiveModel) ?? effectiveModel,
           source: retryModelExpectation.source,
         },
       });
     }
-
     const nowIso = new Date().toISOString();
     const userInputResolution = explicitUserInputResolution ?? (
       pendingUserInput?.sourceRunId
@@ -1516,7 +1708,9 @@ function AIViewContent() {
     );
 
     setPrefillCommand(null);
-    const replaceRunId = replaceRunIdOverride ?? (isTyping ? currentRunIdRef.current : null);
+    const replaceRunId = replaceRunIdOverride
+      ?? pendingCancellationRunId
+      ?? (isTyping ? currentRunIdRef.current : null);
     setIsTyping(true);
     streamGenRef.current++;
     const myGen = streamGenRef.current;
@@ -1693,6 +1887,8 @@ function AIViewContent() {
             userInputResolution: userInputResolution ?? undefined,
             projectId: selectedProjectId ?? undefined,
             model: effectiveModel,
+            reasoningEffort: generationSnapshot.reasoningEffort,
+            deliveryMode: generationSnapshot.deliveryMode,
             reasoningMode: reasoningRequest.reasoningMode,
             includeReasoning: reasoningRequest.includeReasoning,
             reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
@@ -1834,7 +2030,7 @@ function AIViewContent() {
         });
       }
       if (streamGenRef.current === myGen) {
-        sendLockRef.current = false;
+        releaseSendLock();
         setIsTyping(false);
         setConversations((prev) =>
           sortConversationsByUpdatedAt(
@@ -1923,6 +2119,8 @@ function AIViewContent() {
     cancelStream,
     selectedProjectId,
     selectedModel,
+    reasoningEffort,
+    deliveryMode,
     reasoningMode,
     handleNavigate,
     clearRecoverableAiEntry,
@@ -1940,6 +2138,8 @@ function AIViewContent() {
     appendRecoveryTimelineError,
     handleRunIntent,
     setPendingUserInputWithRestore,
+    releaseSendLock,
+    waitForSendLockRelease,
   ]);
 
   const handleAnswerUserInput = useCallback((
@@ -2026,8 +2226,23 @@ function AIViewContent() {
     const convId = activeConversationId;
     if (!convId) return false;
 
-    const { reviewArtifactAction } = await loadAgentActions();
-    const result = await reviewArtifactAction(artifactId, status, note, editedPayload);
+    let result;
+    try {
+      const { reviewArtifactAction } = await loadAgentActions();
+      result = await reviewArtifactAction(artifactId, status, note, editedPayload);
+    } catch {
+      updateConversationTimeline(convId, (items) => ([
+        ...items,
+        {
+          type: "error",
+          id: `artifact-review-error-${Date.now()}`,
+          message: "Artifact review could not reach the server. Nothing was applied.",
+          retryable: true,
+          createdAt: new Date().toISOString(),
+        },
+      ]));
+      return false;
+    }
     if (!result.success || !result.artifact) {
       updateConversationTimeline(convId, (items) => ([
         ...items,
@@ -2080,8 +2295,23 @@ function AIViewContent() {
     const convId = activeConversationId;
     if (!convId) return;
 
-    const { undoArtifactAction } = await loadAgentActions();
-    const result = await undoArtifactAction(artifactId);
+    let result;
+    try {
+      const { undoArtifactAction } = await loadAgentActions();
+      result = await undoArtifactAction(artifactId);
+    } catch {
+      updateConversationTimeline(convId, (items) => ([
+        ...items,
+        {
+          type: "error",
+          id: `artifact-undo-error-${Date.now()}`,
+          message: "Artifact undo could not reach the server. The applied change is unchanged.",
+          retryable: true,
+          createdAt: new Date().toISOString(),
+        },
+      ]));
+      return;
+    }
     if (!result.success || !result.artifact) {
       updateConversationTimeline(convId, (items) => ([
         ...items,
@@ -2156,9 +2386,6 @@ function AIViewContent() {
     if (selectedIndexes.length === 0 || isConversationLoading) return;
     let convId = activeConversationId;
     if (!convId) return;
-    if (isTyping) cancelStream({ announce: false });
-    setPendingChoices([]);
-    setPendingUserInput(null);
 
     const updatePlanConversationTimeline = (updater: (items: TimelineItem[]) => TimelineItem[]) => {
       if (!convId) return;
@@ -2174,6 +2401,46 @@ function AIViewContent() {
         )
       );
     };
+
+    const activeRunIdBeforePlan = isTyping
+      ? currentRunIdRef.current
+      : pendingCancellationRunIdRef.current;
+    const cancellationConfirmation = isTyping
+      ? cancelStream({ announce: false })
+      : pendingCancellationPromiseRef.current;
+    if (cancellationConfirmation && !await cancellationConfirmation) {
+      updatePlanConversationTimeline((items) => {
+        if (items.some((item) => (
+          item.type === "error"
+          && item.errorMeta?.code === "RUN_CANCELLATION_UNCONFIRMED"
+          && item.errorMeta?.runId === activeRunIdBeforePlan
+        ))) return items;
+        const message = "LitRev could not confirm the previous run ended. Reconnect before executing this plan.";
+        return [
+          ...items,
+          {
+            type: "error",
+            id: `plan-cancellation-unconfirmed-${activeRunIdBeforePlan ?? "unknown"}`,
+            message,
+            retryable: true,
+            errorMeta: {
+              kind: "runtime",
+              code: "RUN_CANCELLATION_UNCONFIRMED",
+              retryable: true,
+              source: "runtime",
+              message,
+              runId: activeRunIdBeforePlan ?? undefined,
+              activeRunId: activeRunIdBeforePlan ?? undefined,
+              recoveryRecommendation: "reconnect",
+            },
+            createdAt: new Date().toISOString(),
+          },
+        ];
+      });
+      return;
+    }
+    setPendingChoices([]);
+    setPendingUserInput(null);
     const updatePlanStepStatus = (planId: string, stepIndex: number, stepStatus: string) => {
       updatePlanConversationTimeline((items) =>
         items.map((item) => {
@@ -2189,7 +2456,7 @@ function AIViewContent() {
     };
 
     setPlanStatus("running");
-    const replaceRunId = isTyping ? currentRunIdRef.current : null;
+    const replaceRunId = activeRunIdBeforePlan;
     setIsTyping(true);
     streamGenRef.current++;
     const myGen = streamGenRef.current;
@@ -2221,9 +2488,15 @@ function AIViewContent() {
     let errorMessage: string | null = null;
     let aborted = false;
     let terminalEventEmitted = false;
+    const generationSnapshot = createGenerationPreferenceSnapshot({
+      model: selectedModel,
+      reasoningEffort,
+      deliveryMode,
+    });
+    setDeliveryModeState("standard");
     const reasoningRequest = resolveReasoningRequest({
       preferredMode: reasoningMode,
-      modelId: selectedModel,
+      modelId: generationSnapshot.model,
     });
     const runtime = createAiStreamRuntime({
       aiMessageId,
@@ -2307,7 +2580,9 @@ function AIViewContent() {
             conversationId: convId,
             replaceRunId: replaceRunId ?? undefined,
             projectId: selectedProjectId ?? undefined,
-            model: selectedModel,
+            model: generationSnapshot.model,
+            reasoningEffort: generationSnapshot.reasoningEffort,
+            deliveryMode: generationSnapshot.deliveryMode,
             reasoningMode: reasoningRequest.reasoningMode,
             includeReasoning: reasoningRequest.includeReasoning,
             reasoningBudgetTokens: reasoningRequest.reasoningBudgetTokens,
@@ -2463,6 +2738,8 @@ function AIViewContent() {
     cancelStream,
     selectedProjectId,
     selectedModel,
+    reasoningEffort,
+    deliveryMode,
     reasoningMode,
     clearRecoverableAiEntry,
     handleNavigate,
@@ -2493,6 +2770,10 @@ function AIViewContent() {
       nextQueuedFollowUp.model,
       nextQueuedFollowUp.agentMode,
       nextQueuedFollowUp.studyId,
+      undefined,
+      undefined,
+      undefined,
+      nextQueuedFollowUp,
     ),
   });
 
@@ -2508,15 +2789,21 @@ function AIViewContent() {
     model?: SelectableModelId | null;
     agentMode?: AgentMode;
   }) => {
+    const generationSnapshot = createGenerationPreferenceSnapshot({
+      model: payload.model ?? selectedModel,
+      reasoningEffort,
+      deliveryMode,
+    });
     setQueuedFollowUp(
       createQueuedFollowUp({
         ...payload,
-        model: payload.model ?? undefined,
+        ...generationSnapshot,
         conversationId: activeConversationId ?? null,
         source: "draft",
       })
     );
-  }, [activeConversationId]);
+    setDeliveryModeState("standard");
+  }, [activeConversationId, deliveryMode, reasoningEffort, selectedModel]);
 
   const handleEditQueuedFollowUp = useCallback(() => {
     if (!queuedFollowUp) return;
@@ -2534,7 +2821,24 @@ function AIViewContent() {
 
   const handleRetryLastMessage = useCallback((replaceRunId?: string | null) => {
     const convId = activeConversationId;
-    if (!convId) return;
+    if (!convId) {
+      const failedBootstrap = failedConversationBootstrapRef.current;
+      if (!failedBootstrap) return;
+      setConversationBootstrapError(null);
+      releaseSendLock();
+      void handleSend(
+        failedBootstrap.rawText,
+        failedBootstrap.currentPage,
+        failedBootstrap.section,
+        failedBootstrap.model,
+        failedBootstrap.agentMode,
+        failedBootstrap.studyId,
+        failedBootstrap.retryModelExpectation,
+        failedBootstrap.contextTargets,
+        failedBootstrap.runtimeOverrides,
+      );
+      return;
+    }
 
     const items = timelineByConversation[convId] ?? [];
     let lastUserIndex = -1;
@@ -2583,7 +2887,7 @@ function AIViewContent() {
         source: "retry_action",
       },
     });
-    sendLockRef.current = false;
+    releaseSendLock();
     void handleSend(
       retryText,
       "ai",
@@ -2593,7 +2897,6 @@ function AIViewContent() {
       undefined,
       {
         requestKey,
-        expectedModel: selectedModel ?? null,
         source: "retry_action",
       },
       undefined,
@@ -2604,14 +2907,14 @@ function AIViewContent() {
           }
         : undefined,
     );
-  }, [activeConversationId, timelineByConversation, handleSend, selectedModel, selectedProjectId]);
+  }, [activeConversationId, timelineByConversation, handleSend, releaseSendLock, selectedModel, selectedProjectId]);
 
   const handleReconnectRun = useCallback((item: Extract<TimelineItem, { type: "error" }>) => {
     const convId = activeConversationId;
     const runId = item.errorMeta?.runId ?? item.errorMeta?.activeRunId ?? null;
     if (!convId || !runId) return;
 
-    sendLockRef.current = false;
+    releaseSendLock();
     setIsTyping(true);
     streamGenRef.current += 1;
     const myGen = streamGenRef.current;
@@ -2681,6 +2984,7 @@ function AIViewContent() {
     appendRecoveryTimelineError,
     markRecoverableAiEntry,
     recoverConversationRun,
+    releaseSendLock,
     updateConversationTimeline,
   ]);
 
@@ -2699,7 +3003,7 @@ function AIViewContent() {
       .find((entry) => entry.type === "user_message" && entry.content.trim().length > 0);
     if (!lastUserMessage || lastUserMessage.type !== "user_message") return;
 
-    sendLockRef.current = false;
+    releaseSendLock();
     void handleSend(
       lastUserMessage.content,
       "ai",
@@ -2715,7 +3019,7 @@ function AIViewContent() {
         suppressUserMessageAppend: true,
       },
     );
-  }, [activeConversationId, handleSend, selectedModel, timelineByConversation]);
+  }, [activeConversationId, handleSend, releaseSendLock, selectedModel, timelineByConversation]);
 
   const handlePrefillConsumed = useCallback(() => {
     setPrefillCommand(null);
@@ -2810,13 +3114,20 @@ function AIViewContent() {
             projects={projects.map((project) => ({ id: project.id, name: project.name }))}
             returnProject={returnProject}
             selectedModel={selectedModel}
+            modelAvailability={modelAvailability}
+            modelAvailabilityStatus={modelAvailabilityStatus}
+            onRetryModelAvailability={retryModelAvailability}
+            reasoningEffort={reasoningEffort}
+            deliveryMode={deliveryMode}
             showReasoningControls={showReasoningControls}
             reasoningMode={reasoningMode}
-            reasoningSupport={reasoningSupport}
+            reasoningVisibilitySupport={reasoningVisibilitySupport}
             onHistoryToggle={handleHistoryToggle}
             onNewChat={handleNewChat}
             onSelectProject={handleSelectProject}
             onModelChange={setSelectedModel}
+            onReasoningEffortChange={setReasoningEffort}
+            onDeliveryModeChange={setDeliveryMode}
             onReasoningModeChange={updateReasoningMode}
           />
 
@@ -2899,6 +3210,13 @@ function AIViewContent() {
                   clearChoices={() => { setPendingChoices([]); setPendingUserInput(null); }}
                   selectedModel={selectedModel}
                   onModelChange={setSelectedModel}
+                  modelAvailability={modelAvailability}
+                  modelAvailabilityStatus={modelAvailabilityStatus}
+                  onRetryModelAvailability={retryModelAvailability}
+                  reasoningEffort={reasoningEffort}
+                  onReasoningEffortChange={setReasoningEffort}
+                  deliveryMode={deliveryMode}
+                  onDeliveryModeChange={setDeliveryMode}
                   hideModelControl={isPhoneViewport}
                   compactMobileChrome={isPhoneViewport}
                   showAutonomyPreset={false}
