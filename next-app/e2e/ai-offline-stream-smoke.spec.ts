@@ -1,22 +1,15 @@
 import { expect, test } from "@playwright/test";
 import {
-  buildFoundationSeedKey,
-  quickLoginWithSeed,
-} from "./helpers/foundation";
-import { fulfillAIStream, sendAgentPrompt } from "./helpers/agent-runtime";
+  fulfillAIStream,
+  openAuthenticatedAi,
+  sendAgentPrompt,
+} from "./helpers/agent-runtime";
 
 test("ai offline stream smoke: a real authenticated chat exits loading and offers recovery", async ({ page, context }, testInfo) => {
   const pageErrors: Error[] = [];
   page.on("pageerror", (error) => pageErrors.push(error));
 
-  await quickLoginWithSeed(page, {
-    callbackUrl: "/ai",
-    seedKey: buildFoundationSeedKey(testInfo),
-  });
-
-  await expect(page).toHaveURL(/\/ai(?:\?|$)/);
-  await expect(page.getByRole("region", { name: /chat interface/i })).toBeVisible();
-  await expect(page.getByLabel("Copilot prompt")).toBeVisible();
+  await openAuthenticatedAi(page, testInfo);
 
   await page.route("**/api/ai/stream", async (route) => {
     await fulfillAIStream(route, [

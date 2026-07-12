@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { Client } from "pg";
 import { expect, type Page, type Route, type TestInfo } from "@playwright/test";
+import { SELECTABLE_MODEL_IDS } from "../../lib/ai/config";
 import type { AIStreamChunk } from "../../types/ai";
 import { buildFoundationSeedKey, quickLoginWithSeed } from "./foundation";
 
@@ -45,6 +46,7 @@ export async function openAuthenticatedAi(
   page: Page,
   testInfo: Pick<TestInfo, "project" | "workerIndex" | "title">,
 ): Promise<string> {
+  await stubAgentModelAvailability(page);
   const seedKey = buildFoundationSeedKey(testInfo);
   await quickLoginWithSeed(page, { callbackUrl: "/ai", seedKey });
   await expect(page).toHaveURL(/\/ai(?:\?|$)/);
@@ -52,6 +54,23 @@ export async function openAuthenticatedAi(
   await expect(page.getByRole("region", { name: /chat interface/i })).toBeVisible();
   await expect(page.getByLabel("Copilot prompt")).toBeVisible();
   return seedKey;
+}
+
+/**
+ * Stream-contract scenarios replace the provider request with deterministic
+ * NDJSON, so they must also declare their deterministic models ready. This
+ * keeps credential-free CI honest without weakening production readiness.
+ */
+export async function stubAgentModelAvailability(page: Page): Promise<void> {
+  await page.route("**/api/ai/models", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        availability: Object.fromEntries(SELECTABLE_MODEL_IDS.map((modelId) => [modelId, true])),
+      }),
+    });
+  });
 }
 
 export async function sendAgentPrompt(page: Page, prompt: string): Promise<void> {
