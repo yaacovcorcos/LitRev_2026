@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { extractMemoriesFromConversation } from "../memory/conversation-extractor";
 import type { AIMessage } from "@/types/ai";
 
+const { mockGetBackgroundModel } = vi.hoisted(() => ({
+    mockGetBackgroundModel: vi.fn(() => "gpt-5.6-luna"),
+}));
+
 vi.mock("@/lib/server/prisma", () => ({
     prisma: {
         aIMessage: { findMany: vi.fn() },
@@ -20,6 +24,10 @@ const mockChat = vi.fn().mockResolvedValue({
 
 vi.mock("@/lib/server/ai", () => ({
     getAIService: vi.fn(() => ({ chat: mockChat })),
+}));
+
+vi.mock("@/lib/server/ai/background-model-policy", () => ({
+    getBackgroundModel: mockGetBackgroundModel,
 }));
 
 vi.mock("@/lib/server/agent/artifacts", () => ({
@@ -70,11 +78,12 @@ describe("extractMemoriesFromConversation", () => {
         expect(getAIService).not.toHaveBeenCalled();
     });
 
-    it("uses Luna until the analysis gateway is configured", async () => {
+    it("uses the background model selected for analysis work", async () => {
         mockFindMany.mockResolvedValue(asConversationMessagesResult(makeMessages(6)));
 
         await extractMemoriesFromConversation("conv-1", "proj-1", "run-1", "user-1");
 
+        expect(mockGetBackgroundModel).toHaveBeenCalledWith("analysis");
         expect(mockChat).toHaveBeenCalledWith(
             expect.any(Array),
             expect.objectContaining({ model: "gpt-5.6-luna" }),
