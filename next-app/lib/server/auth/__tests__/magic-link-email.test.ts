@@ -36,9 +36,46 @@ describe("sendMagicLinkEmail", () => {
         from: "LitRev <login@auth.papilab.com>",
         to: "reader@example.com",
         subject: "Your LitRev sign-in link",
-        html: expect.stringContaining("https://www.papilab.com/api/auth/magic-link/verify?token=abc"),
-        text: expect.stringContaining("https://www.papilab.com/api/auth/magic-link/verify?token=abc"),
+        html: expect.stringContaining(
+          "You requested a secure sign-in link for LitRev.",
+        ),
+        text: expect.stringContaining(
+          "You requested a secure sign-in link for LitRev.",
+        ),
       }),
+    );
+
+    const message = transport.mock.calls[0]?.[0];
+    expect(message?.html).toContain(
+      'href="https://www.papilab.com/api/auth/magic-link/verify?token=abc"',
+    );
+    expect(message?.html).toContain("If the button does not work");
+    expect(message?.html).toContain("If you did not request this email");
+    expect(message?.text).toContain(
+      "https://www.papilab.com/api/auth/magic-link/verify?token=abc",
+    );
+    expect(message?.text).toContain("This link expires in 15 minutes.");
+  });
+
+  it("escapes the generated URL before inserting it into HTML", async () => {
+    const transport = vi.fn<MagicLinkEmailTransport>().mockResolvedValue({
+      error: null,
+    });
+
+    await sendMagicLinkEmail(
+      {
+        email: "reader@example.com",
+        url: "https://www.papilab.com/verify?token=abc&callback=/ai",
+      },
+      transport,
+    );
+
+    const message = transport.mock.calls[0]?.[0];
+    expect(message?.html).toContain(
+      "https://www.papilab.com/verify?token=abc&amp;callback=/ai",
+    );
+    expect(message?.text).toContain(
+      "https://www.papilab.com/verify?token=abc&callback=/ai",
     );
   });
 
