@@ -25,6 +25,10 @@ vi.mock("@/lib/server/ai/ai-service", () => ({
     }),
 }));
 
+vi.mock("@/lib/server/ai/background-model-policy", () => ({
+    getBackgroundModel: vi.fn(() => "gpt-5.6-luna"),
+}));
+
 vi.mock("@/lib/agent/feature-flags", () => ({
     isTieredScreeningEnabled: mocks.isTieredScreeningEnabled,
 }));
