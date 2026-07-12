@@ -87,6 +87,7 @@ WHERE schemaname='public'
     'AgentRun_conversationId_startedAt_idx',
     'AgentRun_conversationId_lastActivityAt_idx',
     'AgentRun_conversationId_lastDurableProgressAt_idx',
+    'AgentRun_memoryExtractionStatus_leaseExpiry_idx',
     'ToolIdempotencyRecord_scopeKey_toolName_fingerprint_key',
     'ToolIdempotencyRecord_scopeKey_createdAt_idx',
     'DecisionRequestRecord_sourceRunId_callId_key',

@@ -162,7 +162,7 @@ These indexes protect major runtime paths. The operational gate owner and verifi
 | `AgentRun_conversationId_startedAt_idx` | Conversation-linked run history queries |
 | `AgentRun_conversationId_lastActivityAt_idx` | Active-run freshness checks and recovery admission |
 | `AgentRun_conversationId_lastDurableProgressAt_idx` | Durable-progress checks for stalled-run convergence |
-| `AgentRun_memoryExtractionStatus_memoryExtractionLeaseExpiresAt_idx` | Pending/failed conversation-memory backlog scans and expired processing-lease recovery |
+| `AgentRun_memoryExtractionStatus_leaseExpiry_idx` | Pending/failed conversation-memory backlog scans and expired processing-lease recovery |
 | `ToolIdempotencyRecord_scopeKey_toolName_fingerprint_key` | Retry/continuation dedupe for mutating tools within one root run lineage |
 | `ToolIdempotencyRecord_scopeKey_createdAt_idx` | Lineage-scoped receipt inspection and cleanup |
 | `DecisionRequestRecord_sourceRunId_callId_key` | Request-bound clarification lookup by source run and tool call |

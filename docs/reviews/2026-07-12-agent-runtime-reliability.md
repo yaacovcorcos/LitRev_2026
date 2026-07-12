@@ -226,7 +226,7 @@ Final frozen-tree verification completed on 2026-07-13:
 - Real PostgreSQL lane with `RUN_DB_TESTS=1`: 4 files passed; 15 tests passed, 4 intentionally skipped.
 - TypeScript and ESLint passed. Style lint completed with 0 errors and 19 pre-existing warnings; no new warning class was introduced.
 - `governance:ci-required`, agent-quality, and runtime-test-impact gates passed. The agent-quality gate executed all 9 catalog scenarios through 6 deterministic runtime suites and observed 58 runtime signals.
-- Prisma schema validation, migration deploy/status, and DB diagnosis passed against loopback PostgreSQL with all 35 migrations applied and required indexes present.
+- Prisma schema validation, migration deploy/status, and DB diagnosis passed against loopback PostgreSQL with all 36 migrations applied and required indexes present. CI then exposed a PostgreSQL 63-byte index-name truncation; an explicit mapped name and follow-up rename migration removed that drift while preserving the known pgvector-only exception.
 - Production `next build` passed and generated 26 application pages/routes.
 - Browser foundation passed all 21 Chromium desktop/mobile scenarios. One parallel desktop primer transiently failed once, then passed three consecutive isolated repetitions and the complete rerun; it is recorded as a test-environment flake rather than hidden.
 - A separate headed Playwright CLI pass verified login, `/ai`, all seven model choices, setup-disabled routes, Terra selection, paid-priority state, 390×844 responsive layout, and the mobile AI-options dialog with zero browser errors. Screenshots were retained only as local verification artifacts, not product assets.

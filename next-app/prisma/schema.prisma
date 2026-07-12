@@ -735,7 +735,7 @@ model AgentRun {
   @@index([userId])
   @@index([parentRunId, startedAt])
   @@index([rootRunId, startedAt])
-  @@index([memoryExtractionStatus, memoryExtractionLeaseExpiresAt])
+  @@index([memoryExtractionStatus, memoryExtractionLeaseExpiresAt], map: "AgentRun_memoryExtractionStatus_leaseExpiry_idx")
 }
 
 model RunEvent {
