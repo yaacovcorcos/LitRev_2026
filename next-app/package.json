@@ -53,6 +53,7 @@
     "citation:smoke": "NODE_OPTIONS='--conditions=react-server' tsx scripts/smoke-citation-providers.ts",
     "citation:diagnose": "tsx scripts/diagnose-citation-url.ts",
     "test:smoke:citation": "NODE_OPTIONS='--conditions=react-server' RUN_CITATION_PROVIDER_TESTS=1 tsx scripts/smoke-citation-providers.ts",
+    "test:smoke:ai-models": "NODE_OPTIONS='--conditions=react-server' RUN_AI_MODEL_PORTFOLIO_SMOKE=1 tsx scripts/smoke-ai-model-portfolio.ts",
     "test:smoke:mobile": "playwright test --project=mobile-chromium --workers=1 mobile-home-entry-smoke.spec.ts mobile-login-smoke.spec.ts",
     "draft:benchmark:generate-docx": "tsx scripts/draft-benchmark/generate-docx-import-fixture.ts",
     "draft:benchmark:report": "tsx scripts/draft-benchmark/report-fixture-summary.ts",

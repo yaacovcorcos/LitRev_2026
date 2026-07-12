@@ -201,6 +201,19 @@ The remediation replaces those assumptions with explicit ownership checks, compa
 - The production audit moved from 46 advisories (including 2 critical and 23 high) to 6 moderate advisories, with no critical or high findings.
 - The remaining advisories require unsupported framework/Prisma downgrades according to npm's proposed fix and are recorded as residuals rather than “fixed” by a breaking rollback.
 
+### 17. New provider routes exposed incompatible endpoints and false interruption UX
+
+**Confirmed defect:** GPT-5.6 reasoning-plus-tool requests were sent through Chat Completions even though that combination requires the Responses API. Grok could finish useful tool work while a short platform lifetime or a client that threw on the first error chunk prevented authoritative `run_end` consumption, causing a false reconnect banner and duplicate generic error. Paid priority also reset visually before its request finished and could be presented from requested state rather than a provider receipt.
+
+**Remediation:**
+
+- Direct OpenAI and xAI adapters share a typed Responses API implementation that preserves private continuation state server-side across tool turns.
+- The stream function lifetime is 150 seconds for a 120-second loop budget, leaving finalization time for persistence and terminal delivery.
+- Provider failures persist one calm reload fallback but stream one typed error followed by authoritative `run_end`; both UI surfaces consume that terminal event before deciding whether recovery is needed.
+- Recovery proves abandonment from missed heartbeats, converges ownership before event replay, keeps safe continuation idempotent across lost recovery responses, and separates inactivity from absolute client deadlines.
+- Priority stays visibly active for the in-flight request, is confirmed only from the provider receipt, remains as a last-response receipt after completion, and never leaks into queued work.
+- Live forced tool-loop smoke passed for Luna, Terra, Sol, and Grok, including provider-confirmed priority. The three Vercel-gateway models remain fail-closed because the Vercel team currently returns `customer_verification_required` until a valid card is added.
+
 ## Model-portfolio integration boundary
 
 The separate model portfolio was monitored in its own worktree and was not accepted merely because its original suite was green. Independent review found pricing, attachment, availability, runtime-default, reasoning-budget, receipt, background-routing, and reservation-policy gaps. The portfolio was then integrated deliberately with reliability ownership, cancellation, provider terminal validation, title/background scheduling, and usage reservation semantics retained as the controlling contracts.
@@ -222,13 +235,15 @@ The integrated result additionally fixes Grok long-context/priority stacking, De
 Final frozen-tree verification completed on 2026-07-13:
 
 - Focused runtime, provider, pricing, reservation, cancellation, recovery, and integration suites passed after repairing stale pre-integration test harnesses.
-- Full Vitest: 443 files passed, 3 skipped; 2,940 tests passed, 18 skipped.
+- Full Vitest after provider/runtime incident remediation: 446 files passed, 3 skipped; 2,998 tests passed, 18 skipped.
 - Real PostgreSQL lane with `RUN_DB_TESTS=1`: 4 files passed; 15 tests passed, 4 intentionally skipped.
 - TypeScript and ESLint passed. Style lint completed with 0 errors and 19 pre-existing warnings; no new warning class was introduced.
 - `governance:ci-required`, agent-quality, and runtime-test-impact gates passed. The agent-quality gate executed all 9 catalog scenarios through 6 deterministic runtime suites and observed 58 runtime signals.
 - Credential-free GitHub CI exposed screening, summarization, and conversation-extraction fixtures that had implicitly relied on locally configured provider keys. Those suites now supply their background-model dependency explicitly and assert the requested work class, preserving production's fail-closed routing while allowing the complete quality and Vitest gates to run with all provider credentials blank.
 - Prisma schema validation, migration deploy/status, and DB diagnosis passed against loopback PostgreSQL with all 36 migrations applied and required indexes present. CI then exposed a PostgreSQL 63-byte index-name truncation; an explicit mapped name and follow-up rename migration removed that drift while preserving the known pgvector-only exception.
-- Production `next build` passed and generated 26 application pages/routes.
+- Production `next build` and a linked Vercel build passed and generated 26 application pages/routes. The emitted `/api/ai/stream` function configuration reports `maxDuration: 150`.
 - Browser foundation passed all 21 Chromium desktop/mobile scenarios. Credential-free PR CI then exposed that deterministic stream scenarios had not stubbed the new fail-closed model-readiness endpoint, so Send was correctly disabled before their mocked stream could run. The shared agent fixture now declares its deterministic models ready, the offline scenario seeds an existing durable conversation so it tests offline recovery rather than racing first-conversation bootstrap, and production readiness behavior is unchanged. The offline scenario passed eight repeated desktop/mobile runs. Parallel foundation runs also exposed that quick login returned before the full load boundary and that the compact shell test treated asynchronous first-conversation creation as a synchronous radio toggle; both timing contracts were corrected, followed by a clean 21/21 full rerun.
 - A separate headed Playwright CLI pass verified login, `/ai`, all seven model choices, setup-disabled routes, Terra selection, paid-priority state, 390×844 responsive layout, and the mobile AI-options dialog with zero browser errors. Screenshots were retained only as local verification artifacts, not product assets.
 - Model-portfolio integration passed its focused policy/UI/runtime tests and the complete frozen-tree gates above.
+- The live selectable-model smoke forced tool call, tool result, exact final `READY`, exact provider model identity, expected provider route, and provider-confirmed priority where supported. Luna, Terra, Sol, and Grok passed. The Vercel-gateway trio remains intentionally disabled because live generation is blocked by the team-level billing requirement before model execution.
+- Two independent final reviews found and then re-verified fixes for recovery query amplification, raw provider-diagnostic disclosure, finalization-before-visible-error ordering, and weak smoke assertions. Their final correctness verdict had no remaining findings.

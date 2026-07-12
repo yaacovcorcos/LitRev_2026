@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   getAiViewMocks,
   installAiViewTestLifecycle,
+  readFetchRequestBody,
   renderAiView,
 } from "./page-support";
 
@@ -26,6 +27,107 @@ function createDeferred<T>() {
 }
 
 describe("/ai page composer lane and attachment surfaces", () => {
+  it("keeps one-shot Faster selected until the request terminates and reports only provider-confirmed delivery", async () => {
+    const stream = createDeferred<{
+      runStatus: "completed";
+      stopReason: "done";
+      terminalReason: "completed";
+      errorMessage: null;
+      errorMeta: null;
+      actualModel: string;
+      actualModelSource: "provider";
+    }>();
+    mockProcessAIStream.mockImplementationOnce(async ({ onChunk }: {
+      onChunk: (chunk: unknown) => void | Promise<void>;
+    }) => {
+      await onChunk({
+        type: "done",
+        actualDeliveryMode: "standard",
+      });
+      return stream.promise;
+    });
+
+    renderAiView();
+    const composer = screen.getByTestId("ai-composer");
+
+    fireEvent.click(screen.getByRole("button", { name: "toggle faster delivery" }));
+    expect(composer.getAttribute("data-delivery-mode")).toBe("priority");
+    expect(composer.getAttribute("data-delivery-request-active")).toBe("no");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send message" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(composer.getAttribute("data-delivery-mode")).toBe("priority");
+      expect(composer.getAttribute("data-delivery-request-active")).toBe("yes");
+      expect(composer.getAttribute("data-actual-delivery-mode")).toBe("standard");
+    });
+    expect(readFetchRequestBody(0)).toMatchObject({
+      options: { deliveryMode: "priority" },
+    });
+
+    await act(async () => {
+      stream.resolve({
+        runStatus: "completed",
+        stopReason: "done",
+        terminalReason: "completed",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: "gpt-5.6-luna",
+        actualModelSource: "provider",
+      });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(composer.getAttribute("data-delivery-mode")).toBe("standard");
+      expect(composer.getAttribute("data-delivery-request-active")).toBe("no");
+      expect(composer.getAttribute("data-actual-delivery-mode")).toBe("standard");
+    });
+  });
+
+  it("retains a final provider priority receipt when the terminal chunk and completion are not deferred", async () => {
+    mockProcessAIStream.mockImplementationOnce(async ({ onChunk }: {
+      onChunk: (chunk: unknown) => void | Promise<void>;
+    }) => {
+      await onChunk({
+        type: "run_end",
+        runStatus: "completed",
+        stopReason: "done",
+        actualDeliveryMode: "priority",
+      });
+      return {
+        runStatus: "completed",
+        stopReason: "done",
+        terminalReason: "completed",
+        errorMessage: null,
+        errorMeta: null,
+        actualModel: "gpt-5.6-luna",
+        actualModelSource: "provider" as const,
+      };
+    });
+
+    renderAiView();
+    const composer = screen.getByTestId("ai-composer");
+    fireEvent.click(screen.getByRole("button", { name: "toggle faster delivery" }));
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(composer.getAttribute("data-delivery-mode")).toBe("standard");
+      expect(composer.getAttribute("data-delivery-request-active")).toBe("no");
+      expect(composer.getAttribute("data-actual-delivery-mode")).toBe("priority");
+    });
+    expect(readFetchRequestBody(0)).toMatchObject({
+      options: { deliveryMode: "priority" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "toggle faster delivery" }));
+    expect(composer.getAttribute("data-delivery-mode")).toBe("priority");
+    expect(composer.getAttribute("data-actual-delivery-mode")).toBe("none");
+  });
+
   it("renders attached live progress above the composer without duplicating the inline progress row", async () => {
     mockProcessAIStream.mockImplementationOnce(async ({ onChunk }: {
       onChunk: (chunk: unknown) => void | Promise<void>;
@@ -131,6 +233,7 @@ describe("/ai page composer lane and attachment surfaces", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "composer ready" }));
     });
+    fireEvent.click(screen.getByRole("button", { name: "toggle faster delivery" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "send message" }));
       await Promise.resolve();
@@ -145,6 +248,7 @@ describe("/ai page composer lane and attachment surfaces", () => {
       expect(screen.getByText("Reading protocol...")).toBeTruthy();
       expect(screen.getByText("Queued next message")).toBeTruthy();
       expect(screen.getByText("Queue this next")).toBeTruthy();
+      expect(screen.getByTestId("ai-composer").getAttribute("data-delivery-mode")).toBe("priority");
     });
 
     const progress = screen.getByText("Reading protocol...").closest("[data-stack-position]");
@@ -173,6 +277,10 @@ describe("/ai page composer lane and attachment surfaces", () => {
       });
       await Promise.resolve();
     });
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+    expect(readFetchRequestBody(0)).toMatchObject({ options: { deliveryMode: "priority" } });
+    expect(readFetchRequestBody(1)).toMatchObject({ options: { deliveryMode: "standard" } });
   });
 
   it("allows queueing before the first conversation id exists", async () => {

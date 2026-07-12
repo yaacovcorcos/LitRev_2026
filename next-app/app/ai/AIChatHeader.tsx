@@ -51,6 +51,8 @@ type AIChatHeaderProps = {
   onRetryModelAvailability?: () => void;
   reasoningEffort: ReasoningEffort;
   deliveryMode: DeliveryMode;
+  deliveryRequestActive?: boolean;
+  actualDeliveryMode?: DeliveryMode | null;
   showReasoningControls: boolean;
   reasoningMode: ReasoningMode;
   reasoningVisibilitySupport: ReasoningVisibilitySupport;
@@ -77,6 +79,8 @@ export function AIChatHeader({
   onRetryModelAvailability,
   reasoningEffort,
   deliveryMode,
+  deliveryRequestActive = false,
+  actualDeliveryMode = null,
   showReasoningControls,
   reasoningMode,
   reasoningVisibilitySupport,
@@ -222,6 +226,7 @@ export function AIChatHeader({
                     availabilityStatus={modelAvailabilityStatus}
                     onRetryAvailability={onRetryModelAvailability}
                     presentation="inline"
+                    disabled={deliveryRequestActive}
                   />
                 </div>
 
@@ -232,6 +237,7 @@ export function AIChatHeader({
                     reasoningEffort={reasoningEffort}
                     onReasoningEffortChange={onReasoningEffortChange}
                     presentation="inline"
+                    disabled={deliveryRequestActive}
                   />
                 </div>
 
@@ -268,6 +274,8 @@ export function AIChatHeader({
                     deliveryMode={deliveryMode}
                     onDeliveryModeChange={onDeliveryModeChange}
                     presentation="inline"
+                    requestActive={deliveryRequestActive}
+                    actualDeliveryMode={actualDeliveryMode}
                   />
                   {selectedModelInfo?.deliveryModes.includes("priority") ? null : (
                     <p className={styles.mobileDeliveryUnavailable}>

@@ -9,9 +9,17 @@ import { createQueuedFollowUp } from "@/lib/ai/queued-followup";
 const {
     mockCurrentConversationIdRef,
     mockSendMessage,
+    mockStreamLifecycle,
 } = vi.hoisted(() => ({
     mockCurrentConversationIdRef: { current: "conv-1" as string | null },
     mockSendMessage: vi.fn(),
+    mockStreamLifecycle: {
+        current: null as null | {
+            beginDeliveryRequest: (mode: "standard" | "priority") => void;
+            completeDeliveryRequest: () => void;
+            setActualDeliveryMode: (mode: "standard" | "priority") => void;
+        },
+    },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -77,15 +85,22 @@ vi.mock("@/hooks/useModelAvailability", () => ({
 }));
 
 vi.mock("@/hooks/useProjectConversationStreamActions", () => ({
-    useProjectConversationStreamActions: () => ({
-        sendMessage: mockSendMessage,
-        cancelStream: vi.fn(),
-        handleReviewArtifact: vi.fn(),
-        handleUndoArtifact: vi.fn(),
-        approveArtifactsBatch: vi.fn(),
-        executePlan: vi.fn(),
-        reconnectRun: vi.fn(),
-    }),
+    useProjectConversationStreamActions: (deps: {
+        beginDeliveryRequest: (mode: "standard" | "priority") => void;
+        completeDeliveryRequest: () => void;
+        setActualDeliveryMode: (mode: "standard" | "priority") => void;
+    }) => {
+        mockStreamLifecycle.current = deps;
+        return {
+            sendMessage: mockSendMessage,
+            cancelStream: vi.fn(),
+            handleReviewArtifact: vi.fn(),
+            handleUndoArtifact: vi.fn(),
+            approveArtifactsBatch: vi.fn(),
+            executePlan: vi.fn(),
+            reconnectRun: vi.fn(),
+        };
+    },
 }));
 
 vi.mock("@/lib/ai/reasoning-visibility", () => ({
@@ -129,6 +144,7 @@ describe("ProjectConversation queued follow-up behavior", () => {
         window.localStorage.clear();
         mockCurrentConversationIdRef.current = "conv-1";
         mockSendMessage.mockReset();
+        mockStreamLifecycle.current = null;
     });
 
     afterEach(() => {
@@ -169,6 +185,63 @@ describe("ProjectConversation queued follow-up behavior", () => {
         });
 
         expect(result.current.queuedFollowUp).toBeNull();
+    });
+
+    it("separates the active request from the retained provider receipt and next-response selection", async () => {
+        const { result } = renderHook(() => useProjectConversation(), { wrapper });
+        const lifecycle = mockStreamLifecycle.current;
+        expect(lifecycle).not.toBeNull();
+
+        act(() => lifecycle?.beginDeliveryRequest("priority"));
+        expect(result.current.deliveryMode).toBe("priority");
+        expect(result.current.deliveryRequestActive).toBe(true);
+        expect(result.current.actualDeliveryMode).toBeNull();
+
+        act(() => lifecycle?.setActualDeliveryMode("priority"));
+        expect(result.current.actualDeliveryMode).toBe("priority");
+
+        act(() => lifecycle?.completeDeliveryRequest());
+        expect(result.current.deliveryMode).toBe("standard");
+        expect(result.current.deliveryRequestActive).toBe(false);
+        expect(result.current.actualDeliveryMode).toBe("priority");
+
+        act(() => result.current.setDeliveryMode("priority"));
+        expect(result.current.deliveryMode).toBe("priority");
+        expect(result.current.actualDeliveryMode).toBeNull();
+    });
+
+    it("does not leak an active priority request into a queued follow-up", async () => {
+        const { result } = renderHook(() => useProjectConversation(), { wrapper });
+        act(() => mockStreamLifecycle.current?.beginDeliveryRequest("priority"));
+
+        await act(async () => {
+            result.current.queueQueuedFollowUp(createQueuedFollowUp({
+                text: "Queue with the next-response default",
+                conversationId: "conv-1",
+                page: "overview",
+                model: "gpt-5.6-luna",
+                reasoningEffort: "high",
+                deliveryMode: "priority",
+                source: "draft",
+            }));
+        });
+
+        await waitFor(() => {
+            expect(mockSendMessage).toHaveBeenCalledWith(
+                "Queue with the next-response default",
+                "overview",
+                undefined,
+                "gpt-5.6-luna",
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                expect.objectContaining({ deliveryMode: "standard" }),
+            );
+        });
+        expect(result.current.deliveryMode).toBe("priority");
+        expect(result.current.deliveryRequestActive).toBe(true);
     });
 
     it("stores and clears queued follow-up state explicitly", async () => {

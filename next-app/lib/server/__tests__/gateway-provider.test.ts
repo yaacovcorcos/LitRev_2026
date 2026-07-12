@@ -63,7 +63,7 @@ describe("GatewayProvider", () => {
         const create = vi.fn().mockResolvedValue({
             id: "resp-1",
             model: "deepseek/deepseek-v4-pro",
-            choices: [{ message: { content: "ok", tool_calls: [] } }],
+            choices: [{ message: { content: "ok", tool_calls: [] }, finish_reason: "stop" }],
             usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
         });
         const provider = new GatewayProvider();
@@ -93,7 +93,7 @@ describe("GatewayProvider", () => {
         const create = vi.fn().mockResolvedValue({
             id: "resp-approved-fallbacks",
             model: "deepseek/deepseek-v4-pro",
-            choices: [{ message: { content: "ok", tool_calls: [] } }],
+            choices: [{ message: { content: "ok", tool_calls: [] }, finish_reason: "stop" }],
             usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
         });
         const provider = new GatewayProvider();
@@ -114,7 +114,7 @@ describe("GatewayProvider", () => {
         const create = vi.fn().mockResolvedValue({
             id: "resp-qwen",
             model: "alibaba/qwen3.7-plus",
-            choices: [{ message: { content: "ok", tool_calls: [] } }],
+            choices: [{ message: { content: "ok", tool_calls: [] }, finish_reason: "stop" }],
             usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
         });
         const provider = new GatewayProvider();
@@ -153,7 +153,7 @@ describe("GatewayProvider", () => {
             id: "resp-routed",
             model: "deepseek/deepseek-v4-pro",
             provider: "DeepSeek",
-            choices: [{ message: { content: "ok", tool_calls: [] } }],
+            choices: [{ message: { content: "ok", tool_calls: [] }, finish_reason: "stop" }],
             usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
         });
         const provider = new GatewayProvider();
@@ -189,13 +189,59 @@ describe("GatewayProvider", () => {
         expect(chunks.find((chunk) => chunk.type === "done")?.actualProvider).toBe("deepseek");
     });
 
+    it("rejects a non-streaming truncated or missing terminal response", async () => {
+        vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
+        const create = vi.fn()
+            .mockResolvedValueOnce({
+                id: "resp-truncated",
+                model: "deepseek/deepseek-v4-pro",
+                choices: [{ message: { content: "partial", tool_calls: [] }, finish_reason: "length" }],
+            })
+            .mockResolvedValueOnce({
+                id: "resp-no-terminal",
+                model: "deepseek/deepseek-v4-pro",
+                choices: [{ message: { content: "partial", tool_calls: [] }, finish_reason: null }],
+            });
+        const provider = new GatewayProvider();
+        attachClient(provider, create);
+
+        await expect(provider.chat([userMessage("hello")], { model: "deepseek-v4-pro" }))
+            .rejects.toMatchObject({ errorCode: "PROVIDER_RESPONSE_TRUNCATED" });
+        await expect(provider.chat([userMessage("hello")], { model: "deepseek-v4-pro" }))
+            .rejects.toMatchObject({ errorCode: "PROVIDER_STREAM_INCOMPLETE" });
+    });
+
+    it("rejects non-streaming tool_calls without a complete tool identity", async () => {
+        vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
+        const create = vi.fn().mockResolvedValue({
+            id: "resp-malformed-tool",
+            model: "deepseek/deepseek-v4-pro",
+            choices: [{
+                message: {
+                    content: "",
+                    tool_calls: [{
+                        id: "",
+                        type: "function",
+                        function: { name: "search_pubmed", arguments: "{}" },
+                    }],
+                },
+                finish_reason: "tool_calls",
+            }],
+        });
+        const provider = new GatewayProvider();
+        attachClient(provider, create);
+
+        await expect(provider.chat([userMessage("hello")], { model: "deepseek-v4-pro" }))
+            .rejects.toMatchObject({ errorCode: "PROVIDER_STREAM_INCOMPLETE" });
+    });
+
     it("normalizes gateway provider aliases before receipts and pricing", async () => {
         vi.stubEnv("AI_GATEWAY_API_KEY", "test-key");
         const create = vi.fn().mockResolvedValue({
             id: "resp-routed-alias",
             model: "alibaba/qwen3.7-plus",
             provider: "Alibaba Model Studio",
-            choices: [{ message: { content: "ok", tool_calls: [] } }],
+            choices: [{ message: { content: "ok", tool_calls: [] }, finish_reason: "stop" }],
             usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
         });
         const provider = new GatewayProvider();
@@ -242,7 +288,7 @@ describe("GatewayProvider", () => {
             .mockResolvedValueOnce({
                 id: "resp-followup",
                 model: "deepseek/deepseek-v4-pro",
-                choices: [{ message: { content: "done", tool_calls: [] } }],
+                choices: [{ message: { content: "done", tool_calls: [] }, finish_reason: "stop" }],
                 usage: { prompt_tokens: 12, completion_tokens: 2, total_tokens: 14 },
             });
         const provider = new GatewayProvider();
@@ -296,7 +342,7 @@ describe("GatewayProvider", () => {
         const create = vi.fn().mockResolvedValue({
             id: "resp-custom",
             model: "deepseek-v4-pro-direct",
-            choices: [{ message: { content: "ok", tool_calls: [] } }],
+            choices: [{ message: { content: "ok", tool_calls: [] }, finish_reason: "stop" }],
             usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
         });
         const provider = new GatewayProvider();
@@ -326,7 +372,7 @@ describe("GatewayProvider", () => {
             .mockResolvedValueOnce({
                 id: "resp-cache",
                 model: "deepseek-v4-pro",
-                choices: [{ message: { content: "ok", tool_calls: [] } }],
+                choices: [{ message: { content: "ok", tool_calls: [] }, finish_reason: "stop" }],
                 usage: {
                     prompt_tokens: 30,
                     completion_tokens: 2,
@@ -391,7 +437,7 @@ describe("GatewayProvider", () => {
             .mockResolvedValueOnce({
                 id: "resp-followup",
                 model: "deepseek-v4-pro",
-                choices: [{ message: { content: "done", tool_calls: [] } }],
+                choices: [{ message: { content: "done", tool_calls: [] }, finish_reason: "stop" }],
                 usage: { prompt_tokens: 12, completion_tokens: 2, total_tokens: 14 },
             });
         const provider = new GatewayProvider();

@@ -62,6 +62,8 @@ export function ProjectConversationComposer({
         reasoningEffort,
         setReasoningEffort,
         deliveryMode,
+        deliveryRequestActive,
+        actualDeliveryMode,
         setDeliveryMode,
         modelAvailability,
         modelAvailabilityStatus,
@@ -91,7 +93,7 @@ export function ProjectConversationComposer({
                     ...payload,
                     model: selectedModel,
                     reasoningEffort,
-                    deliveryMode,
+                    deliveryMode: deliveryRequestActive ? "standard" : deliveryMode,
                     conversationId: currentConversationId ?? null,
                     source: "draft",
                 }));
@@ -124,6 +126,8 @@ export function ProjectConversationComposer({
             onReasoningEffortChange={setReasoningEffort}
             deliveryMode={deliveryMode}
             onDeliveryModeChange={setDeliveryMode}
+            deliveryRequestActive={deliveryRequestActive}
+            actualDeliveryMode={actualDeliveryMode}
             showAutonomyPreset
             showAttachments
             showVoice

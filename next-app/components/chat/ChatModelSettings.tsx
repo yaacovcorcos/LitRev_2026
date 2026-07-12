@@ -431,6 +431,8 @@ type ChatDeliveryModeControlProps = {
   onDeliveryModeChange: (mode: DeliveryMode) => void;
   presentation?: "compact" | "inline";
   disabled?: boolean;
+  requestActive?: boolean;
+  actualDeliveryMode?: DeliveryMode | null;
 };
 
 export function ChatDeliveryModeControl({
@@ -439,27 +441,62 @@ export function ChatDeliveryModeControl({
   onDeliveryModeChange,
   presentation = "compact",
   disabled = false,
+  requestActive = false,
+  actualDeliveryMode = null,
 }: ChatDeliveryModeControlProps) {
   const model = USER_SELECTABLE_MODELS.find((candidate) => candidate.id === selectedModel);
   if (!model?.deliveryModes.includes("priority")) return null;
 
   const isPriority = deliveryMode === "priority";
   const priceNote = model.priorityPriceNote ?? "Faster delivery can cost more.";
+  const deliveryStatus = requestActive
+    ? isPriority
+      ? actualDeliveryMode === "priority"
+        ? "Provider confirmed priority delivery for this response."
+        : actualDeliveryMode === "standard"
+          ? "Provider applied standard delivery to this response."
+          : "Faster delivery requested; waiting for provider confirmation."
+      : actualDeliveryMode
+        ? `Provider confirmed ${actualDeliveryMode} delivery for this response.`
+        : "Standard delivery requested for this response; waiting for provider confirmation."
+    : actualDeliveryMode
+      ? `Last response used ${actualDeliveryMode} delivery. The next response uses standard delivery by default.`
+      : isPriority
+        ? "Faster delivery requested for the next response."
+        : "Uses standard delivery unless you request faster delivery.";
+  const compactStatus = requestActive
+    ? isPriority
+      ? actualDeliveryMode === "priority"
+        ? "confirmed"
+        : actualDeliveryMode === "standard"
+          ? "standard applied"
+          : "requested"
+      : actualDeliveryMode
+        ? `${actualDeliveryMode} confirmed`
+        : "standard requested"
+    : actualDeliveryMode
+      ? `last: ${actualDeliveryMode}`
+      : isPriority
+        ? "next response"
+        : "costs more";
+  const controlDisabled = disabled || requestActive;
 
   if (presentation === "inline") {
     return (
       <div className={styles.deliveryInlineRow}>
         <span className={styles.deliveryCopy}>
           <span className={styles.deliveryLabel}>Faster delivery</span>
-          <span className={styles.deliveryDescription}>{priceNote}</span>
+          <span className={styles.deliveryDescription} aria-live="polite">
+            {deliveryStatus} {priceNote}
+          </span>
         </span>
         <button
           type="button"
           role="switch"
           aria-checked={isPriority}
-          aria-label={`Faster delivery: ${isPriority ? "on" : "off"}`}
+          aria-label={`Request faster delivery: ${isPriority ? "on" : "off"}. ${deliveryStatus}`}
           className={joinClassNames(styles.deliverySwitch, isPriority && styles.deliverySwitchActive)}
-          disabled={disabled}
+          disabled={controlDisabled}
           onClick={() => onDeliveryModeChange(isPriority ? "standard" : "priority")}
         >
           <span className={styles.deliverySwitchThumb} />
@@ -473,15 +510,15 @@ export function ChatDeliveryModeControl({
       type="button"
       role="switch"
       aria-checked={isPriority}
-      aria-label={`Faster delivery: ${isPriority ? "on" : "off"}. ${priceNote}`}
-      title={priceNote}
+      aria-label={`Request faster delivery: ${isPriority ? "on" : "off"}. ${deliveryStatus} ${priceNote}`}
+      title={`${deliveryStatus} ${priceNote}`}
       className={joinClassNames(styles.deliveryCompact, isPriority && styles.deliveryCompactActive)}
-      disabled={disabled}
+      disabled={controlDisabled}
       onClick={() => onDeliveryModeChange(isPriority ? "standard" : "priority")}
     >
       <span className="material-icons-round" aria-hidden="true">speed</span>
       <span className={styles.deliveryCompactLabel}>Faster</span>
-      <span className={styles.deliveryCostWarning}>costs more</span>
+      <span className={styles.deliveryCostWarning} aria-live="polite">{compactStatus}</span>
     </button>
   );
 }
@@ -497,6 +534,8 @@ type ChatModelSettingsDialogProps = {
   deliveryMode: DeliveryMode;
   onDeliveryModeChange?: (mode: DeliveryMode) => void;
   disabled?: boolean;
+  deliveryRequestActive?: boolean;
+  actualDeliveryMode?: DeliveryMode | null;
 };
 
 /** Compact settings launcher for narrow embedded composers. */
@@ -511,6 +550,8 @@ export function ChatModelSettingsDialog({
   deliveryMode,
   onDeliveryModeChange,
   disabled = false,
+  deliveryRequestActive = false,
+  actualDeliveryMode = null,
 }: ChatModelSettingsDialogProps) {
   const selectedModelInfo = USER_SELECTABLE_MODELS.find((model) => model.id === selectedModel)
     ?? USER_SELECTABLE_MODELS[0];
@@ -518,6 +559,7 @@ export function ChatModelSettingsDialog({
     ? reasoningEffort
     : selectedModelInfo.defaultReasoningEffort;
   const supportsPriorityDelivery = selectedModelInfo.deliveryModes.includes("priority");
+  const controlsLocked = disabled || deliveryRequestActive;
 
   return (
     <Dialog.Root>
@@ -560,7 +602,7 @@ export function ChatModelSettingsDialog({
                 availabilityStatus={availabilityStatus}
                 onRetryAvailability={onRetryAvailability}
                 presentation="inline"
-                disabled={disabled}
+                disabled={controlsLocked}
               />
             </section>
 
@@ -572,7 +614,7 @@ export function ChatModelSettingsDialog({
                   reasoningEffort={resolvedEffort}
                   onReasoningEffortChange={onReasoningEffortChange}
                   presentation="inline"
-                  disabled={disabled}
+                  disabled={controlsLocked}
                 />
               </section>
             ) : null}
@@ -586,6 +628,8 @@ export function ChatModelSettingsDialog({
                   onDeliveryModeChange={onDeliveryModeChange}
                   presentation="inline"
                   disabled={disabled}
+                  requestActive={deliveryRequestActive}
+                  actualDeliveryMode={actualDeliveryMode}
                 />
               </section>
             ) : null}

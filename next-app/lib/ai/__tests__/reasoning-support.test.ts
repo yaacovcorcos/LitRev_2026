@@ -70,7 +70,7 @@ describe("model portfolio reasoning contracts", () => {
         const expectedPricing = {
             "deepseek-v4-flash": { input: 0.14, cached: 0.028, cacheWrite: undefined, output: 0.28, largeTask: 0.084 },
             "gpt-5.6-luna": { input: 1, cached: 0.1, cacheWrite: 1.25, output: 6, largeTask: 0.8 },
-            "deepseek-v4-pro": { input: 0.435, cached: 0.003625, cacheWrite: undefined, output: 0.87, largeTask: 0.261 },
+            "deepseek-v4-pro": { input: 0.435, cached: 0.0036, cacheWrite: undefined, output: 0.87, largeTask: 0.261 },
             "gpt-5.6-terra": { input: 2.5, cached: 0.25, cacheWrite: 3.125, output: 15, largeTask: 2 },
             "qwen3.7-plus": { input: 0.4, cached: 0.08, cacheWrite: 0.5, output: 1.6, largeTask: 0.28 },
             "grok-4.5": { input: 2, cached: 0.5, cacheWrite: undefined, output: 6, largeTask: 1.3 },

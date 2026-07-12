@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireApiSession } from "@/lib/server/auth/session";
-import { getConversationWithSummaryById } from "@/lib/server/ai/memory";
+import { findOwnedConversationAccess } from "@/lib/server/access";
 import { buildRunRecoveryResponse } from "@/lib/server/agent/run-recovery";
 
 export const runtime = "nodejs";
@@ -46,10 +46,12 @@ export async function POST(request: NextRequest) {
         );
     }
 
-    const conversation = await getConversationWithSummaryById(
+    const conversation = await findOwnedConversationAccess(
+        {
+            ownerId: authResult.context.userId,
+            workspaceId: authResult.context.workspaceId,
+        },
         body.conversationId,
-        authResult.context.userId,
-        authResult.context.workspaceId,
     );
 
     if (!conversation) {

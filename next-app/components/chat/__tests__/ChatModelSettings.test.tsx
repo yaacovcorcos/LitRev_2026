@@ -139,4 +139,63 @@ describe("ChatModelSettings", () => {
     expect(screen.queryByRole("heading", { name: "Delivery" })).toBeNull();
     expect(screen.getByText(/Choose the model and reasoning effort for the next message/i)).toBeTruthy();
   });
+
+  it("distinguishes a faster request from provider-confirmed priority delivery", () => {
+    const onDeliveryModeChange = vi.fn();
+    const { rerender } = render(
+      <ChatDeliveryModeControl
+        selectedModel="gpt-5.6-luna"
+        deliveryMode="priority"
+        onDeliveryModeChange={onDeliveryModeChange}
+        requestActive
+      />,
+    );
+
+    const pendingControl = screen.getByRole("switch", {
+      name: /waiting for provider confirmation/i,
+    }) as HTMLButtonElement;
+    expect(pendingControl.disabled).toBe(true);
+    expect(screen.getByText("requested")).toBeTruthy();
+    expect(screen.queryByLabelText(/provider confirmed priority/i)).toBeNull();
+
+    rerender(
+      <ChatDeliveryModeControl
+        selectedModel="gpt-5.6-luna"
+        deliveryMode="priority"
+        onDeliveryModeChange={onDeliveryModeChange}
+        requestActive
+        actualDeliveryMode="priority"
+      />,
+    );
+
+    expect(screen.getByRole("switch", { name: /provider confirmed priority delivery/i })).toBeTruthy();
+    expect(screen.getByText("confirmed")).toBeTruthy();
+
+    rerender(
+      <ChatDeliveryModeControl
+        selectedModel="gpt-5.6-luna"
+        deliveryMode="priority"
+        onDeliveryModeChange={onDeliveryModeChange}
+        requestActive
+        actualDeliveryMode="standard"
+      />,
+    );
+
+    expect(screen.getByRole("switch", { name: /provider applied standard delivery/i })).toBeTruthy();
+    expect(screen.getByText("standard applied")).toBeTruthy();
+    expect(screen.queryByLabelText(/provider confirmed priority/i)).toBeNull();
+
+    rerender(
+      <ChatDeliveryModeControl
+        selectedModel="gpt-5.6-luna"
+        deliveryMode="standard"
+        onDeliveryModeChange={onDeliveryModeChange}
+        actualDeliveryMode="priority"
+      />,
+    );
+
+    const completedControl = screen.getByRole("switch", { name: /last response used priority delivery/i });
+    expect(completedControl.getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByText("last: priority")).toBeTruthy();
+  });
 });

@@ -90,8 +90,12 @@ export type ProjectConversationContextValue = {
     selectedModel: SelectableModelId;
     /** Model compute intensity, persisted independently for each model. */
     reasoningEffort: ReasoningEffort;
-    /** One-shot paid delivery tier; resets to standard after a request is captured. */
+    /** One-shot paid delivery tier; remains selected while its request is active. */
     deliveryMode: DeliveryMode;
+    /** Whether the current request owns the visible one-shot delivery selection. */
+    deliveryRequestActive: boolean;
+    /** Provider-confirmed delivery tier for the active or most recent response, when reported. */
+    actualDeliveryMode: DeliveryMode | null;
     /** Server-derived provider readiness for selectable models. */
     modelAvailability?: ModelAvailabilityMap;
     /** State of the authenticated provider-readiness request. */

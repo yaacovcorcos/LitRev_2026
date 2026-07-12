@@ -894,6 +894,71 @@ describe("AIService run finalization", () => {
     });
   });
 
+  it("streams one typed provider error, persists one fallback, and still emits failed run_end", async () => {
+    mocks.provider.streamChat.mockImplementationOnce(async function* () {
+      throw new Error("provider rejected the request");
+    });
+
+    const service = new AIService();
+    const chunks: Array<{
+      type?: string;
+      content?: string;
+      error?: string;
+      runStatus?: string;
+      stopReason?: string;
+    }> = [];
+    for await (const chunk of service.streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    })) {
+      chunks.push(chunk);
+      if (chunk.type === "run_end") break;
+    }
+
+    expect(chunks.filter((chunk) => chunk.type === "content")).toEqual([]);
+    expect(chunks.filter((chunk) => chunk.type === "error")).toHaveLength(1);
+    expect(chunks.find((chunk) => chunk.type === "error")).toMatchObject({
+      error: "provider rejected the request",
+    });
+    expect(chunks.find((chunk) => chunk.type === "run_end")).toMatchObject({
+      runStatus: "failed",
+      stopReason: "error",
+    });
+    expect(mocks.addAssistantMessageToConversationForRun).toHaveBeenCalledTimes(1);
+    expect(mocks.addAssistantMessageToConversationForRun).toHaveBeenCalledWith(expect.objectContaining({
+      runId: "run-1",
+      conversationId: "conv-1",
+      content: expect.stringContaining("provider rejected the request"),
+    }));
+  });
+
+  it("durably finalizes before a provider error becomes observable to a disconnecting client", async () => {
+    mocks.provider.streamChat.mockImplementationOnce(async function* () {
+      throw new Error("provider rejected the request");
+    });
+
+    const iterator = new AIService().streamChatWithArtifacts("hello", "project", {
+      projectId: "project-1",
+      userId: "user-1",
+      agentMode: "general",
+      model: "gpt-5.2",
+    })[Symbol.asyncIterator]();
+
+    let observedType: string | undefined;
+    while (observedType !== "error") {
+      const next = await iterator.next();
+      expect(next.done).toBe(false);
+      observedType = next.value?.type;
+    }
+
+    expect(mocks.endRun).toHaveBeenCalledWith("run-1", "failed", undefined, undefined);
+    expect(mocks.markRunFinalizationState).toHaveBeenCalledWith("run-1", "in_progress");
+    await iterator.return?.(undefined);
+    expect(mocks.endRun).toHaveBeenCalledTimes(1);
+  });
+
   it("does not retro-fail a completed run when auto-summarization throws", async () => {
     mocks.autoSummarizeIfNeeded.mockRejectedValueOnce(new Error("summary write failed"));
 

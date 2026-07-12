@@ -56,6 +56,8 @@ Use the canonical shared aliases in `next-app/package.json` when referring to cr
   - canonical broader mobile smoke lane
 - `npm run test:smoke:citation`
   - canonical citation-provider compatibility smoke lane
+- `npm run test:smoke:ai-models`
+  - opt-in live compatibility smoke for every selectable AI model; set `REQUIRE_ALL_SELECTABLE_AI_MODELS=1` to fail on missing production routes and `RUN_AI_PRIORITY_SMOKE=1` to require provider-confirmed priority receipts
 - `npm run check:chat-stream-architecture`
   - canonical local reproduction for the shared architecture guard in `check`
 - `npm run check:agent-quality`
@@ -101,6 +103,8 @@ For code changes:
     - `cd next-app && npm run test:smoke:mobile`
    - citation-provider changes or provider drift triage:
     - `cd next-app && npm run test:smoke:citation`
+   - selectable AI model, provider adapter, reasoning/tool compatibility, or delivery-tier changes:
+    - `cd next-app && npm run test:smoke:ai-models`
    - agent eval catalog, runtime fixture, or burn-in contract changes:
     - `cd next-app && npm run check:agent-quality`
 3. If the change spans multiple domains and the safest shared baseline is not obvious, use the conservative fallback:
@@ -220,6 +224,22 @@ For docs-only plan or runbook changes:
 - Purpose:
   - compatibility smoke for provider stability, not a correctness proof for exact counts
 
+### Selectable AI Model Portfolio Smoke
+
+- Local reproduction:
+  - `cd next-app && npm run test:smoke:ai-models`
+  - production-readiness form: `REQUIRE_ALL_SELECTABLE_AI_MODELS=1 RUN_AI_PRIORITY_SMOKE=1 npm run test:smoke:ai-models`
+- Automation:
+  - none currently; this is intentionally credential-gated and run for provider/model releases and incidents
+- Blocking posture:
+  - release evidence when selectable model routing, provider adapters, tool/reasoning compatibility, or priority delivery changes
+- First owner:
+  - agent runtime and agent quality via `docs/plans/plan-agentic.md` and `docs/plans/plan-agent-quality.md`
+- Evidence:
+  - one line per selectable model with the provider-observed model/provider receipt; optional priority rows must report `actualDeliveryMode=priority`
+- Purpose:
+  - exercises the real provider boundary with tools attached and each model's default reasoning, catching endpoint/schema mismatches that deterministic mocked tests cannot prove
+
 ## What Required `check` Guarantees
 
 `CI / check` guarantees:
@@ -253,6 +273,7 @@ For docs-only plan or runbook changes:
 | mobile foundation | responsive/mobile owner | `docs/runbooks/responsive-foundation-certification.md`, `docs/runbooks/browser-tooling-readiness.md` |
 | performance certification | performance owner | `docs/plans/plan-speed-performance.md` |
 | citation compatibility smoke | citation/provider owner | `docs/runbooks/citation-preview-ops.md` |
+| selectable AI model smoke | agent runtime and agent quality owners | `docs/plans/plan-agentic.md`, `docs/plans/plan-agent-quality.md` |
 | general Vitest, typecheck, or build failure | touched subsystem owner | `AGENTS.md`, `docs/plans/README.md`, `docs/agents/cold-memory-index.md` |
 
 ## Changed-Scope Policy
@@ -288,6 +309,8 @@ Today it contains only:
   - broader local-only mobile-sensitive smoke beyond the narrow foundation routes
 - `test:smoke:citation`
   - provider compatibility smoke after citation-provider changes or incidents
+- `test:smoke:ai-models`
+  - credential-gated selectable-model compatibility after model/provider/tool/reasoning/delivery changes or incidents; output is the debugging artifact and the lane remains outside protected CI because it spends real provider quota
 
 Do not add a new shared smoke lane unless it names:
 

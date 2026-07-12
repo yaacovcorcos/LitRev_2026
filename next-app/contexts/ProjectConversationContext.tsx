@@ -139,6 +139,8 @@ function ProjectConversationRuntime({
         resolveReasoningEffort(DEFAULT_MODEL)
     ));
     const [deliveryMode, setDeliveryModeState] = useState<DeliveryMode>("standard");
+    const [deliveryRequestActive, setDeliveryRequestActive] = useState(false);
+    const [actualDeliveryMode, setActualDeliveryMode] = useState<DeliveryMode | null>(null);
     const modelAvailabilityState = useModelAvailability();
     const modelAvailability = modelAvailabilityState?.availability;
     const modelAvailabilityStatus = modelAvailabilityState?.status;
@@ -198,6 +200,7 @@ function ProjectConversationRuntime({
         setSelectedModelState((current) => current === storedModel ? current : storedModel);
         setReasoningEffortState((current) => current === storedEffort ? current : storedEffort);
         setDeliveryModeState("standard");
+        setActualDeliveryMode(null);
     }, []);
 
     // Compute reasoning support tier from current model
@@ -223,6 +226,7 @@ function ProjectConversationRuntime({
                 : readStoredReasoningEffort(window.localStorage, modelId),
         );
         setDeliveryModeState("standard");
+        setActualDeliveryMode(null);
         if (typeof window !== "undefined") {
             window.localStorage.setItem(LEGACY_COPILOT_MODEL_STORAGE_KEY, modelId);
         }
@@ -243,6 +247,7 @@ function ProjectConversationRuntime({
 
     const setDeliveryMode = useCallback((mode: DeliveryMode) => {
         setDeliveryModeState(resolveDeliveryMode(selectedModel, mode));
+        setActualDeliveryMode(null);
     }, [selectedModel]);
 
     useEffect(() => {
@@ -254,8 +259,15 @@ function ProjectConversationRuntime({
         if (fallbackModel) setSelectedModel(fallbackModel);
     }, [modelAvailability, modelAvailabilityStatus, selectedModel, setSelectedModel]);
 
-    const resetDeliveryMode = useCallback(() => {
-        setDeliveryModeState((current) => current === "standard" ? current : "standard");
+    const beginDeliveryRequest = useCallback((mode: DeliveryMode) => {
+        setDeliveryModeState(mode);
+        setDeliveryRequestActive(true);
+        setActualDeliveryMode(null);
+    }, []);
+
+    const completeDeliveryRequest = useCallback(() => {
+        setDeliveryModeState("standard");
+        setDeliveryRequestActive(false);
     }, []);
 
     // Save panel state with debounce (messages are saved via conversation system)
@@ -368,7 +380,9 @@ function ProjectConversationRuntime({
         selectedModel,
         reasoningEffort,
         deliveryMode,
-        resetDeliveryMode,
+        beginDeliveryRequest,
+        completeDeliveryRequest,
+        setActualDeliveryMode,
         convo,
         onNavigate: router.push,
     });
@@ -477,12 +491,19 @@ function ProjectConversationRuntime({
     }, []);
 
     const queueQueuedFollowUp = useCallback((nextQueuedFollowUp: QueuedFollowUp) => {
+        const queuedDeliveryMode = deliveryRequestActive ? "standard" : nextQueuedFollowUp.deliveryMode;
         setQueuedFollowUp({
             ...nextQueuedFollowUp,
-            ...createGenerationPreferenceSnapshot(nextQueuedFollowUp),
+            ...createGenerationPreferenceSnapshot({
+                ...nextQueuedFollowUp,
+                deliveryMode: queuedDeliveryMode,
+            }),
         });
-        resetDeliveryMode();
-    }, [resetDeliveryMode]);
+        if (!deliveryRequestActive) {
+            setDeliveryModeState("standard");
+            setActualDeliveryMode(null);
+        }
+    }, [deliveryRequestActive]);
 
     const clearQueuedFollowUp = useCallback(() => {
         setQueuedFollowUp(null);
@@ -668,6 +689,8 @@ function ProjectConversationRuntime({
             selectedModel,
             reasoningEffort,
             deliveryMode,
+            deliveryRequestActive,
+            actualDeliveryMode,
             modelAvailability,
             modelAvailabilityStatus,
             retryModelAvailability,
@@ -757,6 +780,8 @@ function ProjectConversationRuntime({
             selectedModel,
             reasoningEffort,
             deliveryMode,
+            deliveryRequestActive,
+            actualDeliveryMode,
             modelAvailability,
             modelAvailabilityStatus,
             retryModelAvailability,

@@ -22,6 +22,56 @@ const {
 } = getAiViewMocks();
 
 describe("/ai page recovery truth and continuation", () => {
+  it("renders one provider error after an authoritative failed run_end without reconnecting or adding a generic failure", async () => {
+    mockProcessAIStream.mockImplementationOnce(async ({ onChunk, throwOnErrorChunk }: {
+      onChunk: (chunk: unknown) => void | Promise<void>;
+      throwOnErrorChunk: boolean;
+    }) => {
+      expect(throwOnErrorChunk).toBe(false);
+      await onChunk({
+        type: "error",
+        error: "Provider rejected this request.",
+        errorMeta: {
+          kind: "provider_request",
+          code: "PROVIDER_REQUEST_FAILED",
+          message: "Provider rejected this request.",
+          retryable: false,
+          source: "provider_request",
+        },
+      });
+      await onChunk({
+        type: "run_end",
+        runStatus: "failed",
+        stopReason: "provider_error",
+      });
+      return {
+        runStatus: "failed",
+        stopReason: "provider_error",
+        terminalReason: "failed_server",
+        errorMessage: "Provider rejected this request.",
+        errorMeta: {
+          kind: "provider_request",
+          code: "PROVIDER_REQUEST_FAILED",
+          message: "Provider rejected this request.",
+          retryable: false,
+          source: "provider_request",
+        },
+        actualModel: "gpt-5.6-luna",
+        actualModelSource: "provider",
+      };
+    });
+
+    renderAiView();
+    fireEvent.click(screen.getByRole("button", { name: "send message" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Provider rejected this request.")).toHaveLength(1);
+    });
+    expect(mockPollRunRecovery).not.toHaveBeenCalled();
+    expect(screen.queryByText("The stream ended unexpectedly. Retry to continue.")).toBeNull();
+    expect(screen.queryByText("Run interrupted. Reconnecting to the active run…")).toBeNull();
+  });
+
   it("shows a truthful local stop when cancellation wins before run_start arrives", async () => {
     mockProcessAIStream.mockImplementation(async ({ signal }: { signal: AbortSignal }) => {
       await new Promise<void>((resolve) => {

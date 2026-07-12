@@ -3,7 +3,6 @@ import "server-only";
 import { getProviderModelId } from "@/lib/ai/config";
 import { resolveUserInputQuestionId } from "@/lib/ai/user-input";
 import { prisma } from "@/lib/server/prisma";
-import { DEFAULT_CONVERSATION_RUN_STALE_MS } from "@/lib/server/chat-runtime/conversation-run-lock";
 import { assessRunConvergence } from "@/lib/server/agent/run-convergence";
 import { resolveDurableContinuationSource } from "@/lib/server/agent/durable-continuation";
 import { resolveLatestValidRunCheckpoint } from "@/lib/server/agent/run-checkpoints";
@@ -67,6 +66,109 @@ type RecoveryArtifactRecord = {
     payload: unknown;
     version: number;
 };
+
+// Heartbeats are written every 15 seconds. Three missed heartbeats are enough
+// to prove that the request-bound worker no longer owns the run while leaving
+// a full interval of jitter beyond a single delayed heartbeat.
+export const RUN_RECOVERY_ABANDONED_STALE_MS = 45_000;
+
+const RECOVERY_RUN_SELECT = {
+    id: true,
+    conversationId: true,
+    status: true,
+    runPhase: true,
+    phaseEnteredAt: true,
+    model: true,
+    actualModel: true,
+    actualProvider: true,
+    actualReasoningEffort: true,
+    actualDeliveryMode: true,
+    costTokensIn: true,
+    costTokensOut: true,
+    lastActivityAt: true,
+    lastDurableProgressAt: true,
+    durabilityState: true,
+    durabilityDegradedReason: true,
+    finalizationState: true,
+    abnormalEndClassification: true,
+} as const;
+
+async function findRecoveryRun(
+    conversationId: string,
+    runId: string,
+): Promise<RecoveryRunRecord | null> {
+    return prisma.agentRun.findFirst({
+        where: { id: runId, conversationId },
+        select: RECOVERY_RUN_SELECT,
+    }) as Promise<RecoveryRunRecord | null>;
+}
+
+async function reconcileAbandonedRun(params: {
+    run: RecoveryRunRecord;
+    conversationId: string;
+    now: Date;
+    staleMs: number;
+}): Promise<{ run: RecoveryRunRecord; terminalizedByRecovery: boolean }> {
+    const assessment = assessRunConvergence(params.run, params.now, params.staleMs);
+    if (params.run.status !== "running" || !assessment.activityStale) {
+        return { run: params.run, terminalizedByRecovery: false };
+    }
+
+    const staleCutoff = new Date(params.now.getTime() - params.staleMs);
+    // This value is also the durable retry marker: a later recovery request
+    // can distinguish a run terminalized by missed heartbeats from an
+    // unrelated ordinary provider/runtime failure.
+    const abnormalEndClassification: RunAbnormalEndClassification = "network_disconnect";
+    const terminalized = await prisma.agentRun.updateMany({
+        where: {
+            id: params.run.id,
+            conversationId: params.conversationId,
+            status: "running",
+            completedAt: null,
+            lastActivityAt: { lte: staleCutoff },
+        },
+        data: {
+            status: "failed",
+            runPhase: "finalize",
+            phaseEnteredAt: params.now,
+            completedAt: params.now,
+            lastActivityAt: params.now,
+            lastDurableProgressAt: params.now,
+            finalizationState: "completed",
+            abnormalEndClassification,
+            memoryExtractionStatus: "skipped",
+            memoryExtractionAttempts: 0,
+            memoryExtractionLeaseToken: null,
+            memoryExtractionLeaseExpiresAt: null,
+            memoryExtractionCompletedAt: params.now,
+            memoryExtractionLastError: null,
+        },
+    });
+
+    if (terminalized.count === 1) {
+        return {
+            run: {
+                ...params.run,
+                status: "failed",
+                runPhase: "finalize",
+                phaseEnteredAt: params.now,
+                lastActivityAt: params.now,
+                lastDurableProgressAt: params.now,
+                finalizationState: "completed",
+                abnormalEndClassification,
+            },
+            terminalizedByRecovery: true,
+        };
+    }
+
+    // A heartbeat, semantic cancellation, or another recovery request won the
+    // race. Re-read its authoritative status instead of returning a stale
+    // recommendation or overwriting the winning terminal state.
+    return {
+        run: await findRecoveryRun(params.conversationId, params.run.id) ?? params.run,
+        terminalizedByRecovery: false,
+    };
+}
 
 function asObject(value: unknown): Record<string, unknown> | null {
     return value && typeof value === "object" && !Array.isArray(value)
@@ -260,34 +362,9 @@ export async function buildRunRecoveryResponse(params: {
 }): Promise<RunRecoveryResponse> {
     const afterSequence = params.afterSequence ?? -1;
     const now = params.now ?? new Date();
-    const staleMs = params.staleMs ?? DEFAULT_CONVERSATION_RUN_STALE_MS;
+    const staleMs = params.staleMs ?? RUN_RECOVERY_ABANDONED_STALE_MS;
 
-    const run = await prisma.agentRun.findFirst({
-        where: {
-            id: params.runId,
-            conversationId: params.conversationId,
-        },
-        select: {
-            id: true,
-            conversationId: true,
-            status: true,
-            runPhase: true,
-            phaseEnteredAt: true,
-            model: true,
-            actualModel: true,
-            actualProvider: true,
-            actualReasoningEffort: true,
-            actualDeliveryMode: true,
-            costTokensIn: true,
-            costTokensOut: true,
-            lastActivityAt: true,
-            lastDurableProgressAt: true,
-            durabilityState: true,
-            durabilityDegradedReason: true,
-            finalizationState: true,
-            abnormalEndClassification: true,
-        },
-    }) as RecoveryRunRecord | null;
+    let run = await findRecoveryRun(params.conversationId, params.runId);
 
     if (!run) {
         return {
@@ -310,6 +387,45 @@ export async function buildRunRecoveryResponse(params: {
         };
     }
 
+    const latestUserInputRequiredEvent = run.runPhase === "ask"
+        ? await prisma.runEvent.findFirst({
+            where: { runId: run.id, type: "user_input_required" },
+            orderBy: { sequence: "desc" },
+            select: { sequence: true },
+        })
+        : null;
+    const latestUserInputResolvedEvent = run.runPhase === "ask"
+        ? await prisma.runEvent.findFirst({
+            where: { runId: run.id, type: "user_input_resolved" },
+            orderBy: { sequence: "desc" },
+            select: { sequence: true },
+        })
+        : null;
+
+    const shouldSurfacePausedTerminal =
+        run.status === "running"
+        && run.runPhase === "ask"
+        && latestUserInputRequiredEvent !== null
+        && (
+            latestUserInputResolvedEvent === null
+            || latestUserInputResolvedEvent.sequence < latestUserInputRequiredEvent.sequence
+        );
+    let terminalizedByRecovery = false;
+    if (!shouldSurfacePausedTerminal) {
+        const reconciliation = await reconcileAbandonedRun({
+            run,
+            conversationId: params.conversationId,
+            now,
+            staleMs,
+        });
+        run = reconciliation.run;
+        terminalizedByRecovery = reconciliation.terminalizedByRecovery;
+    }
+
+    // Snapshot replayable events only after run ownership has converged. If a
+    // worker committed its final assistant event while stale reconciliation
+    // lost the compare-and-set race, this query must observe that event before
+    // the synthetic run_end is returned.
     const [events, lastEvent] = await Promise.all([
         prisma.runEvent.findMany({
             where: {
@@ -333,21 +449,6 @@ export async function buildRunRecoveryResponse(params: {
             select: { sequence: true },
         }),
     ]);
-    const latestUserInputRequiredEvent = run.runPhase === "ask"
-        ? await prisma.runEvent.findFirst({
-            where: { runId: run.id, type: "user_input_required" },
-            orderBy: { sequence: "desc" },
-            select: { sequence: true },
-        })
-        : null;
-    const latestUserInputResolvedEvent = run.runPhase === "ask"
-        ? await prisma.runEvent.findFirst({
-            where: { runId: run.id, type: "user_input_resolved" },
-            orderBy: { sequence: "desc" },
-            select: { sequence: true },
-        })
-        : null;
-
     const artifactIds = [...new Set(events.map((event) => event.artifactId).filter((value): value is string => Boolean(value)))];
     const artifacts = artifactIds.length === 0
         ? []
@@ -363,30 +464,28 @@ export async function buildRunRecoveryResponse(params: {
             },
         }) as RecoveryArtifactRecord[];
     const artifactsById = new Map(artifacts.map((artifact) => [artifact.id, artifact]));
-
+    const replayRun = run;
     const replayableEvents = events
-        .map((event) => toReplayableChunk(run, event, artifactsById))
+        .map((event) => toReplayableChunk(replayRun, event, artifactsById))
         .filter((event): event is RunRecoveryReplayableChunk => event !== null);
+
     const convergence = assessRunConvergence(run, now, staleMs);
-    const shouldSurfacePausedTerminal =
-        run.status === "running"
-        && run.runPhase === "ask"
-        && latestUserInputRequiredEvent !== null
-        && (
-            latestUserInputResolvedEvent === null
-            || latestUserInputResolvedEvent.sequence < latestUserInputRequiredEvent.sequence
-        );
     const effectiveRunStatus: RunRecoveryResponse["runStatus"] =
         shouldSurfacePausedTerminal ? "paused" : run.status;
-    const terminalEvent = shouldSurfacePausedTerminal
-        ? { chunk: buildSyntheticTerminalReconciliationChunk(run, "paused") }
-        : run.status === "running"
-            ? null
-            : { chunk: buildSyntheticTerminalReconciliationChunk(run) };
     const shouldResolveContinuation =
-        run.status === "running"
-        && !shouldSurfacePausedTerminal
-        && convergence.recoveryRecommendation !== "reconnect";
+        !shouldSurfacePausedTerminal
+        && (
+            terminalizedByRecovery
+            || (
+                run.status === "failed"
+                && run.finalizationState === "completed"
+                && run.abnormalEndClassification === "network_disconnect"
+            )
+            || (
+                run.status === "running"
+                && convergence.recoveryRecommendation !== "reconnect"
+            )
+        );
     const checkpointContinuationSource = !shouldResolveContinuation
         ? null
         : await resolveLatestValidRunCheckpoint({
@@ -406,6 +505,14 @@ export async function buildRunRecoveryResponse(params: {
         : durableContinuationSource
             ? "continue_from_durable_state"
             : convergence.recoveryRecommendation;
+    const hasSafeContinuation = Boolean(checkpointContinuationSource || durableContinuationSource);
+    const terminalEvent = shouldSurfacePausedTerminal
+        ? { chunk: buildSyntheticTerminalReconciliationChunk(run, "paused") }
+        : hasSafeContinuation
+            ? null
+            : run.status === "running"
+                ? null
+                : { chunk: buildSyntheticTerminalReconciliationChunk(run) };
 
     return {
         conversationId: params.conversationId,

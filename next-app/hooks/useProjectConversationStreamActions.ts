@@ -104,7 +104,9 @@ export type ProjectConversationStreamActionsDeps = {
     selectedModel: SelectableModelId;
     reasoningEffort: ReasoningEffort;
     deliveryMode: DeliveryMode;
-    resetDeliveryMode: () => void;
+    beginDeliveryRequest: (mode: DeliveryMode) => void;
+    completeDeliveryRequest: () => void;
+    setActualDeliveryMode: (mode: DeliveryMode) => void;
     convo: ReturnType<typeof useProjectConversationManager>;
     onNavigate: (url: string) => void;
 };
@@ -131,7 +133,9 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         selectedModel,
         reasoningEffort,
         deliveryMode,
-        resetDeliveryMode,
+        beginDeliveryRequest,
+        completeDeliveryRequest,
+        setActualDeliveryMode,
         convo,
         onNavigate,
     } = deps;
@@ -450,6 +454,9 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         let recoveredConversationId = params.conversationId;
 
         const applyRecoveryChunk = async (chunk: AIStreamChunk) => {
+            if (chunk.actualDeliveryMode) {
+                setActualDeliveryMode(chunk.actualDeliveryMode);
+            }
             const nextState = handleProjectConversationStreamChunk(
                 chunk,
                 replayState,
@@ -541,6 +548,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         setCurrentRunId,
         setPendingChoices,
         setPendingUserInput,
+        setActualDeliveryMode,
         stateRef,
         streamGenRef,
         updateState,
@@ -571,6 +579,11 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
     }> => {
         const { body, page, section, convId, replaceRunId, onPlanStepUpdate } = params;
         let effectiveConvId = convId;
+        const requestOptions = (body.options as { deliveryMode?: unknown } | undefined) ?? {};
+        const requestedDeliveryMode: DeliveryMode = requestOptions.deliveryMode === "priority"
+            ? "priority"
+            : "standard";
+        beginDeliveryRequest(requestedDeliveryMode);
 
         // Stream lifecycle guards
         isLoadingRef.current = true;
@@ -804,6 +817,12 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
             }
 
             const applyChunk = (data: import("@/types/ai").AIStreamChunk) => {
+                if (data.actualDeliveryMode) {
+                    setActualDeliveryMode(data.actualDeliveryMode);
+                }
+                if (data.type === "error") {
+                    emittedTerminalError = true;
+                }
                 const runningToolCallIdsBeforeChunk = runningToolCallIds;
                 const nextState = handleProjectConversationStreamChunk(
                     data,
@@ -936,7 +955,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 reader,
                 signal: controller.signal,
                 shouldContinue: () => streamGenRef.current === myGen,
-                throwOnErrorChunk: true,
+                throwOnErrorChunk: false,
                 onChunk: applyChunk,
             });
             runStatus = summary.runStatus;
@@ -944,10 +963,13 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
             streamErrorMessage = summary.errorMessage ? formatStreamErrorForUI(summary.errorMessage) : null;
             actualModel = summary.actualModel;
             actualModelSource = summary.actualModelSource;
-            terminalReason = summary.terminalReason;
+            terminalReason = runStatus !== null
+                ? terminalReasonFromRunEnd({ runStatus, stopReason })
+                : summary.terminalReason;
+            emittedTerminalError = emittedTerminalError || summary.errorMessage !== null;
 
-            const recovered = await attemptRecoveryFromAbnormalEnd();
-            if (!recovered && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
+            const recovered = runStatus === null && await attemptRecoveryFromAbnormalEnd();
+            if (!recovered && runStatus === null && shouldFailRunningToolsOnAbnormalEnd(terminalReason)) {
                 return {
                     success: false,
                     aborted: false,
@@ -1006,7 +1028,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
             convo.loadConversations();
             emitTerminalMetric(terminalReason ?? "completed", runStatus);
             return {
-                success: true,
+                success: isSuccessfulTerminalReason(terminalReason),
                 aborted: false,
                 runStatus,
                 stopReason,
@@ -1223,6 +1245,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 isLoadingRef.current = false;
                 setIsLoading(false);
                 setStreamPhase("idle");
+                completeDeliveryRequest();
                 releaseSendWaiters();
             }
             if (abortControllerRef.current === controller) {
@@ -1288,6 +1311,8 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         abortControllerRef,
         appendProjectRecoveryCheckpoint,
         appendProjectRecoveryError,
+        beginDeliveryRequest,
+        completeDeliveryRequest,
         convo,
         currentRunId,
         isLoadingRef,
@@ -1301,6 +1326,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
         setIsLoading,
         setPendingChoices,
         setPendingUserInput,
+        setActualDeliveryMode,
         setStreamPhase,
         streamGenRef,
         stripReservedAssistantMessages,
@@ -1415,8 +1441,6 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 }
             }
 
-            resetDeliveryMode();
-
             // Build attachment metadata and augmented message for AI
             let messageForAI = trimmed;
             let attachmentsMeta: ProjectConversationMessageAttachment[] | undefined;
@@ -1524,7 +1548,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 ));
             }
         },
-        [updateState, projectId, beginRunCancellation, convo, pendingAttachment, pendingUserInput, reasoningMode, selectedModel, reasoningEffort, deliveryMode, resetDeliveryMode, runStream, setPendingChoices, setPendingAttachment, setPendingUserInput, isLoadingRef, currentRunId, stopLocalStream, waitForActiveSendRelease]
+        [updateState, projectId, beginRunCancellation, convo, pendingAttachment, pendingUserInput, reasoningMode, selectedModel, reasoningEffort, deliveryMode, runStream, setPendingChoices, setPendingAttachment, setPendingUserInput, isLoadingRef, currentRunId, stopLocalStream, waitForActiveSendRelease]
     );
 
     const executePlanAction = useCallback(async (artifactId: string, selectedIndexes: number[]) => {
@@ -1567,7 +1591,6 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
             reasoningEffort,
             deliveryMode,
         });
-        resetDeliveryMode();
         const reasoningRequest = resolveReasoningRequest({
             preferredMode: reasoningMode,
             modelId: generationSnapshot.model,
@@ -1659,7 +1682,7 @@ export function useProjectConversationStreamActions(deps: ProjectConversationStr
                 messages: [...prev.messages, feedback],
             }));
         }
-    }, [beginRunCancellation, convo, currentRunId, projectId, reasoningMode, selectedModel, reasoningEffort, deliveryMode, resetDeliveryMode, runStream, updateState, setArtifacts, setPendingChoices, isLoadingRef, stateRef, stopLocalStream]);
+    }, [beginRunCancellation, convo, currentRunId, projectId, reasoningMode, selectedModel, reasoningEffort, deliveryMode, runStream, updateState, setArtifacts, setPendingChoices, isLoadingRef, stateRef, stopLocalStream]);
 
     const reviewArtifactActionLocal = useCallback(async (
         artifactId: string,
