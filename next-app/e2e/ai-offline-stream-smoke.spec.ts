@@ -13,6 +13,10 @@ test("ai offline stream smoke: a real authenticated chat exits loading and offer
   const seedKey = await openAuthenticatedAi(page, testInfo);
   const conversationId = await seedGlobalConversation(seedKey);
   await page.goto(`/ai?conversation=${encodeURIComponent(conversationId)}`, { waitUntil: "load" });
+  // The conversation query is validated by the app router after the document
+  // load. Wait for that navigation to quiesce before arming the one-shot
+  // stream route, otherwise a late router commit can replace the test page.
+  await page.waitForLoadState("networkidle");
   await expect(page.getByLabel("Copilot prompt")).toBeVisible();
 
   await page.route("**/api/ai/stream", async (route) => {
