@@ -110,7 +110,7 @@ The agent should not merely "feel smart." It should be:
   - pending clarification lookup prefers first-class decision records and falls back to run events for legacy lineages
 - Tool boundaries are materially better:
   - typed tool payload parsing
-  - structured tool-boundary failures
+  - structured tool-boundary failures, including executor and upstream failures that retain stable codes, retryability, status, and retry timing through tool results and durable run events
   - no fake `{}` coercion for invalid payloads
   - mutating-tool idempotency receipts now settle on returned, thrown, and aborted executor failures; stale running leases remain the crash/process-death fallback instead of a normal cancellation path
   - loop cancellation propagates into nested bulk-screening model calls, late read-only results are rejected after abort, artifact mutation phases recheck ownership before writes, and tool spans close on every terminal path

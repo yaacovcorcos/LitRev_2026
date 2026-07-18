@@ -131,6 +131,33 @@ describe("tool schema validation envelope", () => {
         expect(result.result).not.toHaveProperty("untrustedExtra");
     });
 
+    it("returns typed retry metadata when a tool reports an upstream failure", async () => {
+        mocks.searchPubMed.mockRejectedValueOnce(new Error("PubMed gateway timeout"));
+
+        const result = await executeTool("search_pubmed", {
+            query: "statins",
+        }, "call-upstream-timeout");
+
+        expect(result.error).toBe("PubMed gateway timeout");
+        expect(result.errorMeta).toMatchObject({
+            kind: "tool_execution",
+            code: "TOOL_UPSTREAM_TIMEOUT",
+            retryable: true,
+            source: "tool_upstream",
+        });
+    });
+
+    it("returns a deterministic typed failure for unknown tools", async () => {
+        const result = await executeTool("missing_tool", {}, "call-missing");
+
+        expect(result.errorMeta).toMatchObject({
+            kind: "tool_execution",
+            code: "TOOL_NOT_FOUND",
+            retryable: false,
+            source: "tool_executor",
+        });
+    });
+
     it("returns classified mutation error metadata for invalid update_protocol values", async () => {
         const result = await executeTool("update_protocol", {
             field: "methodology.qualityAssessmentTool",

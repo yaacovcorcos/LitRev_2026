@@ -213,7 +213,11 @@ async function persistToolResultBoundary(params: {
             runId: params.runId,
             type: "tool_result",
             payload: params.toolResult,
-            extras: { toolName: params.toolName, durationMs: params.durationMs },
+            extras: {
+                toolName: params.toolName,
+                durationMs: params.durationMs,
+                errorCode: params.toolResult.errorMeta?.code,
+            },
             failureMode: "degrade",
             degradationReason: "tool_result_persistence_failed",
             logContext: `tool_result:${params.toolName}`,
@@ -228,7 +232,11 @@ async function persistToolResultBoundary(params: {
                 params.runId,
                 "tool_result",
                 params.toolResult,
-                { toolName: params.toolName, durationMs: params.durationMs },
+                {
+                    toolName: params.toolName,
+                    durationMs: params.durationMs,
+                    errorCode: params.toolResult.errorMeta?.code,
+                },
             );
             await createToolResultCheckpointInTransaction(tx, {
                 runId: params.runId,
@@ -506,6 +514,8 @@ export async function executeToolWithAutonomyCore(
 
     let spanSuccess = false;
     let spanError: string | undefined;
+    let spanErrorCode: string | undefined;
+    let spanRetryable: boolean | undefined;
     try {
         let result = await service.executeToolWithMiddleware(
             toolRequest,
@@ -532,6 +542,8 @@ export async function executeToolWithAutonomyCore(
 
         throwIfAborted(toolRequest.context?.signal);
         spanSuccess = !result.error;
+        spanErrorCode = result.errorMeta?.code;
+        spanRetryable = result.errorMeta?.retryable;
         return result;
     } catch (error) {
         spanError = formatError(error);
@@ -543,6 +555,8 @@ export async function executeToolWithAutonomyCore(
                     success: spanSuccess,
                     durationMs: Date.now() - startTime,
                     ...(spanError ? { error: spanError } : {}),
+                    ...(spanErrorCode ? { errorCode: spanErrorCode } : {}),
+                    ...(spanRetryable !== undefined ? { retryable: spanRetryable } : {}),
                 },
             }).end();
         } catch {
