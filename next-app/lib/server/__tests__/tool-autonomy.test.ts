@@ -251,6 +251,58 @@ describe("tool-autonomy", () => {
     expect(result.error).toBeUndefined();
   });
 
+  it("persists and traces structured tool failure metadata", async () => {
+    mocks.getTool.mockReturnValue({
+      definition: { name: "search_pubmed", description: "d", parameters: {} },
+      autonomy: { defaultLevel: 2, allowedRange: [1, 4] },
+    });
+    mocks.getToolAutonomyLevel.mockReturnValue(2);
+    const errorMeta = {
+      kind: "tool_execution",
+      code: "TOOL_UPSTREAM_TIMEOUT",
+      retryable: true,
+      source: "tool_upstream",
+      message: "PubMed timed out",
+    } as const;
+
+    const result = await executeToolWithAutonomyCore({
+      service: {
+        executeToolWithMiddleware: vi.fn().mockResolvedValue({
+          callId: "tc-search-failure",
+          result: null,
+          error: errorMeta.message,
+          errorMeta,
+        }),
+      } as never,
+      toolCall: {
+        id: "tc-search-failure",
+        name: "search_pubmed",
+        arguments: { query: "diabetes" },
+      },
+      runId: "run-1",
+      projectId: "project-1",
+      conversationId: "conversation-1",
+      userId: "user-1",
+      agentMode: "search",
+    });
+
+    expect(result.errorMeta).toEqual(errorMeta);
+    expect(mocks.emitEventWithinTransaction).toHaveBeenCalledWith(
+      expect.anything(),
+      "run-1",
+      "tool_result",
+      expect.objectContaining({ errorMeta }),
+      expect.objectContaining({ errorCode: "TOOL_UPSTREAM_TIMEOUT" }),
+    );
+    expect(mocks.span.update).toHaveBeenCalledWith(expect.objectContaining({
+      output: expect.objectContaining({
+        success: false,
+        errorCode: "TOOL_UPSTREAM_TIMEOUT",
+        retryable: true,
+      }),
+    }));
+  });
+
   it("executes non-mutating PDF previews at review-first level 2", async () => {
     mocks.getTool.mockReturnValue({
       definition: { name: "preview_study_pdf_update", description: "d", parameters: {} },

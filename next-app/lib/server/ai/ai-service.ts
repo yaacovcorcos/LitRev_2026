@@ -129,6 +129,7 @@ import { resolveReasoningMode } from "@/lib/ai/reasoning-visibility";
 import { normalizeChatOptionsForModel } from "./request-policy";
 import { normalizeUserInputRequestWithDecisionRequest } from "@/lib/ai/decision-requests";
 import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
+import { ensureToolResultErrorMeta } from "./tool-errors";
 import { createToolPrerequisiteMiddleware, evaluateToolPrerequisites } from "./tool-prerequisites";
 import { createToolAvailabilityPolicyMiddleware } from "./tool-availability-policy";
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
@@ -746,7 +747,7 @@ class AIService {
                 args: inputValidation.data as Record<string, unknown>,
             };
         }
-        return executeWithToolMiddleware(
+        const result = await executeWithToolMiddleware(
             request,
             this.toolMiddlewares,
             async (resolvedRequest) => {
@@ -761,6 +762,7 @@ class AIService {
                     : result;
             },
         );
+        return ensureToolResultErrorMeta(request.name, result);
     }
 
     /**
