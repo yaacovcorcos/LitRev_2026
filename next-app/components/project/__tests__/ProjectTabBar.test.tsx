@@ -28,6 +28,7 @@ describe("ProjectTabBar intent boost", () => {
         activeTab: "overview" as const,
         onTabClick: vi.fn(),
         onConversationClick: vi.fn(),
+        isConversationLoading: false,
     };
 
     beforeEach(() => {
@@ -104,6 +105,23 @@ describe("ProjectTabBar intent boost", () => {
         const ledgerTab = screen.getByRole("tab", { name: /Ledger/i });
         fireEvent.focus(ledgerTab);
         expect(mockWarmDomain).not.toHaveBeenCalled();
+    });
+
+    it("holds conversation navigation until durable conversations finish loading", () => {
+        const onConversationClick = vi.fn();
+        render(
+            <ProjectTabBar
+                {...defaultProps}
+                isConversationLoading
+                onConversationClick={onConversationClick}
+            />,
+        );
+
+        const conversationMode = screen.getByRole("radio", { name: "Conversation mode" });
+        expect((conversationMode as HTMLButtonElement).disabled).toBe(true);
+        expect(conversationMode.getAttribute("aria-busy")).toBe("true");
+        fireEvent.click(conversationMode);
+        expect(onConversationClick).not.toHaveBeenCalled();
     });
 
     it("does not warm domains on coarse-pointer or mobile contexts", () => {

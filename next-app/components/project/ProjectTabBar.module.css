@@ -44,6 +44,15 @@
     color: var(--text-primary);
 }
 
+.modeBtn:disabled {
+    cursor: wait;
+    opacity: 0.65;
+}
+
+.modeBtn:disabled:hover {
+    color: var(--text-secondary);
+}
+
 .modeBtn:focus-visible {
     outline: none;
     box-shadow: var(--shadow-focus-ring);

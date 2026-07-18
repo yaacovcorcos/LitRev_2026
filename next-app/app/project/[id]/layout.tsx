@@ -70,6 +70,7 @@ function ProjectShellInner({
         setStudyFilter,
         selectConversation,
         newConversation,
+        isLoadingConversations,
     } = useProjectConversation();
     const { registerCopilotToggle } = useCommandPalette();
     const { getProjectById, deleteProject } = useProjects();
@@ -471,6 +472,7 @@ function ProjectShellInner({
                             activeTab={activeTab}
                             onTabClick={handleTabClick}
                             onConversationClick={handleConversationClick}
+                            isConversationLoading={isLoadingConversations}
                             projectName={project?.name}
                             onDeleteProject={handleDeleteProject}
                         />
