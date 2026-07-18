@@ -79,11 +79,7 @@ export const semanticScholarSearchTool: AITool = {
             if (context?.signal?.aborted || isAbortLikeError(error)) {
                 throw error;
             }
-            return {
-                callId: "",
-                result: null,
-                error: error instanceof Error ? error.message : "Semantic Scholar search failed",
-            };
+            throw error;
         }
     },
 };

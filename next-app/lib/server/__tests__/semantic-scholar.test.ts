@@ -1,4 +1,9 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
+
+vi.mock("@/lib/server/search/provider-throttle", () => ({
+    fetchSearchProvider: vi.fn((_provider, input, init) => fetch(input, init)),
+}));
+
 import {
     parseS2Paper,
     buildS2PaperIds,

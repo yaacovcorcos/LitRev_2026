@@ -29,6 +29,16 @@ import { buildS2PaperIds, getRecommendations, searchSemanticScholar } from "@/li
 import { listStudies } from "@/lib/server/ledger";
 import { logServerWarn } from "@/lib/server/logging";
 
+function upstreamRateLimit(provider: string): Error & {
+    status: number;
+    headers: Record<string, string>;
+} {
+    return Object.assign(new Error(`${provider} rate limit exceeded`), {
+        status: 429,
+        headers: { "retry-after": "2" },
+    });
+}
+
 describe("search tool output contracts", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -226,5 +236,66 @@ describe("search tool output contracts", () => {
         });
         expect((result.result as { results: Array<{ year?: number }> }).results[0]?.year).toBeUndefined();
         expect(logServerWarn).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        {
+            name: "search_pubmed",
+            execute: () => executeTool("search_pubmed", { query: "limited" }, "call-limit-pubmed"),
+            reject: () => vi.mocked(searchPubMed).mockRejectedValueOnce(upstreamRateLimit("PubMed")),
+        },
+        {
+            name: "search_openalex",
+            execute: () => executeTool("search_openalex", { query: "limited" }, "call-limit-openalex"),
+            reject: () => vi.mocked(searchOpenAlex).mockRejectedValueOnce(upstreamRateLimit("OpenAlex")),
+        },
+        {
+            name: "search_semantic_scholar",
+            execute: () => executeTool("search_semantic_scholar", { query: "limited" }, "call-limit-s2"),
+            reject: () => vi.mocked(searchSemanticScholar).mockRejectedValueOnce(upstreamRateLimit("Semantic Scholar")),
+        },
+    ])("preserves structured upstream failures from $name", async ({ execute, reject }) => {
+        reject();
+
+        const result = await execute();
+
+        expect(result.errorMeta).toMatchObject({
+            kind: "tool_execution",
+            code: "TOOL_UPSTREAM_RATE_LIMITED",
+            retryable: true,
+            source: "tool_upstream",
+            status: 429,
+            headers: { "retry-after-ms": "2000" },
+        });
+    });
+
+    it("preserves structured upstream failures from Semantic Scholar recommendations", async () => {
+        vi.mocked(listStudies).mockResolvedValueOnce([{
+            id: "study-limited",
+            title: "Seed Study",
+            authors: "Author Seed",
+            year: 2024,
+            status: "pending",
+            quality: "-",
+            details: { triageDecision: "keep", doi: "10.1000/limited" },
+        }]);
+        vi.mocked(buildS2PaperIds)
+            .mockReturnValueOnce(["DOI:10.1000/limited"])
+            .mockReturnValueOnce([]);
+        vi.mocked(getRecommendations).mockRejectedValueOnce(upstreamRateLimit("Semantic Scholar"));
+
+        const result = await executeTool(
+            "recommend_studies",
+            { limit: 1 },
+            "call-limit-recommendations",
+            { projectId: "project-1" },
+        );
+
+        expect(result.errorMeta).toMatchObject({
+            code: "TOOL_UPSTREAM_RATE_LIMITED",
+            retryable: true,
+            status: 429,
+            headers: { "retry-after-ms": "2000" },
+        });
     });
 });
