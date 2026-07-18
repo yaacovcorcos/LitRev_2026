@@ -13,6 +13,7 @@ import { HARD_CAPS } from "@/types/agent";
 import { DELEGATION_TOOL_NAMES, getContextualAllowedTools } from "@/lib/agent/router";
 import { isDelegationEnabled } from "@/lib/agent/feature-flags";
 import { isAbortLikeError, throwIfAborted } from "@/lib/abort";
+import { createToolExecutionErrorEnvelope, ensureToolResultErrorMeta } from "@/lib/server/ai/tool-errors";
 import { pubmedSearchTool } from "./pubmed-search";
 import { addToLedgerTool } from "./add-to-ledger";
 import { excludeStudyTool } from "./exclude-study";
@@ -293,10 +294,18 @@ export async function executeTool(
 ): Promise<ToolResult> {
     const tool = getTool(name);
     if (!tool) {
+        const error = `Tool not found: ${name}`;
         return {
             callId,
             result: null,
-            error: `Tool not found: ${name}`,
+            error,
+            errorMeta: createToolExecutionErrorEnvelope({
+                toolName: name,
+                error,
+                code: "TOOL_NOT_FOUND",
+                source: "tool_executor",
+                retryable: false,
+            }),
         };
     }
 
@@ -340,19 +349,25 @@ export async function executeTool(
             validatedResult = outputValidation.data;
         }
 
-        return {
+        return ensureToolResultErrorMeta(name, {
             ...result,
             callId,
             result: validatedResult,
-        };
+        });
     } catch (error) {
         if (context?.signal?.aborted || isAbortLikeError(error)) {
             throw error;
         }
+        const message = error instanceof Error ? error.message : "Tool execution failed";
         return {
             callId,
             result: null,
-            error: error instanceof Error ? error.message : "Tool execution failed",
+            error: message,
+            errorMeta: createToolExecutionErrorEnvelope({
+                toolName: name,
+                error,
+                message,
+            }),
         };
     }
 }

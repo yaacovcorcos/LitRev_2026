@@ -28,7 +28,7 @@ describe("ChatComposerCore mode selection", () => {
         vi.clearAllMocks();
     });
 
-    it("reserves the mode pill row before the first prompt text appears", () => {
+    it("keeps the mode pill visible before the first prompt text appears", () => {
         const { container } = render(
             <ChatComposerCore
                 page="overview"
@@ -41,7 +41,8 @@ describe("ChatComposerCore mode selection", () => {
         );
 
         const slot = container.querySelector('[data-mode-pill-slot="true"]');
-        expect(slot?.getAttribute("data-mode-pill-visible")).toBe("false");
+        expect(slot?.getAttribute("data-mode-pill-visible")).toBe("true");
+        expect(screen.getByText("General (auto)")).toBeTruthy();
 
         fireEvent.change(screen.getByLabelText("Copilot prompt"), {
             target: { value: "Find studies about diabetes" },

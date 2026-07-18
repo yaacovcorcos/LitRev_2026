@@ -73,11 +73,7 @@ export const pubmedSearchTool: AITool = {
             if (context?.signal?.aborted || isAbortLikeError(error)) {
                 throw error;
             }
-            return {
-                callId: "",
-                result: null,
-                error: error instanceof Error ? error.message : "PubMed search failed",
-            };
+            throw error;
         }
     },
 };

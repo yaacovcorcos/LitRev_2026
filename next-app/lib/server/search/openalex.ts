@@ -5,15 +5,13 @@ import { isAbortLikeError, throwIfAborted } from "@/lib/abort";
 import { fetchCrossrefMetadata, normalizeDoi } from "@/lib/server/citation-metadata";
 import { logServerError } from "@/lib/server/logging";
 import { parsePublicationYearPrefix } from "@/lib/server/search/publication-year";
-import { sleep } from "@/lib/server/utils/retry";
+import { fetchSearchProvider } from "@/lib/server/search/provider-throttle";
 
 const OPENALEX_BASE = "https://api.openalex.org/works";
 const MAX_RESULTS = 100;
 const CROSSREF_ENRICH_LIMIT = 10;
 const CROSSREF_ENRICH_TIMEOUT_MS = 1200;
 const CROSSREF_ENRICH_CONCURRENCY = 3;
-
-let lastRequestTime = 0;
 
 type OpenAlexWork = {
   id?: string;
@@ -59,19 +57,8 @@ type YearRange = {
   end?: number;
 };
 
-function getThrottleInterval(): number {
-  return 120;
-}
-
 async function throttledFetch(url: string, signal?: AbortSignal): Promise<Response> {
-  const interval = getThrottleInterval();
-  const now = Date.now();
-  const elapsed = now - lastRequestTime;
-  if (elapsed < interval) {
-    await sleep(interval - elapsed, signal);
-  }
-  lastRequestTime = Date.now();
-  return fetch(url, {
+  return fetchSearchProvider("openalex", url, {
     signal,
     headers: {
       Accept: "application/json",
@@ -300,9 +287,6 @@ export async function searchOpenAlex(
 
   const url = `${OPENALEX_BASE}?${params.toString()}`;
   const res = await throttledFetch(url, options?.signal);
-  if (!res.ok) {
-    throw new Error(`OpenAlex search failed: ${res.status}`);
-  }
 
   const data = (await res.json()) as OpenAlexSearchResponse;
   const works = data.results ?? [];

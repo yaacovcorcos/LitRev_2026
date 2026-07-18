@@ -83,7 +83,9 @@ LitRev should learn aggressively from the best external systems without drifting
 
 ## Current Architecture
 
-- Typed tool-boundary failures already survive provider -> runtime -> UI as structured errors.
+- Typed tool-boundary failures survive provider -> runtime -> UI as structured errors; executor and upstream failures also retain stable codes, retryability, status, and retry timing in durable tool-result telemetry.
+- Read-only tool execution now passes through one bounded deadline/retry policy with cancellation-safe backoff; mutation and decision tools remain single-attempt and attached to their owning lifecycle so reliability work cannot create duplicate writes.
+- Search-provider reliability now has deterministic transport tests plus an opt-in real-Postgres concurrency proof for shared slot assignment; provider errors retain HTTP status and retry timing instead of collapsing into provider-specific strings.
 - Shared recovery and continuation are materially stronger than before.
 - The repo already has:
   - durable testing doctrine in [`docs/agents/testing-agent-contract.md`](../agents/testing-agent-contract.md)

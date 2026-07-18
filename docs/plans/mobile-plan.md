@@ -15,8 +15,7 @@ This plan is the long-term implementation contract for how LitRev adapts across 
 - Shared mobile viewport runtime exists in `next-app/components/mobile/MobileViewportRuntime.tsx` and is mounted globally from `next-app/app/providers.tsx`.
 - Shared root scroll-lock policy exists in `next-app/lib/mobile/scroll-lock-policy.ts`.
 - Shared responsive layout contract is now codified in `docs/plans/mobile-layout-contract.md` and backed by global CSS artifacts in `next-app/styles/tokens.css`, `next-app/styles/base.css`, and `next-app/styles/mobile-layout.css`.
-- Some existing mobile-v2 surfaces are already flag-gated and default-off:
-  - `NEXT_PUBLIC_MOBILE_VP_V2`
+- The certified shared viewport runtime is default-on and remains rollback-gated by `NEXT_PUBLIC_MOBILE_VP_V2=0`; route-specific mobile-v2 surfaces remain default-off:
   - `NEXT_PUBLIC_MOBILE_AI_V2`
   - `NEXT_PUBLIC_MOBILE_POPUP_V2`
   - `NEXT_PUBLIC_MOBILE_SCROLL_LOCK_V2`
@@ -255,7 +254,7 @@ Primary KPI lenses:
 
 ## Implementation Order
 Build in this order:
-1. `NEXT_PUBLIC_MOBILE_VP_V2`
+1. `NEXT_PUBLIC_MOBILE_VP_V2` is default-on after foundation certification; retain the explicit flag only for rollback
 2. `MOB-FND-001` responsive tier contract
 3. `MOB-FND-002` shared responsive layout contract
 4. `MOB-FND-003` app shell + sidebar responsive adoption

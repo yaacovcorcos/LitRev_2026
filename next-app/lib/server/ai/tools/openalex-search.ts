@@ -84,11 +84,7 @@ export const openAlexSearchTool: AITool = {
             if (context?.signal?.aborted || isAbortLikeError(error)) {
                 throw error;
             }
-            return {
-                callId: "",
-                result: null,
-                error: error instanceof Error ? error.message : "OpenAlex search failed",
-            };
+            throw error;
         }
     },
 };

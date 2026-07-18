@@ -36,9 +36,25 @@ export function isSelectableModelReady(
 }
 
 /**
- * Synchronizes the client selector with server-only provider-key readiness.
- * Loading and request failures stay explicit so the UI never treats an
- * unknown provider state as permission to send.
+ * A readiness request is advisory; the server send path remains authoritative.
+ * Preserve the hard block while loading and for explicitly unavailable models,
+ * but do not deadlock the composer because the readiness request itself failed.
+ */
+export function isSelectableModelSendAllowed(
+    availability: ModelAvailabilityMap | undefined,
+    status: ModelAvailabilityStatus | undefined,
+    modelId: SelectableModelId,
+): boolean {
+    if (status === "loading") return false;
+    if (status === "error") return availability?.[modelId] !== false;
+    return isSelectableModelReady(availability, status, modelId);
+}
+
+/**
+ * Synchronizes client controls with server-only provider-key readiness.
+ * Loading and request failures stay explicit for status and model-selection
+ * UI; the composer separately permits a server-authoritative send after a
+ * transport failure.
  */
 export function useModelAvailability(): ModelAvailabilityState {
     const [requestVersion, setRequestVersion] = useState(0);

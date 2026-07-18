@@ -207,7 +207,7 @@ describe("ChatComposerCore model control", () => {
         expect(screen.getByText("figure.png")).toBeTruthy();
     });
 
-    it("blocks unknown model readiness and exposes retry", () => {
+    it("allows sending after a readiness transport failure and still exposes retry", () => {
         const sendMessage = vi.fn();
         const onRetryModelAvailability = vi.fn();
 
@@ -231,6 +231,32 @@ describe("ChatComposerCore model control", () => {
         fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
         expect(onRetryModelAvailability).toHaveBeenCalledTimes(1);
+        expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false);
+
+        fireEvent.click(screen.getByRole("button", { name: "Send" }));
+        expect(sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps explicitly unavailable models blocked after a readiness error", () => {
+        const sendMessage = vi.fn();
+
+        render(
+            <ChatComposerCore
+                page="overview"
+                inputPlaceholder="Ask"
+                isLoading={false}
+                sendMessage={sendMessage}
+                cancelStream={vi.fn()}
+                selectedModel="gpt-5.6-luna"
+                onModelChange={vi.fn()}
+                modelAvailability={{ "gpt-5.6-luna": false }}
+                modelAvailabilityStatus="error"
+                showVoice={false}
+            />,
+        );
+
+        fireEvent.change(screen.getByLabelText("Copilot prompt"), { target: { value: "Test" } });
+
         expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
         expect(sendMessage).not.toHaveBeenCalled();
     });

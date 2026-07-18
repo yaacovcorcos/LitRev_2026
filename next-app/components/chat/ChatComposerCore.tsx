@@ -43,7 +43,7 @@ import { getContextTargetKey } from "@/lib/context-capture/targets";
 import { useHydrated } from "@/hooks/useHydrated";
 import { useWindowEvent } from "@/hooks/useWindowEvent";
 import {
-    isSelectableModelReady,
+    isSelectableModelSendAllowed,
     type ModelAvailabilityMap,
     type ModelAvailabilityStatus,
 } from "@/hooks/useModelAvailability";
@@ -258,7 +258,7 @@ export function ChatComposerCore({
     const deliveryMode = selectedModelInfo.deliveryModes.includes(deliveryModeProp ?? "standard")
         ? (deliveryModeProp ?? "standard")
         : "standard";
-    const selectedModelReady = isSelectableModelReady(
+    const selectedModelSendAllowed = isSelectableModelSendAllowed(
         modelAvailability,
         modelAvailabilityStatus,
         selectedModel,
@@ -346,7 +346,7 @@ export function ChatComposerCore({
         const activeAttachment = pendingAttachment;
         if (!text && !activeAttachment) return false;
         if (activeAttachment?.extraction.status === "failed") return false;
-        if (!selectedModelReady || hasUnsupportedImageAttachment) return false;
+        if (!selectedModelSendAllowed || hasUnsupportedImageAttachment) return false;
 
         const nextContextTargets = attachedContextTargets.length > 0
             ? attachedContextTargets
@@ -405,7 +405,7 @@ export function ChatComposerCore({
         page,
         pendingAttachment,
         restoreComposerInputIfEmpty,
-        selectedModelReady,
+        selectedModelSendAllowed,
         hasUnsupportedImageAttachment,
         section,
         selectedModel,
@@ -502,8 +502,8 @@ export function ChatComposerCore({
     const modelReadinessMessage = modelAvailabilityStatus === "loading"
         ? "Checking model setup before sending…"
         : modelAvailabilityStatus === "error"
-            ? "Could not verify model setup. Retry before sending."
-            : !selectedModelReady
+            ? "Could not verify model setup. You can retry or send anyway."
+            : !selectedModelSendAllowed
                 ? `${selectedModelInfo.name} is not configured. Choose another model.`
                 : null;
     const canSubmit = voiceState === "recording"
@@ -512,7 +512,7 @@ export function ChatComposerCore({
             && voiceState === "idle"
             && !hasAttachmentExtractionFailure
             && !hasUnsupportedImageAttachment
-            && selectedModelReady
+            && selectedModelSendAllowed
             && (!!input.trim() || !!pendingAttachment);
     const showVoiceStatusPresentation = showVoice && isVoiceBusy;
     const canQueueNext = !interactionLocked
@@ -637,7 +637,10 @@ export function ChatComposerCore({
 
     const ALL_MODES: AgentMode[] = getUserSelectableAgentModes();
     const isManualMode = isManualComposerModeSelection(modeSelection);
-    const shouldShowModePill = Boolean(input.trim() || isManualMode);
+    // Keep the mode control discoverable before the first prompt. The slot used
+    // to remain reserved while the pill itself was hidden, which created a
+    // phantom band above the textarea on every surface.
+    const shouldShowModePill = true;
 
     const modelControl = hideModelControl ? null : hasMounted ? (
         <ChatModelSelector

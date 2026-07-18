@@ -190,7 +190,7 @@
       "path": "lib/server/ai/tools/openalex-search.ts",
       "reason": "Accepted centralized search-runtime coverage remains in place for this runtime file.",
       "coverage": "integration",
-      "testPath": "lib/server/__tests__/eval-runtime-search-scenarios.test.ts"
+      "testPath": "lib/server/__tests__/search-tool-contracts.test.ts"
     },
     {
       "path": "lib/server/ai/tools/preview-study-pdf-update.ts",
@@ -202,7 +202,7 @@
       "path": "lib/server/ai/tools/pubmed-search.ts",
       "reason": "Accepted centralized search-runtime coverage remains in place for this runtime file.",
       "coverage": "integration",
-      "testPath": "lib/server/__tests__/eval-runtime-search-scenarios.test.ts"
+      "testPath": "lib/server/__tests__/search-tool-contracts.test.ts"
     },
     {
       "path": "lib/server/ai/tools/read-ledger.ts",
@@ -226,13 +226,13 @@
       "path": "lib/server/ai/tools/recommend-studies.ts",
       "reason": "Accepted centralized recommendation coverage remains in place for this runtime file.",
       "coverage": "integration",
-      "testPath": "lib/server/__tests__/scoping-ai-service.test.ts"
+      "testPath": "lib/server/__tests__/search-tool-contracts.test.ts"
     },
     {
       "path": "lib/server/ai/tools/semantic-scholar-search.ts",
       "reason": "Accepted centralized search-runtime coverage remains in place for this runtime file.",
       "coverage": "integration",
-      "testPath": "lib/server/__tests__/tool-filtering.test.ts"
+      "testPath": "lib/server/__tests__/search-tool-contracts.test.ts"
     },
     {
       "path": "lib/server/ai/tools/store-memory.ts",
