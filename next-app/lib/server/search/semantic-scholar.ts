@@ -4,16 +4,13 @@ import type { SearchResult, SearchResponse } from "@/types/search";
 import type { Study } from "@/types/ledger";
 import { parsePublicationYearPrefix } from "@/lib/server/search/publication-year";
 import { parseOpaqueOffsetCursor } from "@/lib/search-contract";
-import { sleep } from "@/lib/server/utils/retry";
+import { fetchSearchProvider } from "@/lib/server/search/provider-throttle";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const S2_BASE = "https://api.semanticscholar.org/graph/v1";
 const S2_RECOMMEND_BASE = "https://api.semanticscholar.org/recommendations/v1/papers/";
 const S2_FIELDS = "paperId,externalIds,title,abstract,year,authors,venue,citationCount,influentialCitationCount,isOpenAccess,fieldsOfStudy,publicationDate";
-
-const MAX_RETRIES = 3;
-const INITIAL_BACKOFF_MS = 1000;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,23 +34,7 @@ type YearRange = {
     end?: number;
 };
 
-// ── Throttle ─────────────────────────────────────────────────────────────────
-
-let lastRequestTime = 0;
-
-function getThrottleInterval(): number {
-    return process.env.SEMANTIC_SCHOLAR_API_KEY ? 1050 : 3400;
-}
-
 async function throttledFetch(url: string, init?: RequestInit): Promise<Response> {
-    const interval = getThrottleInterval();
-    const now = Date.now();
-    const elapsed = now - lastRequestTime;
-    if (elapsed < interval) {
-        await sleep(interval - elapsed, init?.signal ?? undefined);
-    }
-    lastRequestTime = Date.now();
-
     const headers: Record<string, string> = {
         Accept: "application/json",
         ...(init?.headers as Record<string, string> ?? {}),
@@ -62,35 +43,7 @@ async function throttledFetch(url: string, init?: RequestInit): Promise<Response
         headers["x-api-key"] = process.env.SEMANTIC_SCHOLAR_API_KEY;
     }
 
-    return fetch(url, { ...init, headers });
-}
-
-/**
- * Fetch with exponential backoff on 429 (rate limit).
- * Respects Retry-After header if present.
- */
-async function fetchWithRetry(url: string, init?: RequestInit): Promise<Response> {
-    let lastResponse: Response | null = null;
-
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-        const res = await throttledFetch(url, init);
-
-        if (res.status !== 429 || attempt === MAX_RETRIES) {
-            return res;
-        }
-
-        lastResponse = res;
-
-        // Parse Retry-After header (seconds) or use exponential backoff
-        const retryAfter = res.headers.get("Retry-After");
-        const waitMs = retryAfter
-            ? parseInt(retryAfter, 10) * 1000
-            : INITIAL_BACKOFF_MS * Math.pow(2, attempt);
-
-        await sleep(waitMs, init?.signal ?? undefined);
-    }
-
-    return lastResponse!;
+    return fetchSearchProvider("semantic-scholar", url, { ...init, headers });
 }
 
 function parseYearRange(yearRange?: string): YearRange {
@@ -140,14 +93,7 @@ export async function searchSemanticScholar(
     }
 
     const url = `${S2_BASE}/paper/search?${params}`;
-    const res = await fetchWithRetry(url, { signal: options?.signal });
-
-    if (res.status === 429) {
-        throw new Error("Semantic Scholar rate limit exceeded after retries. Try again shortly.");
-    }
-    if (!res.ok) {
-        throw new Error(`Semantic Scholar search failed: ${res.status}`);
-    }
+    const res = await throttledFetch(url, { signal: options?.signal });
 
     const data = await res.json();
     const papers: S2Paper[] = data.data ?? [];
@@ -191,19 +137,12 @@ export async function getRecommendations(
     });
 
     const url = `${S2_RECOMMEND_BASE}?${params}`;
-    const res = await fetchWithRetry(url, {
+    const res = await throttledFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
         signal: options?.signal,
     });
-
-    if (res.status === 429) {
-        throw new Error("Semantic Scholar recommendations rate limit exceeded. Try again shortly.");
-    }
-    if (!res.ok) {
-        throw new Error(`Semantic Scholar recommendations failed: ${res.status}`);
-    }
 
     const data = await res.json();
     const papers: S2Paper[] = data.recommendedPapers ?? [];

@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/server/search/provider-throttle", () => ({
+  fetchSearchProvider: vi.fn((_provider, input, init) => fetch(input, init)),
+}));
+
 import { parseOpenAlexWork, searchOpenAlex } from "@/lib/server/search/openalex";
 
 function mockJsonResponse(body: unknown, status = 200): Response {
