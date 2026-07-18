@@ -54,7 +54,7 @@ export type MobileFeatureKey =
   | "shellV2";
 
 const DEFAULTS: Record<MobileFeatureKey, boolean> = {
-  viewportV2: false,
+  viewportV2: true,
   scrollLockV2: false,
   ledgerV2: false,
   notesV2: false,

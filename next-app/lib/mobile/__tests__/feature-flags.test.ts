@@ -29,8 +29,8 @@ afterEach(() => {
 });
 
 describe("mobile feature flags", () => {
-  it("defaults all mobile flags to false", () => {
-    expect(isMobileViewportV2Enabled()).toBe(false);
+  it("defaults the certified viewport runtime on and keeps route flags off", () => {
+    expect(isMobileViewportV2Enabled()).toBe(true);
     expect(isMobileScrollLockV2Enabled()).toBe(false);
     expect(isMobileLedgerV2Enabled()).toBe(false);
     expect(isMobileNotesV2Enabled()).toBe(false);
@@ -55,7 +55,7 @@ describe("mobile feature flags", () => {
     process.env.NEXT_PUBLIC_MOBILE_SHELL_V2 = "true";
 
     expect(getMobileFeatureSnapshot()).toEqual({
-      viewportV2: false,
+      viewportV2: true,
       scrollLockV2: false,
       ledgerV2: true,
       notesV2: true,
