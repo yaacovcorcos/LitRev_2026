@@ -40,6 +40,7 @@ export type ProjectTabBarProps = {
     activeTab: ViewTab | null;
     onTabClick: (tab: ViewTab) => void;
     onConversationClick: () => void;
+    isConversationLoading: boolean;
     projectName?: string;
     onDeleteProject?: () => void;
 };
@@ -49,6 +50,7 @@ export function ProjectTabBar({
     activeTab,
     onTabClick,
     onConversationClick,
+    isConversationLoading,
     projectName,
     onDeleteProject,
 }: ProjectTabBarProps) {
@@ -106,6 +108,8 @@ export function ProjectTabBar({
                         role="radio"
                         aria-checked={focusMode === "conversation"}
                         aria-label="Conversation mode"
+                        aria-busy={isConversationLoading}
+                        disabled={isConversationLoading}
                         className={`${styles.modeBtn} ${focusMode === "conversation" ? styles.modeBtnActive : ""}`}
                         onClick={() => {
                             recordNavigationTap("mode_conversation");

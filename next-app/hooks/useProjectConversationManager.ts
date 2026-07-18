@@ -90,7 +90,9 @@ export function useProjectConversationManager(deps: ProjectConversationManagerDe
     // Conversation management state
     const [conversations, setConversations] = useState<ConversationListItem[]>([]);
     const [currentConversationId, setCurrentConversationIdState] = useState<string | null>(null);
-    const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+    // Bootstrap starts after hydration, so initialize as busy to prevent mode
+    // switches from racing the first durable-conversation lookup.
+    const [isLoadingConversations, setIsLoadingConversations] = useState(Boolean(projectId));
     const [showConversationList, setShowConversationList] = useState(false);
     const [isConversationLoading, setIsConversationLoading] = useState(false);
     const [hasMore, setHasMore] = useState(false);
