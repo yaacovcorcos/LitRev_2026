@@ -428,6 +428,15 @@ model AIUsageReservation {
   @@index([conversationId, createdAt])
 }
 
+// Cross-instance reservation cursor for externally rate-limited search APIs.
+// The primary key is a provider plus hashed credential scope; raw credentials
+// are never persisted. nextAvailableAt is advanced atomically before fetch.
+model SearchProviderThrottle {
+  providerKey     String   @id
+  nextAvailableAt DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 // ============================================================================
 // AI MEMORY SYSTEM
 // Structured knowledge storage (distinct from conversation transcripts)

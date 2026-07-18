@@ -3,27 +3,13 @@ import "server-only";
 import { XMLParser } from "fast-xml-parser";
 import type { SearchResult, SearchResponse } from "@/types/search";
 import { parseOpaqueOffsetCursor } from "@/lib/search-contract";
-import { sleep } from "@/lib/server/utils/retry";
+import { fetchSearchProvider } from "@/lib/server/search/provider-throttle";
 
 const EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 const PMID_BATCH_SIZE = 200;
 
-// Module-level throttle
-let lastRequestTime = 0;
-
-function getThrottleInterval(): number {
-  return process.env.NCBI_API_KEY ? 100 : 340;
-}
-
 async function throttledFetch(url: string, signal?: AbortSignal): Promise<Response> {
-  const interval = getThrottleInterval();
-  const now = Date.now();
-  const elapsed = now - lastRequestTime;
-  if (elapsed < interval) {
-    await sleep(interval - elapsed, signal);
-  }
-  lastRequestTime = Date.now();
-  return fetch(url, { signal });
+  return fetchSearchProvider("pubmed", url, { signal });
 }
 
 function buildBaseParams(): URLSearchParams {
@@ -73,9 +59,6 @@ export async function searchPubMed(
 
   const searchUrl = `${EUTILS_BASE}/esearch.fcgi?${searchParams}`;
   const searchRes = await throttledFetch(searchUrl, options?.signal);
-  if (!searchRes.ok) {
-    throw new Error(`PubMed ESearch failed: ${searchRes.status}`);
-  }
 
   const searchData = await searchRes.json();
   const esearchResult = searchData.esearchresult;
@@ -126,9 +109,6 @@ export async function fetchPubMedArticles(
 
     const fetchUrl = `${EUTILS_BASE}/efetch.fcgi?${fetchParams}`;
     const fetchRes = await throttledFetch(fetchUrl, options?.signal);
-    if (!fetchRes.ok) {
-      throw new Error(`PubMed EFetch failed: ${fetchRes.status}`);
-    }
 
     const xml = await fetchRes.text();
     const parsed = parsePubMedXml(xml);

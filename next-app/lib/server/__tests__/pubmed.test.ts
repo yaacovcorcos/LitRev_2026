@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/server/search/provider-throttle", () => ({
+  fetchSearchProvider: vi.fn((_provider, input, init) => fetch(input, init)),
+}));
+
 import { parsePubMedXml, searchPubMed } from "@/lib/server/search/pubmed";
 
 const MULTI_AUTHOR_XML = `<?xml version="1.0" ?>
