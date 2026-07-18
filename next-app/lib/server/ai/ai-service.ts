@@ -130,6 +130,7 @@ import { normalizeChatOptionsForModel } from "./request-policy";
 import { normalizeUserInputRequestWithDecisionRequest } from "@/lib/ai/decision-requests";
 import { createIdempotencyMiddleware, executeWithToolMiddleware, type ToolExecutionRequest, type ToolMiddleware } from "./tool-middleware";
 import { ensureToolResultErrorMeta } from "./tool-errors";
+import { executeToolReliably } from "./tool-executor";
 import { createToolPrerequisiteMiddleware, evaluateToolPrerequisites } from "./tool-prerequisites";
 import { createToolAvailabilityPolicyMiddleware } from "./tool-availability-policy";
 import { resolveAuthenticatedIdentity } from "@/lib/server/auth/identity";
@@ -751,11 +752,28 @@ class AIService {
             request,
             this.toolMiddlewares,
             async (resolvedRequest) => {
-                const result = await executeTool(
-                    resolvedRequest.name,
-                    resolvedRequest.args,
-                    resolvedRequest.callId,
-                    resolvedRequest.context,
+                const result = await executeToolReliably(
+                    resolvedRequest,
+                    (attemptRequest) => executeTool(
+                        attemptRequest.name,
+                        attemptRequest.args,
+                        attemptRequest.callId,
+                        attemptRequest.context,
+                    ),
+                    {
+                        onRetry: (event) => {
+                            logServerInfo("ai-service", "retrying read-only tool execution", {
+                                runId: resolvedRequest.context?.runId,
+                                callId: resolvedRequest.callId,
+                                toolName: event.toolName,
+                                completedAttempt: event.completedAttempt,
+                                nextAttempt: event.nextAttempt,
+                                maxAttempts: event.maxAttempts,
+                                delayMs: event.delayMs,
+                                errorCode: event.errorMeta.code,
+                            });
+                        },
+                    },
                 );
                 return finalizeResult
                     ? finalizeResult(result, resolvedRequest)
