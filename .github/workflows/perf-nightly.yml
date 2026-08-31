@@ -41,7 +41,7 @@ jobs:
       PERF_NIGHTLY_RUN_ID: nightly-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 20
